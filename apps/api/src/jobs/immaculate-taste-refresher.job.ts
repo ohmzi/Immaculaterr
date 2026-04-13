@@ -2053,7 +2053,7 @@ function asNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function buildImmaculateTasteRefresherReport(params: {
+export function buildImmaculateTasteRefresherReport(params: {
   ctx: JobContext;
   raw: JsonObject;
 }): JobReportV1 {
@@ -2065,6 +2065,9 @@ function buildImmaculateTasteRefresherReport(params: {
 
   const tasks: JobReportV1['tasks'] = [];
   const issues: JobReportV1['issues'] = [];
+  const collectionAdditionFacts: Array<{ label: string; value: JsonValue }> =
+    [];
+  const collectionAdditionsByLibrary: JsonObject[] = [];
 
   const asStringArray = (v: unknown): string[] => {
     if (!Array.isArray(v)) return [];
@@ -2083,6 +2086,9 @@ function buildImmaculateTasteRefresherReport(params: {
     prefix: string;
     titlePrefix: string;
     byLibrary: unknown;
+    mediaType: 'movie' | 'tv';
+    collectionName?: string;
+    scopeLabel?: string;
     sentLabel?: string;
     sentField?: 'sentToRadarr' | 'sentToSonarr';
     unit?: string;
@@ -2095,7 +2101,9 @@ function buildImmaculateTasteRefresherReport(params: {
       : [];
 
     for (const lib of byLibrary) {
-      const name = String(lib.library ?? lib.title ?? 'Library');
+      const libraryLabel =
+        asTrimmedString(lib.library ?? lib.title) || 'Library';
+      const name = libraryLabel || 'Library';
       const plex = isPlainObject(lib.plex) ? lib.plex : null;
       const plexSkipped = plex ? Boolean(plex.skipped) : false;
       const plexError =
@@ -2115,6 +2123,9 @@ function buildImmaculateTasteRefresherReport(params: {
         ? asNum(plex.desiredCount)
         : (asNum(lib.totalApplying) ?? null);
       const plexItems = plex ? asStringArray(plex.collectionItems) : [];
+      const newCollectionItems = plex
+        ? asStringArray(plex.newCollectionItems)
+        : [];
       const facts = plexItems.length
         ? [
             {
@@ -2181,6 +2192,35 @@ function buildImmaculateTasteRefresherReport(params: {
         facts: facts.length ? facts : undefined,
         issues: plexError ? [issue('error', plexError)] : undefined,
       });
+
+      if (newCollectionItems.length) {
+        const scopedPrefix = params.scopeLabel
+          ? `${params.mediaType === 'movie' ? 'Movie collection' : 'TV collection'} (${params.scopeLabel})`
+          : params.mediaType === 'movie'
+            ? 'Movie collection'
+            : 'TV collection';
+        const label = libraryLabel
+          ? `${scopedPrefix} — ${libraryLabel}`
+          : scopedPrefix;
+        collectionAdditionFacts.push({
+          label,
+          value: {
+            count: newCollectionItems.length,
+            unit: params.unit ?? 'items',
+            items: newCollectionItems,
+            order: 'plex',
+          },
+        });
+        collectionAdditionsByLibrary.push({
+          mediaType: params.mediaType,
+          scopeLabel: params.scopeLabel ?? null,
+          library: libraryLabel || null,
+          collectionName: params.collectionName?.trim() || null,
+          count: newCollectionItems.length,
+          unit: params.unit ?? 'items',
+          items: newCollectionItems,
+        });
+      }
     }
   };
 
@@ -2200,9 +2240,9 @@ function buildImmaculateTasteRefresherReport(params: {
       facts: [
         {
           label: 'Order',
-          value: String(
-            (raw as Record<string, unknown>).sweepOrder ?? SWEEP_ORDER,
-          ),
+          value:
+            asTrimmedString((raw as Record<string, unknown>).sweepOrder) ||
+            SWEEP_ORDER,
         },
         {
           label: 'Users processed',
@@ -2285,6 +2325,9 @@ function buildImmaculateTasteRefresherReport(params: {
               prefix: `movie_library_${userId}_${profileSlug}`,
               titlePrefix: `Movie library (${userTitle} — ${profileLabel}):`,
               byLibrary: movie.plexByLibrary,
+              mediaType: 'movie',
+              collectionName: asTrimmedString(movie.collectionName),
+              scopeLabel: `${userTitle} — ${profileLabel}`,
               sentLabel: 'Sent to Radarr',
               sentField: 'sentToRadarr',
               unit: 'movies',
@@ -2296,6 +2339,9 @@ function buildImmaculateTasteRefresherReport(params: {
               prefix: `tv_library_${userId}_${profileSlug}`,
               titlePrefix: `TV library (${userTitle} — ${profileLabel}):`,
               byLibrary: tv.plexByLibrary,
+              mediaType: 'tv',
+              collectionName: asTrimmedString(tv.collectionName),
+              scopeLabel: `${userTitle} — ${profileLabel}`,
               sentLabel: 'Sent to Sonarr',
               sentField: 'sentToSonarr',
               unit: 'shows',
@@ -2340,6 +2386,9 @@ function buildImmaculateTasteRefresherReport(params: {
           prefix: `movie_library_${userId}`,
           titlePrefix: `Movie library (${userTitle}):`,
           byLibrary: movie.plexByLibrary,
+          mediaType: 'movie',
+          collectionName: asTrimmedString(movie.collectionName),
+          scopeLabel: userTitle || undefined,
           sentLabel: 'Sent to Radarr',
           sentField: 'sentToRadarr',
           unit: 'movies',
@@ -2351,6 +2400,9 @@ function buildImmaculateTasteRefresherReport(params: {
           prefix: `tv_library_${userId}`,
           titlePrefix: `TV library (${userTitle}):`,
           byLibrary: tv.plexByLibrary,
+          mediaType: 'tv',
+          collectionName: asTrimmedString(tv.collectionName),
+          scopeLabel: userTitle || undefined,
           sentLabel: 'Sent to Sonarr',
           sentField: 'sentToSonarr',
           unit: 'shows',
@@ -2394,6 +2446,9 @@ function buildImmaculateTasteRefresherReport(params: {
         prefix: 'movie_library',
         titlePrefix: 'Movie library:',
         byLibrary: movie.plexByLibrary,
+        mediaType: 'movie',
+        collectionName: asTrimmedString(movie.collectionName),
+        scopeLabel: matchedProfileLabel || undefined,
         sentLabel: 'Sent to Radarr',
         sentField: 'sentToRadarr',
         unit: 'movies',
@@ -2405,6 +2460,9 @@ function buildImmaculateTasteRefresherReport(params: {
         prefix: 'tv_library',
         titlePrefix: 'TV library:',
         byLibrary: tv.plexByLibrary,
+        mediaType: 'tv',
+        collectionName: asTrimmedString(tv.collectionName),
+        scopeLabel: matchedProfileLabel || undefined,
         sentLabel: 'Sent to Sonarr',
         sentField: 'sentToSonarr',
         unit: 'shows',
@@ -2412,10 +2470,30 @@ function buildImmaculateTasteRefresherReport(params: {
     }
   }
 
+  tasks.push({
+    id: 'collection_additions',
+    title: 'Newly added to collection',
+    status: collectionAdditionFacts.length ? 'success' : 'skipped',
+    facts: collectionAdditionFacts.length
+      ? collectionAdditionFacts
+      : [{ label: 'Reason', value: 'no_new_collection_items' }],
+  });
+
   const rawRecord = raw as Record<string, unknown>;
   const reportProfileName = asTrimmedString(rawRecord.profileName);
   const reportProfileId = asTrimmedString(rawRecord.profileId);
   const reportProfileLabel = reportProfileName || reportProfileId;
+  const rawWithCollectionAdditions = {
+    ...raw,
+    collectionAdditionsByLibrary,
+    collectionAdditionsTotal: collectionAdditionsByLibrary.reduce(
+      (sum, row) => {
+        const count = asNum(row.count);
+        return sum + (count ?? 0);
+      },
+      0,
+    ),
+  } as JsonObject;
 
   return {
     template: 'jobReportV1',
@@ -2431,6 +2509,6 @@ function buildImmaculateTasteRefresherReport(params: {
     sections: [],
     tasks,
     issues,
-    raw,
+    raw: rawWithCollectionAdditions,
   };
 }

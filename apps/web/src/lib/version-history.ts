@@ -37,6 +37,40 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.7-beta-3',
+    popupHighlights: [
+      'Recommendations now use a multi-factor ranking engine that blends similarity, quality, novelty, and indie/popularity signals.',
+      'A new wildcard lane injects global-language standouts and hidden gems into recommendation sets.',
+      'TMDB metadata, seed profiling, and interleaving were expanded so latest-watched and change-of-taste runs rank titles differently.',
+    ],
+    sections: [
+      {
+        title: 'Enhanced ranking system',
+        bullets: [
+          'Replaced the older heuristic scoring with a multi-factor ranking engine.',
+          'Candidates are now scored across quality, content similarity, novelty, and indie/popularity value.',
+          'Similarity uses richer text and genre signals instead of simpler title-only matching.',
+        ],
+      },
+      {
+        title: 'Wildcard discovery lane',
+        bullets: [
+          'Added a wildcard lane that can inject global-language titles into the final mix.',
+          'The same lane can surface hidden gems by favoring strong ratings with lower popularity.',
+          'Wildcard picks are mixed into the main set without overwhelming the primary recommendations.',
+        ],
+      },
+      {
+        title: 'Context-aware ranking',
+        bullets: [
+          'Seed profiling now captures language and origin details for better diversity decisions.',
+          'Ranking weights now change by mode, so latest-watched and change-of-taste runs emphasize different signals.',
+          'TMDB discovery and interleaving logic were expanded to support released, upcoming, and wildcard balancing.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.7-beta-2',
     popupHighlights: [
       'Netflix CSV imports now batch database writes before queueing follow-up processing, which reduces SQLite contention on larger uploads.',

@@ -3,6 +3,23 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.7-beta-3
+---
+
+- What's new since 1.7.7-beta-2:
+- Enhanced ranking system:
+  - Replaced the older heuristic scoring with a multi-factor ranking engine.
+  - Candidates are now scored across quality, content similarity, novelty, and indie/popularity value.
+  - Similarity uses richer text and genre signals instead of simpler title-only matching.
+- Wildcard lane:
+  - Added a wildcard lane that can inject global-language titles into the final mix.
+  - The same lane can surface hidden gems by favoring strong ratings with lower popularity.
+  - Wildcard picks are mixed into the main set without overwhelming the primary recommendations.
+- Context-aware ranking:
+  - Seed profiling now captures language and origin details for better diversity decisions.
+  - Ranking weights now change by mode, so latest-watched and change-of-taste runs emphasize different signals.
+  - TMDB discovery and interleaving logic were expanded to support released, upcoming, and wildcard balancing.
+
 1.7.7-beta-2
 ---
 

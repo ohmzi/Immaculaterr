@@ -26,6 +26,7 @@ type TmdbMovieDetails = {
   overview?: string;
   poster_path?: string;
   genres?: Array<{ id?: unknown; name?: unknown }>;
+  production_countries?: Array<{ iso_3166_1?: unknown; name?: unknown }>;
   vote_count?: number;
   vote_average?: number;
   original_language?: string;
@@ -39,6 +40,7 @@ type TmdbTvSearchResult = {
   vote_count?: number;
   vote_average?: number;
   popularity?: number;
+  original_language?: string;
 };
 
 type TmdbTvExternalIds = {
@@ -52,6 +54,7 @@ type TmdbTvDetails = {
   overview?: string;
   poster_path?: string;
   genres?: Array<{ id?: unknown; name?: unknown }>;
+  origin_country?: string[];
   vote_count?: number;
   vote_average?: number;
   external_ids?: TmdbTvExternalIds;
@@ -70,6 +73,7 @@ export type TmdbMovieCandidate = {
   voteAverage: number | null;
   voteCount: number | null;
   popularity: number | null;
+  originalLanguage?: string | null;
   sources: string[];
 };
 
@@ -80,7 +84,15 @@ export type TmdbTvCandidate = {
   voteAverage: number | null;
   voteCount: number | null;
   popularity: number | null;
+  originalLanguage?: string | null;
   sources: string[];
+};
+
+export type TmdbRecommendationMetadata = {
+  overview: string;
+  genreNames: string[];
+  originalLanguage: string | null;
+  originCountryCodes: string[];
 };
 
 export type TmdbMovieGenreOption = {
@@ -452,6 +464,10 @@ export class TmdbService {
           typeof rec['popularity'] === 'number'
             ? rec['popularity']
             : Number(rec['popularity']),
+        original_language:
+          typeof rec['original_language'] === 'string'
+            ? rec['original_language'].trim()
+            : undefined,
       });
     }
 
@@ -505,6 +521,12 @@ export class TmdbService {
         typeof rec['poster_path'] === 'string' ? rec['poster_path'] : undefined,
       genres: Array.isArray(rec['genres'])
         ? (rec['genres'] as Array<{ id?: unknown; name?: unknown }>)
+        : undefined,
+      production_countries: Array.isArray(rec['production_countries'])
+        ? (rec['production_countries'] as Array<{
+            iso_3166_1?: unknown;
+            name?: unknown;
+          }>)
         : undefined,
       vote_average: Number.isFinite(voteAverage) ? voteAverage : undefined,
       vote_count: Number.isFinite(voteCount)
@@ -588,6 +610,13 @@ export class TmdbService {
         typeof rec['poster_path'] === 'string' ? rec['poster_path'] : undefined,
       genres: Array.isArray(rec['genres'])
         ? (rec['genres'] as Array<{ id?: unknown; name?: unknown }>)
+        : undefined,
+      origin_country: Array.isArray(rec['origin_country'])
+        ? (rec['origin_country'] as unknown[])
+            .map((value) =>
+              typeof value === 'string' ? value.trim().toUpperCase() : '',
+            )
+            .filter(Boolean)
         : undefined,
       vote_average: Number.isFinite(voteAverage) ? voteAverage : undefined,
       vote_count: Number.isFinite(voteCount)
@@ -733,6 +762,92 @@ export class TmdbService {
       first_air_date,
       genre_names,
       original_language,
+    };
+  }
+
+  async getMovieRecommendationMetadata(params: {
+    apiKey: string;
+    tmdbId: number;
+  }): Promise<TmdbRecommendationMetadata | null> {
+    const details = await this.getMovie({
+      apiKey: params.apiKey,
+      tmdbId: params.tmdbId,
+    });
+    if (!details) return null;
+
+    const overview =
+      typeof details.overview === 'string' ? details.overview.trim() : '';
+    const genreNames = Array.isArray(details.genres)
+      ? details.genres
+          .map((genre) =>
+            genre && typeof genre === 'object' && typeof genre.name === 'string'
+              ? genre.name.trim()
+              : '',
+          )
+          .filter(Boolean)
+      : [];
+    const originalLanguage =
+      typeof details.original_language === 'string' &&
+      details.original_language.trim()
+        ? details.original_language.trim().toLowerCase()
+        : null;
+    const originCountryCodes = Array.isArray(details.production_countries)
+      ? details.production_countries
+          .map((country) =>
+            country &&
+            typeof country === 'object' &&
+            typeof country.iso_3166_1 === 'string'
+              ? country.iso_3166_1.trim().toUpperCase()
+              : '',
+          )
+          .filter(Boolean)
+      : [];
+
+    return {
+      overview,
+      genreNames,
+      originalLanguage,
+      originCountryCodes,
+    };
+  }
+
+  async getTvRecommendationMetadata(params: {
+    apiKey: string;
+    tmdbId: number;
+  }): Promise<TmdbRecommendationMetadata | null> {
+    const details = await this.getTv({
+      apiKey: params.apiKey,
+      tmdbId: params.tmdbId,
+    });
+    if (!details) return null;
+
+    const overview =
+      typeof details.overview === 'string' ? details.overview.trim() : '';
+    const genreNames = Array.isArray(details.genres)
+      ? details.genres
+          .map((genre) =>
+            genre && typeof genre === 'object' && typeof genre.name === 'string'
+              ? genre.name.trim()
+              : '',
+          )
+          .filter(Boolean)
+      : [];
+    const originalLanguage =
+      typeof details.original_language === 'string' &&
+      details.original_language.trim()
+        ? details.original_language.trim().toLowerCase()
+        : null;
+    const originCountryCodes = Array.isArray(details.origin_country)
+      ? details.origin_country
+          .map((code) => code.trim().toUpperCase())
+          .filter(Boolean)
+      : [];
+
+    return {
+      overview,
+      genreNames,
+      originalLanguage,
+      originCountryCodes,
     };
   }
 
@@ -1228,6 +1343,23 @@ export class TmdbService {
             })
             .filter((x): x is string => Boolean(x))
         : [];
+      const originalLanguage =
+        typeof details?.original_language === 'string' &&
+        details.original_language.trim()
+          ? details.original_language.trim().toLowerCase()
+          : null;
+      const originCountryCodes = Array.isArray(details?.production_countries)
+        ? details.production_countries
+            .map((country) => {
+              if (!country || typeof country !== 'object') return null;
+              const code =
+                typeof country.iso_3166_1 === 'string'
+                  ? country.iso_3166_1.trim().toUpperCase()
+                  : '';
+              return code || null;
+            })
+            .filter((value): value is string => Boolean(value))
+        : [];
 
       return {
         seed_title: seedTitle,
@@ -1236,6 +1368,8 @@ export class TmdbService {
         year: (details?.release_date ?? best.release_date ?? '').slice(0, 4),
         genres,
         overview: details?.overview ?? '',
+        original_language: originalLanguage,
+        origin_country_codes: originCountryCodes,
       };
     } catch {
       return { seed_title: seedTitle };
@@ -1280,6 +1414,21 @@ export class TmdbService {
             })
             .filter((x): x is string => Boolean(x))
         : [];
+      const originalLanguage =
+        typeof details?.original_language === 'string' &&
+        details.original_language.trim()
+          ? details.original_language.trim().toLowerCase()
+          : typeof best.original_language === 'string' &&
+              best.original_language.trim()
+            ? best.original_language.trim().toLowerCase()
+            : null;
+      const originCountryCodes = Array.isArray(details?.origin_country)
+        ? details.origin_country
+            .map((code) =>
+              typeof code === 'string' ? code.trim().toUpperCase() : '',
+            )
+            .filter(Boolean)
+        : [];
 
       return {
         seed_title: seedTitle,
@@ -1291,6 +1440,8 @@ export class TmdbService {
         ),
         genres,
         overview: details?.overview ?? '',
+        original_language: originalLanguage,
+        origin_country_codes: originCountryCodes,
         media_type: 'tv',
       };
     } catch {
@@ -1447,6 +1598,392 @@ export class TmdbService {
             ? Number(r.popularity)
             : null,
         sources: ['discover_fallback'],
+      });
+      if (out.length >= limit) break;
+    }
+
+    return out;
+  }
+
+  async discoverGlobalLanguageMovieCandidates(params: {
+    apiKey: string;
+    limit: number;
+    genreIds?: number[] | null;
+    matchMode?: 'include' | 'exclude';
+    languages?: string[] | null;
+    excludeLanguage?: string | null;
+    timezone?: string | null;
+  }): Promise<TmdbMovieCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 10)));
+    const languages = Array.isArray(params.languages)
+      ? params.languages
+          .map((value) =>
+            String(value ?? '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean)
+      : [];
+    const excludeLanguage = (params.excludeLanguage ?? '').trim().toLowerCase();
+    const languageQueue = Array.from(new Set(languages)).filter(
+      (language) => language !== excludeLanguage,
+    );
+    if (!languageQueue.length) return [];
+
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((value) =>
+            Number.isFinite(value) ? Math.trunc(value) : Number.NaN,
+          )
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const perLanguageLimit = Math.max(2, Math.min(12, Math.ceil(limit / 2)));
+    const out: TmdbMovieCandidate[] = [];
+    const seen = new Set<number>();
+
+    for (const language of languageQueue) {
+      const url = new URL('https://api.themoviedb.org/3/discover/movie');
+      url.searchParams.set('with_original_language', language);
+      url.searchParams.set('primary_release_date.lte', today);
+      url.searchParams.set('vote_count.gte', '50');
+      url.searchParams.set('sort_by', 'vote_average.desc');
+      if (genreIds.length) {
+        const key =
+          params.matchMode === 'exclude' ? 'without_genres' : 'with_genres';
+        url.searchParams.set(
+          key,
+          genreIds.slice(0, params.matchMode === 'exclude' ? 5 : 4).join(','),
+        );
+      }
+
+      const rows = await this.pagedResults({
+        apiKey,
+        url,
+        includeAdult: false,
+        maxItems: Math.min(80, perLanguageLimit * 4),
+        maxPages: 4,
+      });
+
+      for (const row of rows) {
+        if (!row || !Number.isFinite(row.id) || row.id <= 0) continue;
+        const tmdbId = Math.trunc(row.id);
+        if (seen.has(tmdbId)) continue;
+        const title = (row.title ?? '').trim();
+        if (!title) continue;
+        seen.add(tmdbId);
+        out.push({
+          tmdbId,
+          title,
+          releaseDate:
+            typeof row.release_date === 'string' && row.release_date.trim()
+              ? row.release_date.trim()
+              : null,
+          voteAverage:
+            typeof row.vote_average === 'number' &&
+            Number.isFinite(row.vote_average)
+              ? Number(row.vote_average)
+              : null,
+          voteCount:
+            typeof row.vote_count === 'number' &&
+            Number.isFinite(row.vote_count)
+              ? Math.max(0, Math.trunc(row.vote_count))
+              : null,
+          popularity:
+            typeof row.popularity === 'number' &&
+            Number.isFinite(row.popularity)
+              ? Number(row.popularity)
+              : null,
+          originalLanguage: language,
+          sources: ['global_language'],
+        });
+        if (out.length >= limit) return out;
+        if (
+          out.filter(
+            (candidate) =>
+              candidate.originalLanguage?.toLowerCase() === language,
+          ).length >= perLanguageLimit
+        ) {
+          break;
+        }
+      }
+    }
+
+    return out;
+  }
+
+  async discoverGlobalLanguageTvCandidates(params: {
+    apiKey: string;
+    limit: number;
+    genreIds?: number[] | null;
+    matchMode?: 'include' | 'exclude';
+    languages?: string[] | null;
+    excludeLanguage?: string | null;
+    timezone?: string | null;
+  }): Promise<TmdbTvCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 10)));
+    const languages = Array.isArray(params.languages)
+      ? params.languages
+          .map((value) =>
+            String(value ?? '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean)
+      : [];
+    const excludeLanguage = (params.excludeLanguage ?? '').trim().toLowerCase();
+    const languageQueue = Array.from(new Set(languages)).filter(
+      (language) => language !== excludeLanguage,
+    );
+    if (!languageQueue.length) return [];
+
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((value) =>
+            Number.isFinite(value) ? Math.trunc(value) : Number.NaN,
+          )
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const perLanguageLimit = Math.max(2, Math.min(12, Math.ceil(limit / 2)));
+    const out: TmdbTvCandidate[] = [];
+    const seen = new Set<number>();
+
+    for (const language of languageQueue) {
+      const url = new URL('https://api.themoviedb.org/3/discover/tv');
+      url.searchParams.set('with_original_language', language);
+      url.searchParams.set('first_air_date.lte', today);
+      url.searchParams.set('vote_count.gte', '30');
+      url.searchParams.set('sort_by', 'vote_average.desc');
+      if (genreIds.length) {
+        const key =
+          params.matchMode === 'exclude' ? 'without_genres' : 'with_genres';
+        url.searchParams.set(
+          key,
+          genreIds.slice(0, params.matchMode === 'exclude' ? 5 : 4).join(','),
+        );
+      }
+
+      const rows = await this.pagedTvResults({
+        apiKey,
+        url,
+        includeAdult: false,
+        maxItems: Math.min(80, perLanguageLimit * 4),
+        maxPages: 4,
+      });
+
+      for (const row of rows) {
+        if (!row || !Number.isFinite(row.id) || row.id <= 0) continue;
+        const tmdbId = Math.trunc(row.id);
+        if (seen.has(tmdbId)) continue;
+        const title = (row.name ?? '').trim();
+        if (!title) continue;
+        seen.add(tmdbId);
+        out.push({
+          tmdbId,
+          title,
+          releaseDate:
+            typeof row.first_air_date === 'string' && row.first_air_date.trim()
+              ? row.first_air_date.trim()
+              : null,
+          voteAverage:
+            typeof row.vote_average === 'number' &&
+            Number.isFinite(row.vote_average)
+              ? Number(row.vote_average)
+              : null,
+          voteCount:
+            typeof row.vote_count === 'number' &&
+            Number.isFinite(row.vote_count)
+              ? Math.max(0, Math.trunc(row.vote_count))
+              : null,
+          popularity:
+            typeof row.popularity === 'number' &&
+            Number.isFinite(row.popularity)
+              ? Number(row.popularity)
+              : null,
+          originalLanguage: language,
+          sources: ['global_language'],
+        });
+        if (out.length >= limit) return out;
+        if (
+          out.filter(
+            (candidate) =>
+              candidate.originalLanguage?.toLowerCase() === language,
+          ).length >= perLanguageLimit
+        ) {
+          break;
+        }
+      }
+    }
+
+    return out;
+  }
+
+  async discoverHiddenGemMovieCandidates(params: {
+    apiKey: string;
+    limit: number;
+    genreIds?: number[] | null;
+    matchMode?: 'include' | 'exclude';
+    timezone?: string | null;
+  }): Promise<TmdbMovieCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 10)));
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((value) =>
+            Number.isFinite(value) ? Math.trunc(value) : Number.NaN,
+          )
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const url = new URL('https://api.themoviedb.org/3/discover/movie');
+    url.searchParams.set('primary_release_date.lte', today);
+    url.searchParams.set('vote_average.gte', '6.7');
+    url.searchParams.set('vote_count.gte', '80');
+    url.searchParams.set('sort_by', 'vote_average.desc');
+    if (genreIds.length) {
+      const key =
+        params.matchMode === 'exclude' ? 'without_genres' : 'with_genres';
+      url.searchParams.set(
+        key,
+        genreIds.slice(0, params.matchMode === 'exclude' ? 5 : 4).join(','),
+      );
+    }
+
+    const rows = await this.pagedResults({
+      apiKey,
+      url,
+      includeAdult: false,
+      maxItems: Math.min(120, limit * 6),
+      maxPages: 6,
+    });
+
+    const out: TmdbMovieCandidate[] = [];
+    const seen = new Set<number>();
+    for (const row of rows) {
+      if (!row || !Number.isFinite(row.id) || row.id <= 0) continue;
+      const tmdbId = Math.trunc(row.id);
+      if (seen.has(tmdbId)) continue;
+      const title = (row.title ?? '').trim();
+      if (!title) continue;
+      seen.add(tmdbId);
+      out.push({
+        tmdbId,
+        title,
+        releaseDate:
+          typeof row.release_date === 'string' && row.release_date.trim()
+            ? row.release_date.trim()
+            : null,
+        voteAverage:
+          typeof row.vote_average === 'number' &&
+          Number.isFinite(row.vote_average)
+            ? Number(row.vote_average)
+            : null,
+        voteCount:
+          typeof row.vote_count === 'number' && Number.isFinite(row.vote_count)
+            ? Math.max(0, Math.trunc(row.vote_count))
+            : null,
+        popularity:
+          typeof row.popularity === 'number' && Number.isFinite(row.popularity)
+            ? Number(row.popularity)
+            : null,
+        originalLanguage:
+          typeof row.original_language === 'string' &&
+          row.original_language.trim()
+            ? row.original_language.trim().toLowerCase()
+            : null,
+        sources: ['hidden_gem'],
+      });
+      if (out.length >= limit) break;
+    }
+
+    return out;
+  }
+
+  async discoverHiddenGemTvCandidates(params: {
+    apiKey: string;
+    limit: number;
+    genreIds?: number[] | null;
+    matchMode?: 'include' | 'exclude';
+    timezone?: string | null;
+  }): Promise<TmdbTvCandidate[]> {
+    const apiKey = params.apiKey.trim();
+    if (!apiKey) throw new BadGatewayException('TMDB apiKey is required');
+    const limit = Math.max(1, Math.min(100, Math.trunc(params.limit || 10)));
+    const genreIds = Array.isArray(params.genreIds)
+      ? params.genreIds
+          .map((value) =>
+            Number.isFinite(value) ? Math.trunc(value) : Number.NaN,
+          )
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+    const tz = normalizeTimezone(params.timezone) ?? 'America/Toronto';
+    const today = this.formatTodayInTimezone(tz);
+    const url = new URL('https://api.themoviedb.org/3/discover/tv');
+    url.searchParams.set('first_air_date.lte', today);
+    url.searchParams.set('vote_average.gte', '6.8');
+    url.searchParams.set('vote_count.gte', '40');
+    url.searchParams.set('sort_by', 'vote_average.desc');
+    if (genreIds.length) {
+      const key =
+        params.matchMode === 'exclude' ? 'without_genres' : 'with_genres';
+      url.searchParams.set(
+        key,
+        genreIds.slice(0, params.matchMode === 'exclude' ? 5 : 4).join(','),
+      );
+    }
+
+    const rows = await this.pagedTvResults({
+      apiKey,
+      url,
+      includeAdult: false,
+      maxItems: Math.min(120, limit * 6),
+      maxPages: 6,
+    });
+
+    const out: TmdbTvCandidate[] = [];
+    const seen = new Set<number>();
+    for (const row of rows) {
+      if (!row || !Number.isFinite(row.id) || row.id <= 0) continue;
+      const tmdbId = Math.trunc(row.id);
+      if (seen.has(tmdbId)) continue;
+      const title = (row.name ?? '').trim();
+      if (!title) continue;
+      seen.add(tmdbId);
+      out.push({
+        tmdbId,
+        title,
+        releaseDate:
+          typeof row.first_air_date === 'string' && row.first_air_date.trim()
+            ? row.first_air_date.trim()
+            : null,
+        voteAverage:
+          typeof row.vote_average === 'number' &&
+          Number.isFinite(row.vote_average)
+            ? Number(row.vote_average)
+            : null,
+        voteCount:
+          typeof row.vote_count === 'number' && Number.isFinite(row.vote_count)
+            ? Math.max(0, Math.trunc(row.vote_count))
+            : null,
+        popularity:
+          typeof row.popularity === 'number' && Number.isFinite(row.popularity)
+            ? Number(row.popularity)
+            : null,
+        originalLanguage:
+          typeof row.original_language === 'string' &&
+          row.original_language.trim()
+            ? row.original_language.trim().toLowerCase()
+            : null,
+        sources: ['hidden_gem'],
       });
       if (out.length >= limit) break;
     }

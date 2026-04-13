@@ -676,27 +676,15 @@ When multiple Plex users are monitored, Immaculaterr appends the viewer name so 
 
 ### How are recommendation titles generated?
 
-Recommendation generation always starts with TMDB. The final list then depends on which optional services you enabled in Vault.
+Recommendation runs now use a richer TMDB-based ranking flow instead of simple heuristic scoring:
 
-#### Variant 1: TMDB only
+1. **Seed profile** — the watched title, manual seed, or imported history title is resolved and profiled with extra language and origin hints when available.
+2. **Candidate lanes** — TMDB pulls fuller metadata and builds the normal candidate pool plus wildcard lanes for global-language films and hidden gems.
+3. **Ranking engine** — candidates are scored across four main signals: content similarity, quality, novelty, and indie/popularity value.
+4. **Contextual weights** — the weights change by intent, so latest-watched and change-of-taste runs rank differently, including different released vs. upcoming balance.
+5. **Interleaving** — the final list mixes primary picks with wildcard titles so the set stays relevant while still surfacing surprises.
 
-- TMDB builds the candidate pools.
-- The final list comes from TMDB's own selection.
-- The released-vs-upcoming dial still shapes the mix.
-
-#### Variant 2: TMDB + OpenAI
-
-- TMDB builds candidate pools first.
-- OpenAI curates the final list from those TMDB candidates.
-- The released-vs-upcoming dial still shapes the mix.
-
-#### Variant 3: TMDB + Google + OpenAI
-
-- TMDB builds the candidate pools.
-- Google widens discovery with extra web context.
-- OpenAI uses the TMDB candidates plus that context to curate the final list.
-
-In every variant, Rewind shows the per-service breakdown plus the final "Generated" list.
+If Google or OpenAI are enabled, they can still widen or curate the pool, but the core ranking now follows the flow above.
 
 ### What does the ratio of future releases vs current releases do?
 

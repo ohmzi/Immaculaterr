@@ -1632,40 +1632,39 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Recommendation generation always starts with TMDB. The final list then depends on
-                which optional services you enabled in Vault.
+                Recommendation runs now use a richer TMDB-based ranking flow instead of simple
+                heuristic scoring.
               </p>
-              <div className="space-y-3">
-                <div>
-                  <div className="font-semibold text-white/85">Variant 1: TMDB only</div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>TMDB builds the candidate pools.</li>
-                    <li>The final list comes from TMDB&apos;s own selection.</li>
-                    <li>The released-vs-upcoming dial still shapes the mix.</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <div className="font-semibold text-white/85">Variant 2: TMDB + OpenAI</div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>TMDB builds candidate pools first.</li>
-                    <li>OpenAI curates the final list from those TMDB candidates.</li>
-                    <li>The released-vs-upcoming dial still shapes the mix.</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <div className="font-semibold text-white/85">Variant 3: TMDB + Google + OpenAI</div>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>TMDB builds the candidate pools.</li>
-                    <li>Google widens discovery with extra web context.</li>
-                    <li>OpenAI uses the TMDB candidates plus that context to curate the final list.</li>
-                  </ul>
-                </div>
-              </div>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">Seed profile:</span> the watched
+                  title, manual seed, or imported history title is resolved and profiled with extra
+                  language and origin hints when available.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Candidate lanes:</span> TMDB pulls
+                  fuller metadata and builds the normal candidate pool plus wildcard lanes for
+                  global-language films and hidden gems.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Ranking engine:</span> candidates
+                  are scored across four main signals: content similarity, quality, novelty, and
+                  indie/popularity value.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Contextual weights:</span> the
+                  weights change by intent, so latest-watched and change-of-taste runs rank
+                  differently, including different released vs. upcoming balance.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Interleaving:</span> the final list
+                  mixes primary picks with wildcard titles so the set stays relevant while still
+                  surfacing surprises.
+                </li>
+              </ol>
               <p className="mt-3">
-                In every variant, Rewind shows the per-service breakdown plus the final "Generated"
-                list.
+                If Google or OpenAI are enabled, they can still widen or curate the pool, but the
+                core ranking now follows the flow above.
               </p>
             </>
           ),

@@ -117,14 +117,22 @@
 
 - **Keeps a full report of every run**
   Every job includes step-by-step logs, metrics, and history so you can see what ran, what was skipped, and why.
+  Recommendation sets now use a stronger ranking engine that blends similarity, quality, novelty, and indie/popularity signals.
 
 - **Puts management in Command Center**
   Manage users, datasets, resets, posters, rejected items, and request cleanup from one place.
 
 - **Coming soon**
-  - Discovering content from film industries around the world
   - Email reports on your media server's health
   - Windows and macOS support
+
+## How recommendations are built
+
+1. A watch event, manual run, or history import supplies a seed title, and the app builds a richer seed profile from it.
+2. TMDB pulls fuller metadata and candidate pools, including standard picks plus wildcard lanes for global-language films and hidden gems.
+3. A multi-factor ranking engine scores candidates using similarity, quality, novelty, and indie/popularity signals.
+4. Ranking weights change by intent, so latest-watched and change-of-taste runs do not rank titles the same way, and released vs. upcoming mixes can be tuned separately.
+5. Final picks are interleaved so core recommendations stay strong while wildcard discoveries add variety.
 
 
 <div align="center">

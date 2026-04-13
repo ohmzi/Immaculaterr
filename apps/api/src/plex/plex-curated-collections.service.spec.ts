@@ -497,6 +497,81 @@ describe('PlexCuratedCollectionsService hub pinning', () => {
 });
 
 describe('PlexCuratedCollectionsService rebuild fallback', () => {
+  it('reports items that are newly added compared with the previous collection contents', async () => {
+    const desired = [
+      { ratingKey: '233616', title: 'Game of Thrones' },
+      { ratingKey: '233618', title: 'Severance' },
+    ];
+
+    const plexServer = {
+      listCollectionsForSectionKey: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            ratingKey: 'old-tv',
+            title: 'Based on your recently watched Show (ohmz_i)',
+          },
+        ])
+        .mockResolvedValueOnce([]),
+      deleteCollection: jest.fn(() => Promise.resolve(undefined)),
+      getCollectionItems: jest
+        .fn()
+        // Snapshot old collection contents before deletion.
+        .mockResolvedValueOnce([
+          { ratingKey: '233616', title: 'Game of Thrones' },
+          { ratingKey: '233617', title: 'Breaking Bad' },
+        ])
+        // Items immediately after create.
+        .mockResolvedValueOnce([])
+        // Final ordered collection snapshot.
+        .mockResolvedValue([
+          { ratingKey: '233616', title: 'Game of Thrones' },
+          { ratingKey: '233618', title: 'Severance' },
+        ]),
+      findCollectionRatingKey: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('new-tv'),
+      createCollection: jest.fn(() => Promise.resolve('new-tv')),
+      addItemToCollection: jest.fn(() => Promise.resolve(undefined)),
+      setCollectionSort: jest.fn(() => Promise.resolve(undefined)),
+      moveCollectionItem: jest.fn(() => Promise.resolve(undefined)),
+      uploadCollectionPoster: jest.fn(() => Promise.resolve(undefined)),
+      uploadCollectionBackground: jest.fn(() => Promise.resolve(undefined)),
+    };
+
+    const service = new PlexCuratedCollectionsService(
+      plexServer as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[0],
+      createCollectionArtworkStub() as unknown as ConstructorParameters<
+        typeof PlexCuratedCollectionsService
+      >[1],
+    );
+    const ctx = createTestCtx();
+
+    const result = await service.rebuildMovieCollection({
+      ctx: ctx as unknown as Parameters<
+        PlexCuratedCollectionsService['rebuildMovieCollection']
+      >[0]['ctx'],
+      baseUrl: 'http://plex.local:32400',
+      token: 'token',
+      machineIdentifier: 'machine-1',
+      movieSectionKey: '3',
+      itemType: 2,
+      collectionName: 'Based on your recently watched Show (ohmz_i)',
+      desiredItems: desired,
+      randomizeOrder: false,
+      pinCollections: false,
+    });
+
+    expect(result).toMatchObject({
+      plexCollectionKey: 'new-tv',
+      desiredCount: 2,
+      newCollectionItems: ['Severance'],
+    });
+  });
+
   it('retries create without seed item when seeded create fails and still adds all desired items', async () => {
     const desired = [
       { ratingKey: '233616', title: 'Game of Thrones' },

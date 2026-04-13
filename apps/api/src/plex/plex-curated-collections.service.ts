@@ -149,6 +149,43 @@ export class PlexCuratedCollectionsService {
     // Prefer exact matches, but include normalized matches if no exact match
     const matchingCollections =
       exactMatches.length > 0 ? exactMatches : normalizedMatches;
+    const previousCollectionItemsByRatingKey = new Map<string, string>();
+    const rememberPreviousCollectionItems = (
+      items: Array<{ ratingKey: string; title: string }>,
+    ) => {
+      for (const item of items) {
+        const ratingKey = String(item.ratingKey ?? '').trim();
+        if (!ratingKey || previousCollectionItemsByRatingKey.has(ratingKey)) {
+          continue;
+        }
+        previousCollectionItemsByRatingKey.set(
+          ratingKey,
+          item.title || ratingKey,
+        );
+      }
+    };
+
+    if (matchingCollections.length) {
+      for (const match of matchingCollections) {
+        try {
+          const matchItems = await this.plexServer.getCollectionItems({
+            baseUrl,
+            token,
+            collectionRatingKey: match.ratingKey,
+          });
+          rememberPreviousCollectionItems(matchItems);
+        } catch (err) {
+          await ctx.warn(
+            'collection: failed to inspect existing items before rebuild (continuing)',
+            {
+              collectionName: match.title || collectionName,
+              ratingKey: match.ratingKey,
+              error: (err as Error)?.message ?? String(err),
+            },
+          );
+        }
+      }
+    }
 
     // Try to delete matching collections using their ratingKey (metadata ID)
     let deletedSuccessfully = false;
@@ -284,6 +321,7 @@ export class PlexCuratedCollectionsService {
               },
             );
           }
+          rememberPreviousCollectionItems(existingItems);
           break;
         } catch (err) {
           await ctx.warn(
@@ -307,6 +345,12 @@ export class PlexCuratedCollectionsService {
     }
 
     if (ctx.dryRun) {
+      const newCollectionItems = desired
+        .filter(
+          (item) => !previousCollectionItemsByRatingKey.has(item.ratingKey),
+        )
+        .map((item) => item.title)
+        .filter(Boolean);
       await ctx.info('collection: dry-run preview', {
         collectionName,
         plexCollectionKey,
@@ -326,6 +370,7 @@ export class PlexCuratedCollectionsService {
         skipped: Math.max(0, desiredItems.length - desired.length),
         randomizeOrder,
         lastAddedTitle: null,
+        newCollectionItems,
         collectionItems: desired.map((d) => d.title).filter(Boolean),
         sample: desired.slice(0, 10).map((d) => d.title),
       };
@@ -406,6 +451,12 @@ export class PlexCuratedCollectionsService {
         await ctx.warn('collection: cannot create Plex collection (no items)', {
           collectionName,
         });
+        const newCollectionItems = desired
+          .filter(
+            (item) => !previousCollectionItemsByRatingKey.has(item.ratingKey),
+          )
+          .map((item) => item.title)
+          .filter(Boolean);
         return {
           collectionName,
           plexCollectionKey: null,
@@ -417,6 +468,7 @@ export class PlexCuratedCollectionsService {
           skipped,
           randomizeOrder,
           lastAddedTitle: null,
+          newCollectionItems,
           collectionItems: [],
         };
       }
@@ -831,6 +883,11 @@ export class PlexCuratedCollectionsService {
       }
     }
 
+    const newCollectionItems = desired
+      .filter((item) => !previousCollectionItemsByRatingKey.has(item.ratingKey))
+      .map((item) => item.title)
+      .filter(Boolean);
+
     return {
       collectionName,
       plexCollectionKey,
@@ -842,6 +899,7 @@ export class PlexCuratedCollectionsService {
       skipped,
       randomizeOrder,
       lastAddedTitle,
+      newCollectionItems,
       collectionItems,
       collectionItemsSource,
       sample: desired.slice(0, 10).map((d) => d.title),
