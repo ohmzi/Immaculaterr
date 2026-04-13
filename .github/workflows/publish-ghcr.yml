@@ -102,6 +102,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.vars.outputs.version }}
             org.opencontainers.image.created=${{ steps.vars.outputs.build_time }}
+            org.opencontainers.image.licenses=LicenseRef-Immaculaterr-Personal-Use
+            org.opencontainers.image.description=Official Immaculaterr container image for personal, noncommercial self-hosting only. Source code is not licensed for reuse.
           build-args: |
             APP_VERSION=${{ steps.vars.outputs.version }}
             APP_BUILD_SHA=${{ github.sha }}

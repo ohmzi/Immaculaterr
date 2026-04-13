@@ -1,21 +1,99 @@
-MIT License
+Immaculaterr Public Source / Personal-Use Artifact Terms
+========================================================
 
 Copyright (c) 2026 ohmzi
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Definitions
+--------------
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+- **Source Code** means this repository's source files, scripts, workflows,
+  Docker and compose files, documentation, assets, and other materials made
+  available in source form.
+- **Official Artifacts** means the unmodified Docker images, release files,
+  and other packaged artifacts published by the copyright holder through
+  official channels such as GitHub Releases, GitHub Container Registry,
+  Docker Hub, or another channel the copyright holder designates in writing.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. Source Code: No Public License
+---------------------------------
+
+The Source Code is visible publicly for transparency and reference only.
+
+Except for rights that cannot lawfully be excluded, these terms do **not**
+grant you permission to use, execute, copy, modify, create derivative works
+from, distribute, sublicense, republish, host, sell, or otherwise exploit the
+Source Code.
+
+Without separate written permission from the copyright holder, you may not use
+the Source Code to build your own binaries, container images, releases,
+services, or other derivative artifacts.
+
+If this repository is hosted on a platform whose terms allow viewing or
+platform-level forking, those platform permissions do not grant any broader
+copyright license to the Source Code.
+
+3. Official Releases and Docker Images: Limited Personal-Use License
+--------------------------------------------------------------------
+
+Subject to your compliance with these terms, the copyright holder grants you a
+limited, revocable, non-exclusive, non-transferable, non-sublicensable license
+to download, install, store, and run unmodified Official Artifacts for your
+own personal, noncommercial self-hosting, testing, and evaluation.
+
+For clarity, this includes pulling and running the unmodified official
+Immaculaterr Docker image published by the copyright holder on GHCR or another
+official registry channel, solely for personal, noncommercial self-hosting,
+testing, and evaluation.
+
+This limited license does **not** permit you to:
+
+- use Official Artifacts for a business, organization, managed service, or any
+  other commercial purpose
+- sell, resell, rent, lease, sublicense, redistribute, mirror, republish, or
+  otherwise make Official Artifacts available to third parties
+- modify, repackage, adapt, reverse engineer, or create derivative images or
+  derivative artifacts from Official Artifacts, except to the extent a
+  restriction cannot lawfully be enforced
+- remove or alter copyright, trademark, attribution, or other proprietary
+  notices
+
+4. Separate Permission Required
+-------------------------------
+
+Any commercial use, redistribution, republishing, managed-service use, or
+source-code use requires separate written permission from the copyright
+holder.
+
+5. Legal Exceptions
+-------------------
+
+These terms do not limit rights you may have under applicable law that cannot
+be waived or restricted, such as fair use, fair dealing, or other mandatory
+exceptions and defenses.
+
+6. Termination
+--------------
+
+Any permission granted under Section 3 ends automatically if you violate these
+terms. Upon termination, you must stop using the Official Artifacts and delete
+all copies in your possession or control.
+
+7. No Trademark License
+-----------------------
+
+These terms do not grant any right to use the name "Immaculaterr" or any
+related logos, branding, or other trademarks, except as necessary to identify
+the unmodified Official Artifacts you received from the copyright holder.
+
+8. Disclaimer of Warranty and Limitation of Liability
+-----------------------------------------------------
+
+THE SOURCE CODE AND OFFICIAL ARTIFACTS ARE PROVIDED "AS IS", WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER SHALL NOT BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+SOURCE CODE, THE OFFICIAL ARTIFACTS, OR THE USE OF OR OTHER DEALINGS IN THEM.

@@ -15,7 +15,7 @@
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/ohmzi/Immaculaterr" />
     </a>
     <a href="./LICENSE">
-      <img alt="License" src="https://img.shields.io/badge/license-MIT-brightgreen" />
+      <img alt="License" src="https://img.shields.io/badge/license-custom%20terms-red" />
     </a>
     <a href="https://github.com/ohmzi/Immaculaterr/pkgs/container/immaculaterr">
       <img
@@ -31,6 +31,8 @@
     </a>
   </p>
 </div>
+
+> Licensing notice: this repository is public for visibility and reference, but the source code is not licensed for reuse. End users may download and run only the official Docker images and release artifacts published by the project owner, and only for personal, noncommercial self-hosting under the terms in [`LICENSE`](LICENSE).
 
 ## What it does
 
@@ -153,6 +155,8 @@
 
 ## Getting started (Docker)
 
+Official Docker images and release artifacts are the supported public distribution channel for end users.
+
 ### Installation 
 
 #### HTTPS installation which includes sidecar
@@ -238,6 +242,10 @@ For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/
 For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 ##
 
+## Development
+
+The source repository remains public for transparency and review. The development commands in the linked docs are for the project owner and separately authorized developers; they do not grant permission to use, modify, or redistribute the source code.
+
 ## Documentation
 - Setup guide: [`doc/setupguide.md`](doc/setupguide.md)
 - FAQ: [`doc/FAQ.md`](doc/FAQ.md)
@@ -254,4 +262,8 @@ Full project README: [`doc/README.md`](doc/README.md)
 ##
 
 ## License
-Immaculaterr is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+Immaculaterr is distributed under custom terms — see [`LICENSE`](LICENSE).
+
+Source code: the public repository does not grant permission to use, copy, modify, redistribute, sublicense, or sell the source code without separate written permission from the copyright holder.
+
+Official Docker images and release artifacts: you may download and run the unmodified official artifacts published by the project owner for personal, noncommercial self-hosting only. Redistribution, resale, derivative images, repackaging, and commercial use are not allowed without separate written permission.
