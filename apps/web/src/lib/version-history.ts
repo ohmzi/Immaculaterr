@@ -37,12 +37,13 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.7-beta-3',
+    version: '1.7.7',
     popupHighlights: [
-      'This beta combines the earlier beta-2 work into one beta-3 release.',
+      'This release rolls the earlier 1.7.7 prerelease work into the final 1.7.7 update.',
       'Recommendations now use a smarter ranking engine with wildcard picks for global-language standouts and hidden gems.',
       'Netflix CSV imports are more reliable on larger uploads and now show friendlier timeout errors.',
-      'Rotten Tomatoes Upcoming Movies and repeat-watch dedupe for Plex auto-runs are both included in this beta.',
+      'Fresh Out Of The Oven now supports TV premieres, not just movies.',
+      'Rotten Tomatoes Upcoming Movies and repeat-watch dedupe for Plex auto-runs are both included in 1.7.7.',
     ],
     sections: [
       {
@@ -59,6 +60,12 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Batches Netflix CSV persistence before queueing follow-up processing so larger imports stop hammering SQLite one row at a time.',
           'Keeps duplicate detection intact while falling back safely if a concurrent insert races the batch write.',
           'Shows a friendlier import error instead of raw proxy HTML when an upstream timeout page is returned.',
+        ],
+      },
+      {
+        title: 'Fresh Out Of The Oven',
+        bullets: [
+          'Fresh Out Of The Oven now supports TV premieres, not just movies.',
         ],
       },
       {

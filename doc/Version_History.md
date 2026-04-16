@@ -3,10 +3,10 @@ Version History
 
 This file tracks notable changes by version.
 
-1.7.7-beta-3
+1.7.7
 ---
 
-- What's new in this combined beta 3 release:
+- What's new in 1.7.7:
 - Smarter recommendations:
   - Replaced the older heuristic scoring with a multi-factor ranking engine that balances similarity, quality, novelty, and indie or popularity signals.
   - Added a wildcard lane for global-language standouts and hidden gems, then mixed those picks into the main set without overwhelming the core recommendations.
@@ -15,6 +15,8 @@ This file tracks notable changes by version.
   - Batches Netflix CSV persistence before queueing follow-up processing so larger imports stop hammering SQLite one row at a time.
   - Preserves duplicate detection while falling back safely if a concurrent insert races the batch write.
   - Returns a friendlier import error in the UI instead of surfacing raw proxy HTML when an upstream timeout page is encountered.
+- Fresh Out Of The Oven:
+  - Fresh Out Of The Oven now supports TV premieres, not just movies.
 - Rotten Tomatoes Upcoming Movies:
   - Adds a new Task Manager job that scrapes fixed Rotten Tomatoes upcoming and newest movie pages.
   - Deduplicates discovered titles, applies conservative title-and-year matching, and only routes safe matches onward.
