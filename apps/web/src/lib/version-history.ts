@@ -39,11 +39,10 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.7',
     popupHighlights: [
-      'This release rolls the earlier 1.7.7 prerelease work into the final 1.7.7 update.',
       'Recommendations now use a smarter ranking engine with wildcard picks for global-language standouts and hidden gems.',
       'Netflix CSV imports are more reliable on larger uploads and now show friendlier timeout errors.',
       'Fresh Out Of The Oven now supports TV premieres, not just movies.',
-      'Rotten Tomatoes Upcoming Movies and repeat-watch dedupe for Plex auto-runs are both included in 1.7.7.',
+      'Rotten Tomatoes Upcoming Movies and repeat-watch dedupe for Plex auto-runs are both included.',
     ],
     sections: [
       {
