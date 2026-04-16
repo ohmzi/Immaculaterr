@@ -84,7 +84,7 @@ export const COLLECTION_RECENT_RELEASE_MONTHS = 3;
 export const PLEX_OAUTH_POLL_HEADER_VALUE = '1';
 
 /** Maximum time a job run may stay in RUNNING before the watchdog marks it FAILED. */
-export const JOB_RUN_TIMEOUT_MS = 30 * 60_000;
+export const JOB_RUN_TIMEOUT_MS = 60 * 60_000;
 
 /** Minimum delay between consecutive job executions to avoid hammering external APIs. */
 export const QUEUE_COOLDOWN_MS = 60_000;
