@@ -250,9 +250,9 @@ export function ProfilePage() {
   );
 
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+    'min-w-0 rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
   const inputClass =
-    'w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition';
+    'min-w-0 w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-white placeholder-white/40 outline-none transition focus:border-transparent focus:ring-2 focus:ring-white/20';
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -267,8 +267,8 @@ export function ProfilePage() {
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
-      <section className="relative z-10 min-h-screen pt-10 lg:pt-16">
-        <div className="container mx-auto max-w-5xl px-4 pb-20">
+      <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto max-w-5xl min-w-0 px-4 pb-20">
           <div className="mb-12">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
