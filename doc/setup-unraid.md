@@ -23,7 +23,8 @@ If you already have Immaculaterr running on Unraid:
 3. Click **Add another Path, Port, Variable, Label or Device** → **Variable**.
 4. Add `SECRETS_TRANSPORT_ALLOW_PLAINTEXT` with value `true`.
 5. Add another variable: `COOKIE_SECURE` with value `false`.
-6. Click **Apply** to recreate the container.
+6. Add another variable: `TZ` with value `America/New_York`.
+7. Click **Apply** to recreate the container.
 
 ### Option 1 - Fresh install (docker compose)
 
@@ -41,6 +42,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5454
+      - TZ=America/New_York
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
       - SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true
@@ -83,6 +85,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5455
+      - TZ=America/New_York
       - APP_DATA_DIR=/data
       - DATABASE_URL=file:/data/tcp.sqlite
       - TRUST_PROXY=1

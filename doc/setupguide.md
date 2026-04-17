@@ -24,6 +24,9 @@ curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohm
 curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
 curl -fsSL -o install-local-ca.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh
 chmod +x caddy-entrypoint.sh install-local-ca.sh
+cat > .env <<'EOF'
+TZ=America/New_York
+EOF
 
 docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
 
@@ -37,6 +40,8 @@ Then open:
 - `http://<server-ip>:5454/`
 - `https://<server-ip>:5464/`
 
+The `.env` file above sets the app container timezone to `America/New_York`. Change it if you prefer a different IANA timezone.
+
 Compose stacks at a glance
 ---
 
@@ -48,6 +53,7 @@ Supported compose templates live in `docker/immaculaterr/`:
 - `docker-compose.secrets.yml`: optional overlay to load `APP_MASTER_KEY_FILE` from Docker secrets
 
 These compose files use `network_mode: host` by default. On Linux, this keeps local integrations simple (`http://localhost:<port>` from inside the app).
+If you want New York time in the app container, add `TZ=America/New_York` to the `.env` file next to the compose file.
 
 Optional: Docker secret for APP_MASTER_KEY
 ---

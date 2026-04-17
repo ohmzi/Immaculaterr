@@ -14,6 +14,8 @@ Run these commands from the folder where your compose files live. If you followe
 cd /opt/immaculaterr
 ```
 
+If you used the install example, keep the `.env` file in this folder so `TZ=America/New_York` continues to apply after updates.
+
 ### Update GHCR (HTTP only)
 
 ```bash
@@ -70,6 +72,8 @@ cd /mnt/user/appdata/immaculaterr
 docker compose pull
 docker compose up -d --force-recreate
 ```
+
+If you want the container to stay on New York time after updates, keep `TZ=America/New_York` in the same compose file or `.env` you used for the install.
 
 Portainer
 ---

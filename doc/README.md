@@ -110,6 +110,9 @@ curl -fsSL -o docker-compose.dockerhub.yml https://raw.githubusercontent.com/ohm
 curl -fsSL -o caddy-entrypoint.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
 curl -fsSL -o install-local-ca.sh https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/install-local-ca.sh
 chmod +x caddy-entrypoint.sh install-local-ca.sh
+cat > .env <<'EOF'
+TZ=America/New_York
+EOF
 
 docker rm -f Immaculaterr ImmaculaterrHttps 2>/dev/null || true
 
@@ -120,6 +123,8 @@ Then open either:
 
 - `http://<server-ip>:5454/`
 - `https://<server-ip>:5464/`
+
+The `.env` file above sets the app container timezone to `America/New_York`. Change it if you prefer a different IANA timezone.
 
 Optional (recommended for HTTPS without browser warnings):
 
