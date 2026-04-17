@@ -20,44 +20,46 @@ Major Features Include
   - Works per task card, so you can choose where missing titles go.
   - Includes Command Center reset control to clear all Seerr requests when needed.
 - **Plex-triggered automation**:
-  - Automatically reacts to Plex library activity and runs smart workflows in real time.
+  - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
 - **Scheduler automation**:
-  - Off hours fetching media or refreshing the Plex home screen.
+  - Off-peak schedules keep those rows fresh with background refresh, discovery, cleanup, and maintenance.
 - **Shared persisted job queue**:
-  - Manual runs, schedules, Plex webhooks, and Plex polling all feed into one FIFO queue.
-  - After each run, Immaculaterr waits about 1 minute before the next queued job starts so Plex and upstream services get a breather.
-  - Pending work survives restarts, duplicate auto-runs are skipped cleanly, and Rewind shows queued/running status with ETA context.
-- **Curated Movies and TV Shows collections**:
-  - Inspired by your Immaculate Taste (long term collection)
-  - Based on your recently watched (auto-refreshes for newly completed movies/episodes)
-  - Change of Taste (auto-refreshes for newly completed movies/episodes)
-  - Fresh Out Of The Oven (recent-release movies you have not watched yet, per Plex user)
-  - Fresh Out Of The Oven Show (recent TV premieres you have not watched yet, per Plex user)
+  - Manual runs, schedules, Plex webhooks, and Plex polling all go through one persisted FIFO queue.
+  - Rewind shows queued work, live progress, reports, logs, and run history.
+- **Managed Plex collections**:
+  - `Based on your recently watched Movie` and `Based on your recently watched Show`
+  - `Change of Movie Taste` and `Change of Show Taste`
+  - `Inspired by your Immaculate Taste in Movies` and `Inspired by your Immaculate Taste in Shows`
+  - `Fresh Out Of The Oven` and `Fresh Out Of The Oven Show`
+  - `Netflix Import Picks` and `Netflix Import: Change of Taste`
+  - `Plex History Picks` and `Plex History: Change of Taste`
+  - Immaculate Taste profiles can also create extra custom-named collections.
+- **Immaculate Taste profiles**:
+  - Give each profile its own users, media type, filters, collection names, and download route.
+  - Use genre and audio-language filters to build focused lanes like animation, family, or specific-language picks.
 - **Recommendation engine**:
-  - TMDB-powered suggestions
-  - Optional - Google + OpenAI 
-- **TMDB Upcoming Movies task filters**:
-  - Build custom filter sets with where-to-watch, genre, language, certification, and score controls.
-- **Rotten Tomatoes Upcoming Movies task**:
-  - Scrapes fixed Rotten Tomatoes upcoming and newest movie pages, deduplicates safe matches, and routes them to Radarr or Seerr.
-  - Includes a `Route via Seerr` toggle in Task Manager. Off adds matched movies to Radarr; on requests matched movies in Seerr instead.
-  - Matching still uses the same conservative Radarr lookup step first, so only safe title/year matches are routed.
-- **Keeps a snapshot database:**
-  - Recommmended database for refresher task to monitor titles as they become available in Plex.
-- **Radarr + Sonarr integration**:
-  - Seamlessly organizes your media collection and sends movies/series directly to ARR downloaders when Seerr mode is off.
-- **Observatory**:
-  - Swipe to approve download requests (optional “approval required” mode), curate suggestions.
-- **Netflix Watch History Import**:
-  - Upload your Netflix viewing activity CSV to classify titles via TMDB, generate recommendations, and write curated Plex collections.
-  - Seed recommendations from day one without waiting for Plex watch events to accumulate.
-- **Plex Watch History Import**:
-  - Opt in during setup or trigger manually from Task Manager to scan your existing Plex watch history.
-  - Watched movies and TV shows are matched to TMDB automatically (no CSV needed), then fed into the recommendation pipeline to build curated Plex collections.
-  - Cross-source dedup ensures titles already processed by Netflix import are not duplicated.
-- **Job reports & logs**:
-  - Step-by-step breakdowns, metrics tables, run history, and live queue visibility in Rewind.
-  - Recommendation sets now use a stronger ranking engine that blends similarity, quality, novelty, and indie/popularity signals.
+  - TMDB is the main source.
+  - Google and OpenAI are optional helpers for widening or refining results.
+  - You can tune the mix between titles available now and future releases.
+- **Download routing**:
+  - Send missing titles directly to Radarr and Sonarr, or route them through Seerr on a per-task basis.
+  - Observatory can hold items for swipe approval before they are sent.
+- **Discovery and maintenance jobs**:
+  - `Fresh Out Of The Oven` builds recent-release movie and TV rows for titles a user has not watched yet.
+  - `TMDB Upcoming Movies` finds upcoming movies with filter sets and routes matches to Radarr or Seerr.
+  - `Rotten Tomatoes Upcoming Movies` scrapes fixed Rotten Tomatoes pages and routes safe matches to Radarr or Seerr.
+  - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads.
+- **History imports**:
+  - Netflix CSV import creates dedicated Netflix import collections and feeds the main recommendation system.
+  - Plex watch-history import does the same without needing a CSV.
+- **Custom posters for managed collections**:
+  - Upload and manage poster overrides in Command Center.
+  - Posters are stored so they survive restarts and updates.
+- **Built-in admin sign-in and recovery**:
+  - Create the admin login during setup.
+  - Password recovery uses security questions.
+- **Management pages**:
+  - Use Vault for integrations, Task Manager for jobs, Rewind for reports, and Command Center for resets, posters, user monitoring, and request cleanup.
 - **More features on the way:**
   - Email reports on media server health
   - Windows and macOS support
@@ -135,31 +137,18 @@ Platform-specific guides are also available:
 - [TrueNAS SCALE](setup-truenas.md) — GUI-only Custom Apps with HTTPS and HTTP-only options.
 - [Unraid](setup-unraid.md) — Docker template and compose setup with HTTPS and HTTP-only options.
 
-Development
+Contributing
 ---
 
-Immaculaterr is a monorepo:
+Thanks for wanting to help improve Immaculaterr.
 
-- **API**: NestJS (`apps/api`) — serves the REST API under `/api`
-- **Web UI**: React + Vite (`apps/web`)
+The public repository is available so people can inspect and validate the source code. Immaculaterr is not open source, so code contributions, pull requests, and external patches are not accepted or encouraged.
 
-The development commands below are for the project owner and separately authorized developers. Public visibility of the repository does not grant permission to use, modify, or redistribute the source code.
+If you want to help:
 
-```bash
-npm install
-npm -w apps/api run db:generate
-APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite npm -w apps/api run db:migrate
-
-# Dev ports:
-# - Web UI: 5858
-# - API: 5859
-APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite API_PORT=5859 WEB_PORT=5858 npm run dev
-```
-
-Then open:
-
-- Web UI: `http://localhost:5858/`
-- API: `http://localhost:5859/api`
+- Report bugs: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Suggest features or improvements: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Report security issues: see [`doc/security.md`](security.md), or use GitHub Issues if needed
 
 Support
 ---

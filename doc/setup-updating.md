@@ -1,15 +1,17 @@
 Setup: Updating
 ===
 
-Update instructions for all deployment methods.
+Update instructions for supported public deployment methods.
 
 [← Back to Setup Guide](setupguide.md)
 
-From a clone
+Docker Compose installs
 ---
 
+Run these commands from the folder where your compose files live. If you followed the quick install, this is usually `/opt/immaculaterr`.
+
 ```bash
-cd docker/immaculaterr
+cd /opt/immaculaterr
 ```
 
 ### Update GHCR (HTTP only)
@@ -31,12 +33,6 @@ docker compose -f docker-compose.https.yml up -d --force-recreate
 ```bash
 docker compose -f docker-compose.dockerhub.yml pull
 docker compose -f docker-compose.dockerhub.yml up -d --force-recreate
-```
-
-### Update source build stack
-
-```bash
-docker compose -f docker-compose.source.yml up -d --build
 ```
 
 ### HTTPS trust after update

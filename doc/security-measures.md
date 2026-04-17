@@ -170,9 +170,8 @@ Security-sensitive string comparisons (debugger token verification, credential c
 
 ## Environment Configuration
 
-Example environment files are provided for both development and Docker deployments:
+For supported public installs, the main environment reference is:
 
-- **`apps/api/.env.example`** — Documents all security-relevant API environment variables including master key, CORS origins, trust proxy, rate limits, Argon2 tuning, CAPTCHA, and session configuration.
 - **`docker/immaculaterr/.env.example`** — Documents Docker-specific variables including master key (with Docker secrets support), Caddy/TLS settings, and webhook secret.
 
 ---

@@ -35,93 +35,61 @@
 
 ## What it does
 
-- **Watches Plex activity and reacts right away**
-  - When a movie or show episode is watched, Immaculaterr observes that from Plex will trigger the task to automatically create Collections.
-  - Pins these Collections them on top on Homescreen so user can then get better suggestion and also fresh looking Homescreen like Netflix.
-  - If any movie or show that TMDB suggestion, thats not already in library, Immaculaterr then sends request to downloan to Seerr/Radarr/Sonarr.
+- **Watches Plex activity and reacts automatically**
+  - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
+  - It builds rows around what you actually watch and pins them where Plex can surface them, so your home screen feels more curated and personal, a bit like your own Netflix.
+  - Off-peak schedules keep those rows fresh with background refresh, discovery, cleanup, and maintenance.
 
-- **Collections Built by Immaculaterr**
-  - `Immaculate Taste` for your long-term observation and suggestions
-  - `Based on your recently watched` for quick post-watch collection, updates after every newly watched media
-  - `Change of Taste` same as Based on your recently watched but polar opposite of those suggestions so may be provide different kind of suggestions
-  - You can run multiple `Immaculate Taste` profiles side by side, each with its own download route, folder, naming rules, and fallback naming, such as have a seperate collection for Animation, Action, Specific Language, keep default collection on or turn it off. Lots of ways to modify the Immaculate Taste collection. 
+- **Creates managed Plex collections**
+  - `Based on your recently watched Movie` and `Based on your recently watched Show`
+  - `Change of Movie Taste` and `Change of Show Taste`
+  - `Inspired by your Immaculate Taste in Movies` and `Inspired by your Immaculate Taste in Shows`
+  - `Fresh Out Of The Oven` and `Fresh Out Of The Oven Show`
+  - `Netflix Import Picks` and `Netflix Import: Change of Taste`
+  - `Plex History Picks` and `Plex History: Change of Taste`
+  - Immaculate Taste profiles can also create extra custom-named collections.
 
-- **Lets you create multiple profiles for Immaculate Taste**
-  - You can run multiple `Immaculate Taste` profiles side by side, each with its own download route, folder, naming rules, and fallback naming. 
-  - Filter by genre and audio language per profile to narrow or expand what gets recommended. You can add different collections on homescreen for specific genre like Animation Only or Comedy and Family Movies Collection or Specific Language only Collection. Design the homescreen as you wish to see it.
-  - The better you tune these profile, The Better matching means fewer unwanted titles and more useful suggestions
+- **Lets you split Immaculate Taste into multiple profiles**
+  - Give each profile its own users, media type, filters, collection names, and download route.
+  - Use genre and audio-language filters to build focused lanes like animation, family, or specific-language picks.
 
-- **Runs background jobs on a schedule**
-  - It refreshs suggestion rows, fetch new content, and keep your Plex home screen moving even when nobody is actively watching.
-  - Never have stale looking homescreen again.
+- **Keeps recommendations personal for each Plex user**
+  - Each monitored viewer gets separate rows and separate watch history.
+  - Managed rows are pinned to the Plex surfaces that viewer can actually see.
 
-- **Queues jobs safely instead of stampeding Plex**
-  - Manual runs, schedules, Plex webhooks, and Plex polling all feed into one persisted FIFO queue.
-  - After each run, Immaculaterr waits about 1 minute before starting the next queued job so Plex and upstream services get a breather.
-  - Pending work survives restarts, duplicate auto-runs are skipped cleanly, and Rewind shows queued/running status with ETA context.
+- **Uses a flexible recommendation engine**
+  - TMDB is the main source.
+  - Google and OpenAI are optional helpers for widening or refining results.
+  - You can tune the mix between titles available now and future releases.
 
-- **Builds a Fresh Out Of The Oven row**
-  - Creates Fresh Out movie and TV rows on the homescreen from titles first released in the last 3 months
-  - Only shows movies and shows that specific user has not watched yet
+- **Sends missing titles where you want them**
+  - Send directly to Radarr and Sonarr, or route through Seerr on a per-task basis.
+  - Observatory can hold items for swipe approval before they are sent.
 
-- **Builds a TMDB Upcoming Movie row**
-  - Pulls upcoming movie picks from TMDB. So your collection is always upto date with the latest movies and shows being released. 
-  - You can shape the results with filters like streaming service, genre, language, and score
-  - Top matches can be sent to Radarr directly or routed through Seerr
+- **Includes discovery and maintenance jobs**
+  - `Fresh Out Of The Oven` builds recent-release movie and TV rows for titles a user has not watched yet.
+  - `TMDB Upcoming Movies` finds upcoming movies with filter sets and routes matches to Radarr or Seerr.
+  - `Rotten Tomatoes Upcoming Movies` scrapes fixed Rotten Tomatoes pages and routes safe matches to Radarr or Seerr.
+  - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads.
 
-- **Keeps recommendations personal for every viewer**
-  - Each Plex user gets their own rows, such as *Based on your recently watched — Jane*
-  - Watch history stays separate, so one person's habits do not affect anyone else's results
+- **Supports history imports from day one**
+  - Netflix CSV import creates dedicated Netflix import collections and feeds the main recommendation system.
+  - Plex watch-history import does the same without needing a CSV.
 
-- **Pins rows where Plex will actually show them**
-  - Admin rows appear in Library Recommended and Home
-  - Shared-user rows appear in Friends Home *(current Plex limitation for non-admins)*
+- **Supports custom posters for managed collections**
+  - Upload and manage poster overrides in Command Center.
+  - Posters are stored so they survive restarts and updates.
 
-- **Uses more than one recommendation source**
-  TMDB is the default source, with optional Google and OpenAI support when you want broader or more refined results.
+- **Keeps a shared queue and clear run history**
+  - Manual runs, schedules, Plex webhooks, and Plex polling all go through one persisted FIFO queue.
+  - Rewind shows queued work, live progress, reports, logs, and run history.
 
-- **Remembers what it already suggested**
-  A local database tracks previous recommendations so Immaculaterr can avoid repeats and notice when a suggested title finally lands in your Plex library.
+- **Includes built-in admin sign-in and recovery**
+  - Create the admin login during setup.
+  - Password recovery uses security questions.
 
-- **Lets you choose which libraries take part**
-  - Pick your movie and TV libraries during setup, then change them later from Command Center if needed
-  - New libraries are included automatically unless you turn them off
-  - If a library is unavailable during a run, that part is skipped and noted in the report instead of breaking the whole job
-
-- **Refreshes only what needs refreshing**
-  - Watch-triggered updates stay scoped to the right viewer and library
-  - Scheduled or manual full runs still process all eligible users and libraries in a consistent order, with the admin handled last
-
-- **Sends missing titles to your download stack**
-  - When Seerr is off, missing movies and shows can go straight to Radarr and Sonarr
-  - If you prefer an approval flow, you can enable Seerr on a per-task basis instead of using one global setting
-  - Different tasks can use different routing flows, and you can clear all Seerr requests at once from Command Center when needed
-
-- **Includes Observatory for managing suggestions**
-  - Swipe to approve download requests when approval mode is on
-  - Swipe left to reject a title and keep it from coming back
-  - Clear rejected items later from Command Center whenever you want a reset
-
-- **Supports custom posters for generated collections**
-  - Upload your own posters for any collection Immaculaterr creates
-  - Preview and manage them from Command Center
-  - Posters are stored so they survive restarts and updates
-
-- **Netflix Watch History Import**
-  - Upload your Netflix viewing activity CSV and Immaculaterr classifies each title via TMDB, generates similar and change-of-taste recommendations, and writes the results into Plex collections
-  - Seed recommendations from day one without waiting for Plex watch events to accumulate
-
-- **Plex Watch History Import**
-  - Opt in during setup or trigger manually from Task Manager to scan your existing Plex watch history
-  - Already-watched movies and TV shows are matched to TMDB automatically (no CSV needed), then the same recommendation pipeline builds curated Plex collections from your viewing history
-  - Works alongside Netflix import — titles processed by one source are not duplicated by the other
-
-- **Keeps a full report of every run**
-  Every job includes step-by-step logs, metrics, and history so you can see what ran, what was skipped, and why.
-  Recommendation sets now use a stronger ranking engine that blends similarity, quality, novelty, and indie/popularity signals.
-
-- **Puts management in Command Center**
-  Manage users, datasets, resets, posters, rejected items, and request cleanup from one place.
+- **Puts management in the app**
+  - Use Vault for integrations, Task Manager for jobs, Rewind for reports, and Command Center for resets, posters, user monitoring, and request cleanup.
 
 - **Coming soon**
   - Email reports on your media server's health
@@ -241,10 +209,6 @@ For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/
 For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 ##
 
-## Development
-
-The source repository remains public for transparency and review. The development commands in the linked docs are for the project owner and separately authorized developers; they do not grant permission to use, modify, or redistribute the source code.
-
 ## Documentation
 - Setup guide: [`doc/setupguide.md`](doc/setupguide.md)
 - FAQ: [`doc/FAQ.md`](doc/FAQ.md)
@@ -254,10 +218,15 @@ The source repository remains public for transparency and review. The developmen
 Full project README: [`doc/README.md`](doc/README.md)
 ##
 
-## Security and Suggestions
-- Report Bug or issues: [GitHub Report Bug](https://github.com/ohmzi/Immaculaterr/issues)
-- After V1.7 i'll be taking break from working on new features, and only do security patches and if needed bug fixes. I shall resume working on new feature in couple months.
-- Send Suggestion: [GitHub Feature Request](https://github.com/ohmzi/Immaculaterr/issues)
+## Contributing
+Thanks for wanting to help improve Immaculaterr.
+
+The public repository is available so people can inspect and validate the source code. Immaculaterr is not open source, so code contributions, pull requests, and external patches are not accepted or encouraged.
+
+If you want to help:
+- Report bugs: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Suggest features or improvements: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Report security issues: see [`doc/security.md`](doc/security.md), or use GitHub Issues if needed
 ##
 
 ## License

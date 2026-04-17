@@ -1,43 +1,16 @@
-Setup: Run from source
+Setup note
 ===
 
-Run Immaculaterr from a cloned copy of the repository using the compose stacks in `docker/immaculaterr/`.
+This page no longer includes public source-based setup instructions.
 
-> Warning: this page is a technical reference for the project owner and separately authorized developers. Public visibility of the repository does not grant permission to use, modify, redistribute, or build derivative artifacts from the source code. End users should install the official Docker images or release artifacts instead.
+The public repository is available so people can inspect and validate the source code. Supported public install docs cover official Docker images and the platform guides only.
 
 [← Back to Setup Guide](setupguide.md)
 
-Getting started
+Supported install guides
 ---
 
-```bash
-cd docker/immaculaterr
-```
-
-GHCR (HTTP only)
----
-
-```bash
-docker compose -f docker-compose.yml up -d
-```
-
-Build from source (authorized development only)
----
-
-```bash
-docker compose -f docker-compose.source.yml up -d --build
-```
-
-GHCR + built-in HTTPS sidecar
----
-
-```bash
-docker compose -f docker-compose.https.yml up -d
-```
-
-Docker Hub + built-in HTTPS sidecar
----
-
-```bash
-docker compose -f docker-compose.dockerhub.yml up -d
-```
+- [Docker setup guide](setupguide.md)
+- [TrueNAS SCALE](setup-truenas.md)
+- [Unraid](setup-unraid.md)
+- [Updating](setup-updating.md)
