@@ -32,7 +32,6 @@
   </p>
 </div>
 
-> Licensing notice: this repository is public for visibility and reference, but the source code is not licensed for reuse. End users may download and run only the official Docker images and release artifacts published by the project owner, and only for personal, noncommercial self-hosting under the terms in [`LICENSE`](LICENSE).
 
 ## What it does
 
