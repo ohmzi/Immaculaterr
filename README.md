@@ -36,8 +36,9 @@
 ## What it does
 
 - **Watches Plex activity and reacts automatically**
-  - Newly completed movies and episodes can trigger recommendation jobs right away.
-  - Off-peak schedules are available for refresh, discovery, cleanup, and maintenance jobs.
+  - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
+  - It builds rows around what you actually watch and pins them where Plex can surface them, so your home screen feels more curated and personal, a bit like your own Netflix.
+  - Off-peak schedules keep those rows fresh with background refresh, discovery, cleanup, and maintenance.
 
 - **Creates managed Plex collections**
   - `Based on your recently watched Movie` and `Based on your recently watched Show`
@@ -221,10 +222,15 @@ The source repository remains public for transparency and review. The developmen
 Full project README: [`doc/README.md`](doc/README.md)
 ##
 
-## Security and Suggestions
-- Report Bug or issues: [GitHub Report Bug](https://github.com/ohmzi/Immaculaterr/issues)
-- After V1.7 i'll be taking break from working on new features, and only do security patches and if needed bug fixes. I shall resume working on new feature in couple months.
-- Send Suggestion: [GitHub Feature Request](https://github.com/ohmzi/Immaculaterr/issues)
+## Contributing
+Thanks for wanting to help improve Immaculaterr.
+
+The public repository is available so people can inspect and validate the source code. Immaculaterr is not open source, so code contributions, pull requests, and external patches are not accepted or encouraged.
+
+If you want to help:
+- Report bugs: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Suggest features or improvements: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Report security issues: see [`doc/security.md`](doc/security.md), or use GitHub Issues if needed
 ##
 
 ## License

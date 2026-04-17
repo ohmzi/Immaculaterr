@@ -20,9 +20,9 @@ Major Features Include
   - Works per task card, so you can choose where missing titles go.
   - Includes Command Center reset control to clear all Seerr requests when needed.
 - **Plex-triggered automation**:
-  - Newly completed movies and episodes can trigger recommendation jobs right away.
+  - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
 - **Scheduler automation**:
-  - Off-peak schedules are available for refresh, discovery, cleanup, and maintenance jobs.
+  - Off-peak schedules keep those rows fresh with background refresh, discovery, cleanup, and maintenance.
 - **Shared persisted job queue**:
   - Manual runs, schedules, Plex webhooks, and Plex polling all go through one persisted FIFO queue.
   - Rewind shows queued work, live progress, reports, logs, and run history.
@@ -162,6 +162,19 @@ Then open:
 
 - Web UI: `http://localhost:5858/`
 - API: `http://localhost:5859/api`
+
+Contributing
+---
+
+Thanks for wanting to help improve Immaculaterr.
+
+The public repository is available so people can inspect and validate the source code. Immaculaterr is not open source, so code contributions, pull requests, and external patches are not accepted or encouraged.
+
+If you want to help:
+
+- Report bugs: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Suggest features or improvements: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- Report security issues: see [`doc/security.md`](security.md), or use GitHub Issues if needed
 
 Support
 ---
