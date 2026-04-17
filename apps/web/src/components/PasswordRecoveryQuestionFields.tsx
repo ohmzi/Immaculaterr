@@ -56,7 +56,7 @@ export function PasswordRecoveryQuestionFields(props: {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {answerRows.map(({ rowKey, rowIndex, entry }) => {
         const selectedInOtherRows = new Set(
           answers
@@ -77,7 +77,7 @@ export function PasswordRecoveryQuestionFields(props: {
         return (
           <div
             key={`${idPrefix}-row-${rowKey}`}
-            className="rounded-xl border border-white/10 bg-white/5 p-3"
+            className="min-w-0 rounded-xl border border-white/10 bg-white/5 p-3"
           >
             <div
               className="mb-1 block text-xs font-bold uppercase tracking-wider text-white/60"

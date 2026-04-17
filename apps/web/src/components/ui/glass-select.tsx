@@ -105,7 +105,7 @@ export function GlassSelect(props: {
   }, [disabled]);
 
   const triggerClasses = cn(
-    'flex items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white/90 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-2xl backdrop-saturate-150 transition',
+    'flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white/90 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-2xl backdrop-saturate-150 transition',
     'focus:outline-none focus:ring-2 focus:ring-white/25 focus:ring-offset-0',
     open && 'bg-white/15',
     disabled && 'opacity-50 cursor-not-allowed',
@@ -176,10 +176,15 @@ export function GlassSelect(props: {
         aria-disabled={disabled}
         onClick={handleTriggerClick}
       >
-        <span className={cn('truncate', selectedLabel ? 'text-white/90' : 'text-white/60')}>
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-left',
+            selectedLabel ? 'text-white/90' : 'text-white/60',
+          )}
+        >
           {triggerText}
         </span>
-        <ChevronDown className="h-4 w-4 text-white/70" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-white/70" />
       </button>
       {contentNode}
     </>
