@@ -21,6 +21,7 @@ const HTTP_ONLY_UPDATE_COMMAND = [
   '  -p ${APP_PORT}:${APP_PORT} \\',
   '  -e HOST=0.0.0.0 \\',
   '  -e PORT=${APP_PORT} \\',
+  '  -e TZ=America/New_York \\',
   '  -e TRUST_PROXY=1 \\',
   '  -e APP_DATA_DIR=/data \\',
   '  -e DATABASE_URL=file:/data/tcp.sqlite \\',

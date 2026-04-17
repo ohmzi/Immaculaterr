@@ -20,6 +20,7 @@ const UNRAID_HTTP_ONLY_COMPOSE_YAML = [
   '    environment:',
   '      - HOST=0.0.0.0',
   '      - PORT=5454',
+  '      - TZ=America/New_York',
   '      - APP_DATA_DIR=/data',
   '      - DATABASE_URL=file:/data/tcp.sqlite',
   '      - SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true',
@@ -36,6 +37,7 @@ const UNRAID_HTTP_ONLY_COMPOSE_YAML = [
 const UNRAID_HTTP_ONLY_ENV_VARS = [
   'SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true',
   'COOKIE_SECURE=false',
+  'TZ=America/New_York',
 ].join('\n');
 
 const UNRAID_HTTPS_MAIN_APP_COMPOSE_YAML = [
@@ -49,6 +51,7 @@ const UNRAID_HTTPS_MAIN_APP_COMPOSE_YAML = [
   '    environment:',
   '      - HOST=0.0.0.0',
   '      - PORT=5455',
+  '      - TZ=America/New_York',
   '      - APP_DATA_DIR=/data',
   '      - DATABASE_URL=file:/data/tcp.sqlite',
   '      - TRUST_PROXY=1',

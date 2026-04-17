@@ -40,7 +40,7 @@ services:
       COOKIE_SECURE: "true"
       SECRETS_TRANSPORT_ALLOW_PLAINTEXT: "false"
       CORS_ORIGINS: "https://immaculaterr.local:5464"
-      TZ: "America/Los_Angeles"
+      TZ: "America/New_York"
       NVIDIA_VISIBLE_DEVICES: "void"
     ports:
       - "5454:5454"
@@ -174,7 +174,7 @@ services:
       TRUST_PROXY: "1"
       COOKIE_SECURE: "false"
       SECRETS_TRANSPORT_ALLOW_PLAINTEXT: "true"
-      TZ: "America/Los_Angeles"
+      TZ: "America/New_York"
       NVIDIA_VISIBLE_DEVICES: "void"
     ports:
       - "5454:5454"
