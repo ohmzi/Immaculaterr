@@ -160,6 +160,7 @@ docker run -d \
   -p 5454:5454 \
   -e HOST=0.0.0.0 \
   -e PORT=5454 \
+  -e TZ=America/New_York \
   -e TRUST_PROXY=1 \
   -e APP_DATA_DIR=/data \
   -e DATABASE_URL=file:/data/tcp.sqlite \
@@ -182,6 +183,7 @@ docker run -d \
   -p 5454:5454 \
   -e HOST=0.0.0.0 \
   -e PORT=5454 \
+  -e TZ=America/New_York \
   -e TRUST_PROXY=1 \
   -e APP_DATA_DIR=/data \
   -e DATABASE_URL=file:/data/tcp.sqlite \
@@ -206,6 +208,7 @@ docker run -d \
 ##
 
 For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/setupguide.md).
+The examples above set the app container timezone to `America/New_York`. Change the `TZ` value if you prefer a different IANA timezone.
 For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 ##
 
