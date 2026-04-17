@@ -37,7 +37,7 @@
 
 - **Watches Plex activity and reacts automatically**
   - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
-  - It builds rows around what you actually watch and pins them where Plex can surface them, so your home screen feels more curated and personal, a bit like your own Netflix.
+  - It builds rows around what you actually watch and pins them on home screen, making your home screen feels more curated and personal, a bit like your own Netflix.
   - Off-peak schedules keep those rows fresh with background refresh, discovery, cleanup, and maintenance.
 
 - **Creates managed Plex collections**
