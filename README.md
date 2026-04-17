@@ -209,10 +209,6 @@ For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/
 For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 ##
 
-## Development
-
-The source repository remains public for transparency and review. The development commands in the linked docs are for the project owner and separately authorized developers; they do not grant permission to use, modify, or redistribute the source code.
-
 ## Documentation
 - Setup guide: [`doc/setupguide.md`](doc/setupguide.md)
 - FAQ: [`doc/FAQ.md`](doc/FAQ.md)

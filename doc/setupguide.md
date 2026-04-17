@@ -1,7 +1,7 @@
 Setup Guide
 ===
 
-This guide covers the recommended Docker install for Immaculaterr. Official Docker images and release artifacts are the supported public distribution channel. The public source repository remains visible for transparency and reference, but source-based use is for the project owner and separately authorized developers only.
+This guide covers the supported public install paths for Immaculaterr. Use the official Docker images and the platform guides below.
 
 Prerequisites
 ---
@@ -40,10 +40,9 @@ Then open:
 Compose stacks at a glance
 ---
 
-Compose templates live in `docker/immaculaterr/`:
+Supported compose templates live in `docker/immaculaterr/`:
 
 - `docker-compose.yml`: GHCR image, HTTP only (`:5454`)
-- `docker-compose.source.yml`: build from local source, authorized development/reference only (`:5454`)
 - `docker-compose.https.yml`: GHCR image + Caddy sidecar, HTTP (`:5454`) + HTTPS (`:5464`)
 - `docker-compose.dockerhub.yml`: Docker Hub image + Caddy sidecar, HTTP (`:5454`) + HTTPS (`:5464`)
 - `docker-compose.secrets.yml`: optional overlay to load `APP_MASTER_KEY_FILE` from Docker secrets
@@ -78,9 +77,7 @@ Other guides
 
 - [TrueNAS SCALE](setup-truenas.md) — GUI-only Custom Apps with HTTPS and HTTP-only options.
 - [Unraid](setup-unraid.md) — Docker template and compose setup with HTTPS and HTTP-only options.
-- [Run from source](setup-source.md) — Technical reference for the project owner and separately authorized developers.
 - [Updating](setup-updating.md) — Update instructions for all deployment methods including Portainer.
-- [Local development](setup-development.md) — Run the monorepo locally for development.
 
 License
 ---

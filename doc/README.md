@@ -137,32 +137,6 @@ Platform-specific guides are also available:
 - [TrueNAS SCALE](setup-truenas.md) — GUI-only Custom Apps with HTTPS and HTTP-only options.
 - [Unraid](setup-unraid.md) — Docker template and compose setup with HTTPS and HTTP-only options.
 
-Development
----
-
-Immaculaterr is a monorepo:
-
-- **API**: NestJS (`apps/api`) — serves the REST API under `/api`
-- **Web UI**: React + Vite (`apps/web`)
-
-The development commands below are for the project owner and separately authorized developers. Public visibility of the repository does not grant permission to use, modify, or redistribute the source code.
-
-```bash
-npm install
-npm -w apps/api run db:generate
-APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite npm -w apps/api run db:migrate
-
-# Dev ports:
-# - Web UI: 5858
-# - API: 5859
-APP_DATA_DIR=./data DATABASE_URL=file:./data/tcp.sqlite API_PORT=5859 WEB_PORT=5858 npm run dev
-```
-
-Then open:
-
-- Web UI: `http://localhost:5858/`
-- API: `http://localhost:5859/api`
-
 Contributing
 ---
 
