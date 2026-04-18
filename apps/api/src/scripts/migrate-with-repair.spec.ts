@@ -16,6 +16,12 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import {
+  ensureImmaculateTasteLibraryReleaseDateColumns,
+  ensureJobQueueStateSchema,
+  ensureJobRunSchema,
+  ensureLoginThrottleSchema,
+  ensureRejectedSuggestionSchema,
+  ensureUserRecoverySchema,
   logFailedMigrationDiagnostics,
   repairApril2026MigrationEdgeCases,
   repairMarch2026MigrationEdgeCases,
@@ -449,6 +455,239 @@ describe('scripts/migrate-with-repair', () => {
         '20260413120000_add_fresh_release_show_library',
       ]),
       expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('adds the releaseDate column and index to ImmaculateTasteMovieLibrary when the column is missing', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        ImmaculateTasteMovieLibrary: ['plexUserId', 'tmdbId', 'profileId'],
+        ImmaculateTasteShowLibrary: [
+          'plexUserId',
+          'tvdbId',
+          'profileId',
+          'firstAirDate',
+        ],
+      },
+      tables: new Set([
+        'ImmaculateTasteMovieLibrary',
+        'ImmaculateTasteShowLibrary',
+      ]),
+    });
+
+    await ensureImmaculateTasteLibraryReleaseDateColumns(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "ImmaculateTasteMovieLibrary" ADD COLUMN "releaseDate" DATETIME',
+    );
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_releaseDate_idx"',
+      ),
+    );
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalledWith(
+      'ALTER TABLE "ImmaculateTasteShowLibrary" ADD COLUMN "firstAirDate" DATETIME',
+    );
+  });
+
+  it('adds the firstAirDate column to ImmaculateTasteShowLibrary when the column is missing', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        ImmaculateTasteShowLibrary: ['plexUserId', 'tvdbId', 'profileId'],
+      },
+      tables: new Set(['ImmaculateTasteShowLibrary']),
+    });
+
+    await ensureImmaculateTasteLibraryReleaseDateColumns(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "ImmaculateTasteShowLibrary" ADD COLUMN "firstAirDate" DATETIME',
+    );
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_firstAirDate_idx"',
+      ),
+    );
+  });
+
+  it('skips ImmaculateTaste library release-date repairs when the tables do not exist', async () => {
+    const prisma = createPrismaMock({ tables: new Set() });
+
+    await ensureImmaculateTasteLibraryReleaseDateColumns(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('adds every missing JobRun column introduced by later migrations', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        JobRun: ['id', 'jobId', 'trigger', 'dryRun', 'status', 'startedAt'],
+      },
+      tables: new Set(['JobRun']),
+    });
+
+    await ensureJobRunSchema(prisma as never);
+
+    const executedSql = prisma.$executeRawUnsafe.mock.calls.map(([sql]) => sql);
+    for (const column of [
+      'userId',
+      'queuedAt',
+      'executionStartedAt',
+      'input',
+      'queueFingerprint',
+      'claimedAt',
+      'heartbeatAt',
+      'workerId',
+    ]) {
+      expect(executedSql).toContain(
+        `ALTER TABLE "JobRun" ADD COLUMN "${column}" ${
+          column === 'input'
+            ? 'JSONB'
+            : column.endsWith('At')
+              ? 'DATETIME'
+              : 'TEXT'
+        }`,
+      );
+    }
+    expect(executedSql).toContain(
+      'UPDATE "JobRun" SET "queuedAt" = "startedAt" WHERE "queuedAt" IS NULL',
+    );
+    expect(executedSql).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('"JobRun_status_queuedAt_id_idx"'),
+        expect.stringContaining('"JobRun_status_executionStartedAt_idx"'),
+        expect.stringContaining(
+          '"JobRun_status_queueFingerprint_queuedAt_idx"',
+        ),
+        expect.stringContaining('"JobRun_userId_status_queuedAt_idx"'),
+        expect.stringContaining('"JobRun_userId_startedAt_idx"'),
+      ]),
+    );
+  });
+
+  it('skips JobRun repairs when the table does not exist', async () => {
+    const prisma = createPrismaMock({ tables: new Set() });
+
+    await ensureJobRunSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('does not re-add JobRun columns that already exist', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        JobRun: [
+          'id',
+          'jobId',
+          'userId',
+          'trigger',
+          'dryRun',
+          'status',
+          'startedAt',
+          'queuedAt',
+          'executionStartedAt',
+          'input',
+          'queueFingerprint',
+          'claimedAt',
+          'heartbeatAt',
+          'workerId',
+        ],
+      },
+      tables: new Set(['JobRun']),
+    });
+
+    await ensureJobRunSchema(prisma as never);
+
+    const executedSql = prisma.$executeRawUnsafe.mock.calls.map(([sql]) => sql);
+    expect(executedSql.some((sql) => sql.includes('ADD COLUMN'))).toBe(false);
+    expect(executedSql.some((sql) => sql.includes('BACKFILL'))).toBe(false);
+  });
+
+  it('creates JobQueueState and seeds the global row when the table is missing', async () => {
+    const prisma = createPrismaMock({ tables: new Set() });
+
+    await ensureJobQueueStateSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE "JobQueueState"'),
+    );
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR IGNORE INTO "JobQueueState"'),
+    );
+  });
+
+  it('seeds the JobQueueState global row without recreating the table', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['JobQueueState']),
+    });
+
+    await ensureJobQueueStateSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE "JobQueueState"'),
+    );
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR IGNORE INTO "JobQueueState"'),
+    );
+  });
+
+  it('adds the RejectedSuggestion.collectionKind column when it is missing', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        RejectedSuggestion: ['id', 'userId', 'mediaType'],
+      },
+      tables: new Set(['RejectedSuggestion']),
+    });
+
+    await ensureRejectedSuggestionSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      'ALTER TABLE "RejectedSuggestion" ADD COLUMN "collectionKind" TEXT',
+    );
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '"RejectedSuggestion_userId_mediaType_source_idx"',
+      ),
+    );
+  });
+
+  it('skips RejectedSuggestion repairs when the table does not exist', async () => {
+    const prisma = createPrismaMock({ tables: new Set() });
+
+    await ensureRejectedSuggestionSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('creates LoginThrottle when it is missing', async () => {
+    const prisma = createPrismaMock({ tables: new Set() });
+
+    await ensureLoginThrottleSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE "LoginThrottle"'),
+    );
+  });
+
+  it('does not recreate LoginThrottle when it already exists', async () => {
+    const prisma = createPrismaMock({
+      tables: new Set(['LoginThrottle']),
+    });
+
+    await ensureLoginThrottleSchema(prisma as never);
+
+    expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('creates UserRecovery only once the User table exists', async () => {
+    const withoutUser = createPrismaMock({ tables: new Set() });
+    await ensureUserRecoverySchema(withoutUser as never);
+    expect(withoutUser.$executeRawUnsafe).not.toHaveBeenCalled();
+
+    const withUser = createPrismaMock({ tables: new Set(['User']) });
+    await ensureUserRecoverySchema(withUser as never);
+    expect(withUser.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE "UserRecovery"'),
     );
   });
 

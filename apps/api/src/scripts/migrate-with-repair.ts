@@ -251,6 +251,7 @@ const CREATE_NEW_IMMACULATE_TASTE_MOVIE_LIBRARY_TABLE_SQL = [
   '  "points" INTEGER NOT NULL DEFAULT 0,',
   '  "tmdbVoteAvg" REAL,',
   '  "tmdbVoteCount" INTEGER,',
+  '  "releaseDate" DATETIME,',
   '  "downloadApproval" TEXT NOT NULL DEFAULT \'none\',',
   '  "sentToRadarrAt" DATETIME,',
   '  "sentToSonarrAt" DATETIME,',
@@ -289,6 +290,7 @@ const CREATE_NEW_IMMACULATE_TASTE_SHOW_LIBRARY_TABLE_SQL = [
   '  "points" INTEGER NOT NULL DEFAULT 0,',
   '  "tmdbVoteAvg" REAL,',
   '  "tmdbVoteCount" INTEGER,',
+  '  "firstAirDate" DATETIME,',
   '  "downloadApproval" TEXT NOT NULL DEFAULT \'none\',',
   '  "sentToRadarrAt" DATETIME,',
   '  "sentToSonarrAt" DATETIME,',
@@ -373,6 +375,88 @@ const ADD_WATCHED_SHOW_RECOMMENDATION_LIBRARY_FIRST_AIR_DATE_COLUMN_SQL =
   'ALTER TABLE "WatchedShowRecommendationLibrary" ADD COLUMN "firstAirDate" DATETIME';
 const CREATE_WATCHED_SHOW_RECOMMENDATION_LIBRARY_FIRST_AIR_DATE_INDEX_SQL =
   'CREATE INDEX IF NOT EXISTS "WatchedShowRecommendationLibrary_firstAirDate_idx" ON "WatchedShowRecommendationLibrary"("firstAirDate")';
+const ADD_IMMACULATE_TASTE_MOVIE_LIBRARY_RELEASE_DATE_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteMovieLibrary" ADD COLUMN "releaseDate" DATETIME';
+const CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_RELEASE_DATE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteMovieLibrary_releaseDate_idx" ON "ImmaculateTasteMovieLibrary"("releaseDate")';
+const ADD_IMMACULATE_TASTE_SHOW_LIBRARY_FIRST_AIR_DATE_COLUMN_SQL =
+  'ALTER TABLE "ImmaculateTasteShowLibrary" ADD COLUMN "firstAirDate" DATETIME';
+const CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_FIRST_AIR_DATE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "ImmaculateTasteShowLibrary_firstAirDate_idx" ON "ImmaculateTasteShowLibrary"("firstAirDate")';
+const ADD_JOB_RUN_USER_ID_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "userId" TEXT';
+const ADD_JOB_RUN_QUEUED_AT_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "queuedAt" DATETIME';
+const ADD_JOB_RUN_EXECUTION_STARTED_AT_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "executionStartedAt" DATETIME';
+const ADD_JOB_RUN_INPUT_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "input" JSONB';
+const ADD_JOB_RUN_QUEUE_FINGERPRINT_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "queueFingerprint" TEXT';
+const ADD_JOB_RUN_CLAIMED_AT_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "claimedAt" DATETIME';
+const ADD_JOB_RUN_HEARTBEAT_AT_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "heartbeatAt" DATETIME';
+const ADD_JOB_RUN_WORKER_ID_COLUMN_SQL =
+  'ALTER TABLE "JobRun" ADD COLUMN "workerId" TEXT';
+const BACKFILL_JOB_RUN_QUEUED_AT_SQL =
+  'UPDATE "JobRun" SET "queuedAt" = "startedAt" WHERE "queuedAt" IS NULL';
+const CREATE_JOB_RUN_USER_STARTED_AT_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "JobRun_userId_startedAt_idx" ON "JobRun"("userId", "startedAt")';
+const CREATE_JOB_RUN_STATUS_QUEUED_AT_ID_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "JobRun_status_queuedAt_id_idx" ON "JobRun"("status", "queuedAt", "id")';
+const CREATE_JOB_RUN_STATUS_EXECUTION_STARTED_AT_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "JobRun_status_executionStartedAt_idx" ON "JobRun"("status", "executionStartedAt")';
+const CREATE_JOB_RUN_STATUS_QUEUE_FINGERPRINT_QUEUED_AT_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "JobRun_status_queueFingerprint_queuedAt_idx" ON "JobRun"("status", "queueFingerprint", "queuedAt")';
+const CREATE_JOB_RUN_USER_STATUS_QUEUED_AT_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "JobRun_userId_status_queuedAt_idx" ON "JobRun"("userId", "status", "queuedAt")';
+const CREATE_JOB_QUEUE_STATE_TABLE_SQL = [
+  'CREATE TABLE "JobQueueState" (',
+  '  "id" TEXT NOT NULL PRIMARY KEY,',
+  '  "activeRunId" TEXT,',
+  '  "cooldownUntil" DATETIME,',
+  '  "paused" BOOLEAN NOT NULL DEFAULT false,',
+  '  "pauseReason" TEXT,',
+  '  "version" INTEGER NOT NULL DEFAULT 0,',
+  '  "updatedAt" DATETIME NOT NULL',
+  ')',
+].join('\n');
+const SEED_JOB_QUEUE_STATE_GLOBAL_ROW_SQL = [
+  'INSERT OR IGNORE INTO "JobQueueState"',
+  '  ("id", "activeRunId", "cooldownUntil", "paused", "pauseReason", "version", "updatedAt")',
+  "VALUES ('global', NULL, NULL, false, NULL, 0, CURRENT_TIMESTAMP)",
+].join('\n');
+const ADD_REJECTED_SUGGESTION_COLLECTION_KIND_COLUMN_SQL =
+  'ALTER TABLE "RejectedSuggestion" ADD COLUMN "collectionKind" TEXT';
+const CREATE_REJECTED_SUGGESTION_USER_MEDIA_SOURCE_INDEX_SQL =
+  'CREATE INDEX IF NOT EXISTS "RejectedSuggestion_userId_mediaType_source_idx" ON "RejectedSuggestion"("userId", "mediaType", "source")';
+const CREATE_LOGIN_THROTTLE_TABLE_SQL = [
+  'CREATE TABLE "LoginThrottle" (',
+  '  "key" TEXT NOT NULL PRIMARY KEY,',
+  '  "failures" INTEGER NOT NULL,',
+  '  "firstFailureAt" DATETIME NOT NULL,',
+  '  "lastFailureAt" DATETIME NOT NULL,',
+  '  "lockUntil" DATETIME NOT NULL,',
+  '  "updatedAt" DATETIME NOT NULL',
+  ')',
+].join('\n');
+const CREATE_USER_RECOVERY_TABLE_SQL = [
+  'CREATE TABLE "UserRecovery" (',
+  '  "userId" TEXT NOT NULL PRIMARY KEY,',
+  '  "questionOneKey" TEXT NOT NULL,',
+  '  "questionOneAnswerHash" TEXT NOT NULL,',
+  '  "questionTwoKey" TEXT NOT NULL,',
+  '  "questionTwoAnswerHash" TEXT NOT NULL,',
+  '  "questionThreeKey" TEXT NOT NULL,',
+  '  "questionThreeAnswerHash" TEXT NOT NULL,',
+  '  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,',
+  '  "updatedAt" DATETIME NOT NULL,',
+  '  CONSTRAINT "UserRecovery_userId_fkey"',
+  '    FOREIGN KEY ("userId") REFERENCES "User" ("id")',
+  '    ON DELETE CASCADE ON UPDATE CASCADE',
+  ')',
+].join('\n');
 
 type TableInfoRow = {
   name: string;
@@ -1104,6 +1188,127 @@ async function ensureImmaculateTasteProfileSchema(
   );
 }
 
+export async function ensureJobRunSchema(prisma: PrismaClient): Promise<void> {
+  const tableName = 'JobRun';
+  if (!(await tableExists(prisma, tableName))) return;
+
+  const columns = await tableInfo(prisma, tableName);
+  if (!hasColumn(columns, 'userId')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_USER_ID_COLUMN_SQL);
+  }
+  if (!hasColumn(columns, 'queuedAt')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_QUEUED_AT_COLUMN_SQL);
+    await prisma.$executeRawUnsafe(BACKFILL_JOB_RUN_QUEUED_AT_SQL);
+  }
+  if (!hasColumn(columns, 'executionStartedAt')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_EXECUTION_STARTED_AT_COLUMN_SQL);
+  }
+  if (!hasColumn(columns, 'input')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_INPUT_COLUMN_SQL);
+  }
+  if (!hasColumn(columns, 'queueFingerprint')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_QUEUE_FINGERPRINT_COLUMN_SQL);
+  }
+  if (!hasColumn(columns, 'claimedAt')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_CLAIMED_AT_COLUMN_SQL);
+  }
+  if (!hasColumn(columns, 'heartbeatAt')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_HEARTBEAT_AT_COLUMN_SQL);
+  }
+  if (!hasColumn(columns, 'workerId')) {
+    await prisma.$executeRawUnsafe(ADD_JOB_RUN_WORKER_ID_COLUMN_SQL);
+  }
+
+  await prisma.$executeRawUnsafe(CREATE_JOB_RUN_USER_STARTED_AT_INDEX_SQL);
+  await prisma.$executeRawUnsafe(CREATE_JOB_RUN_STATUS_QUEUED_AT_ID_INDEX_SQL);
+  await prisma.$executeRawUnsafe(
+    CREATE_JOB_RUN_STATUS_EXECUTION_STARTED_AT_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_JOB_RUN_STATUS_QUEUE_FINGERPRINT_QUEUED_AT_INDEX_SQL,
+  );
+  await prisma.$executeRawUnsafe(
+    CREATE_JOB_RUN_USER_STATUS_QUEUED_AT_INDEX_SQL,
+  );
+}
+
+export async function ensureJobQueueStateSchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const tableName = 'JobQueueState';
+  if (!(await tableExists(prisma, tableName))) {
+    await prisma.$executeRawUnsafe(CREATE_JOB_QUEUE_STATE_TABLE_SQL);
+  }
+  await prisma.$executeRawUnsafe(SEED_JOB_QUEUE_STATE_GLOBAL_ROW_SQL);
+}
+
+export async function ensureRejectedSuggestionSchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const tableName = 'RejectedSuggestion';
+  if (!(await tableExists(prisma, tableName))) return;
+
+  const columns = await tableInfo(prisma, tableName);
+  if (!hasColumn(columns, 'collectionKind')) {
+    await prisma.$executeRawUnsafe(
+      ADD_REJECTED_SUGGESTION_COLLECTION_KIND_COLUMN_SQL,
+    );
+  }
+  await prisma.$executeRawUnsafe(
+    CREATE_REJECTED_SUGGESTION_USER_MEDIA_SOURCE_INDEX_SQL,
+  );
+}
+
+export async function ensureLoginThrottleSchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  const tableName = 'LoginThrottle';
+  if (!(await tableExists(prisma, tableName))) {
+    await prisma.$executeRawUnsafe(CREATE_LOGIN_THROTTLE_TABLE_SQL);
+  }
+}
+
+export async function ensureUserRecoverySchema(
+  prisma: PrismaClient,
+): Promise<void> {
+  if (!(await tableExists(prisma, 'User'))) return;
+
+  const tableName = 'UserRecovery';
+  if (!(await tableExists(prisma, tableName))) {
+    await prisma.$executeRawUnsafe(CREATE_USER_RECOVERY_TABLE_SQL);
+  }
+}
+
+export async function ensureImmaculateTasteLibraryReleaseDateColumns(
+  prisma: PrismaClient,
+): Promise<void> {
+  const movieTable = 'ImmaculateTasteMovieLibrary';
+  if (await tableExists(prisma, movieTable)) {
+    const columns = await tableInfo(prisma, movieTable);
+    if (!hasColumn(columns, 'releaseDate')) {
+      await prisma.$executeRawUnsafe(
+        ADD_IMMACULATE_TASTE_MOVIE_LIBRARY_RELEASE_DATE_COLUMN_SQL,
+      );
+    }
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_MOVIE_LIBRARY_RELEASE_DATE_INDEX_SQL,
+    );
+  }
+
+  const showTable = 'ImmaculateTasteShowLibrary';
+  if (await tableExists(prisma, showTable)) {
+    const columns = await tableInfo(prisma, showTable);
+    if (!hasColumn(columns, 'firstAirDate')) {
+      await prisma.$executeRawUnsafe(
+        ADD_IMMACULATE_TASTE_SHOW_LIBRARY_FIRST_AIR_DATE_COLUMN_SQL,
+      );
+    }
+    await prisma.$executeRawUnsafe(
+      CREATE_IMMACULATE_TASTE_SHOW_LIBRARY_FIRST_AIR_DATE_INDEX_SQL,
+    );
+  }
+}
+
 async function ensureWatchedRecommendationReleaseDateColumns(
   prisma: PrismaClient,
 ): Promise<void> {
@@ -1153,9 +1358,15 @@ export async function main() {
     await ensureAutoRunMediaHistorySchema(prisma);
     await ensureImmaculateTasteProfileSchema(prisma);
     await ensureImmaculateTasteLibrarySchema(prisma);
+    await ensureImmaculateTasteLibraryReleaseDateColumns(prisma);
     await ensureFreshReleaseMovieLibrarySchema(prisma);
     await ensureFreshReleaseShowLibrarySchema(prisma);
     await ensureWatchedRecommendationReleaseDateColumns(prisma);
+    await ensureJobRunSchema(prisma);
+    await ensureJobQueueStateSchema(prisma);
+    await ensureRejectedSuggestionSchema(prisma);
+    await ensureLoginThrottleSchema(prisma);
+    await ensureUserRecoverySchema(prisma);
   } finally {
     await prisma.$disconnect();
   }
