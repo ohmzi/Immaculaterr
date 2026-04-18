@@ -49,15 +49,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Preserved releaseDate and firstAirDate when rebuilding ImmaculateTasteMovieLibrary and ImmaculateTasteShowLibrary so imports stop failing with "column does not exist".',
           'Added an idempotent ensure step that backfills releaseDate and firstAirDate on older SQLite databases regardless of migration history state.',
         ],
-      },
-      {
-        title: 'Broader schema drift self-repair',
-        bullets: [
-          'JobRun now has explicit guards for userId, queuedAt, executionStartedAt, input, queueFingerprint, claimedAt, heartbeatAt, and workerId plus their queue indexes.',
-          'JobQueueState, LoginThrottle, and UserRecovery are now created on startup when missing, and the JobQueueState global row is seeded idempotently.',
-          'RejectedSuggestion.collectionKind and its lookup index are restored automatically on older databases.',
-        ],
-      },
+      }
     ],
   },
   {

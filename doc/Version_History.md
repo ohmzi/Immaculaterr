@@ -11,13 +11,8 @@ This file tracks notable changes by version.
   - Fixed `/api/import/netflix` failing with "column `releaseDate` does not exist" on older SQLite databases whose schema had drifted from the Prisma schema.
   - `ImmaculateTasteMovieLibrary` and `ImmaculateTasteShowLibrary` rebuild paths now preserve `releaseDate` and `firstAirDate` instead of silently dropping them.
   - Added an idempotent startup step that restores `releaseDate` and `firstAirDate` plus their indexes regardless of migration history state.
-- Broader schema drift self-repair:
-  - `JobRun` now has explicit guards for `userId`, `queuedAt`, `executionStartedAt`, `input`, `queueFingerprint`, `claimedAt`, `heartbeatAt`, and `workerId`, including the queue-priority indexes.
-  - `JobQueueState`, `LoginThrottle`, and `UserRecovery` are created on startup when missing, and the `JobQueueState` global row is seeded idempotently.
-  - `RejectedSuggestion.collectionKind` and its lookup index are restored automatically on older databases.
 - Testing:
   - Added 14 new unit tests in `migrate-with-repair.spec.ts` covering every new ensure function.
-  - All 349 api tests pass, plus an end-to-end smoke test that reproduces the issue #199 broken state on a real SQLite file and confirms repair.
 
 1.7.7
 ---
