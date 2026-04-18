@@ -3,6 +3,17 @@ Version History
 
 This file tracks notable changes by version.
 
+1.7.8-beta-1
+---
+
+- What's new in 1.7.8 beta 1:
+- Netflix import reliability (issue #199):
+  - Fixed `/api/import/netflix` failing with "column `releaseDate` does not exist" on older SQLite databases whose schema had drifted from the Prisma schema.
+  - `ImmaculateTasteMovieLibrary` and `ImmaculateTasteShowLibrary` rebuild paths now preserve `releaseDate` and `firstAirDate` instead of silently dropping them.
+  - Added an idempotent startup step that restores `releaseDate` and `firstAirDate` plus their indexes regardless of migration history state.
+- Testing:
+  - Added 14 new unit tests in `migrate-with-repair.spec.ts` covering every new ensure function.
+
 1.7.7
 ---
 

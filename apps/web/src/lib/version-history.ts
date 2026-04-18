@@ -37,6 +37,22 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.8-beta-1',
+    popupHighlights: [
+      'Netflix import no longer fails when legacy databases are missing the releaseDate column.',
+      'Startup self-repair now restores missing columns and tables across JobRun, JobQueueState, RejectedSuggestion, LoginThrottle, and UserRecovery.',
+    ],
+    sections: [
+      {
+        title: 'Netflix import reliability (issue #199)',
+        bullets: [
+          'Preserved releaseDate and firstAirDate when rebuilding ImmaculateTasteMovieLibrary and ImmaculateTasteShowLibrary so imports stop failing with "column does not exist".',
+          'Added an idempotent ensure step that backfills releaseDate and firstAirDate on older SQLite databases regardless of migration history state.',
+        ],
+      }
+    ],
+  },
+  {
     version: '1.7.7',
     popupHighlights: [
       'Recommendations now use a smarter ranking engine with wildcard picks for global-language standouts and hidden gems.',
