@@ -36,6 +36,48 @@ function callFinalizeRunningRun(
   return finalizeRunningRun.call(service, params);
 }
 
+function callCreateJobContext(
+  service: JobsService,
+  params: {
+    run: ReturnType<typeof makeCreatedRun>;
+    input?: RunInput;
+  },
+) {
+  const createJobContext = (
+    service as unknown as {
+      createJobContext: (params: {
+        run: ReturnType<typeof makeCreatedRun>;
+        input?: RunInput;
+      }) => {
+        ctx: {
+          patchSummary: (patch: Record<string, unknown>) => Promise<void>;
+          setSummary: (
+            summary: Record<string, unknown> | null,
+          ) => Promise<void>;
+        };
+        awaitSummaryWrites: () => Promise<void>;
+      };
+    }
+  ).createJobContext;
+  return createJobContext.call(service, params);
+}
+
+function getPersistedSummary(
+  prisma: ReturnType<typeof makeService>['prisma'],
+  callIndex = 0,
+) {
+  const call = prisma.jobRun.update.mock.calls[callIndex] as
+    | [
+        {
+          data: {
+            summary: Record<string, unknown> | null;
+          };
+        },
+      ]
+    | undefined;
+  return call?.[0].data.summary ?? null;
+}
+
 type JobsServicePrivate = JobsServiceForSpies & {
   finalizeRunningRun: (params: {
     runId: string;
@@ -181,6 +223,12 @@ function makeService() {
     $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => {
       return await callback(tx);
     }),
+    jobRun: {
+      update: jest.fn(),
+    },
+    jobLogLine: {
+      create: jest.fn(),
+    },
   };
 
   const handlers = {
@@ -195,6 +243,8 @@ function makeService() {
   tx.jobLogLine.create.mockResolvedValue({});
   tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
   tx.autoRunMediaHistory.upsert.mockResolvedValue({ id: 'history-1' });
+  prisma.jobRun.update.mockResolvedValue({});
+  prisma.jobLogLine.create.mockResolvedValue({});
   jest
     .spyOn(privateService, 'ensureQueueState')
     .mockResolvedValue(makeQueueState());
@@ -203,10 +253,15 @@ function makeService() {
   return {
     service,
     tx,
+    prisma,
   };
 }
 
 describe('JobsService durable auto-run media dedupe', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('blocks auto enqueue when a durable media history record already exists', async () => {
     const { service, tx } = makeService();
     const input = makeRunInput();
@@ -356,5 +411,120 @@ describe('JobsService durable auto-run media dedupe', () => {
     expect(run.status).toBe('PENDING');
     expect(tx.autoRunMediaHistory.findUnique).not.toHaveBeenCalled();
     expect(tx.jobRun.create).toHaveBeenCalled();
+  });
+
+  it('coalesces rapid same-step summary patches into a single deferred write', async () => {
+    jest.useFakeTimers();
+    const { service, prisma } = makeService();
+    const input = makeRunInput();
+    const run = makeCreatedRun({
+      jobId: 'importNetflixHistory',
+      trigger: 'manual',
+      input,
+    });
+    const { ctx } = callCreateJobContext(service, {
+      run,
+      input,
+    });
+
+    await ctx.patchSummary({
+      progress: {
+        step: 'phase1_classification',
+        current: 1,
+        total: 10,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+      },
+    });
+    expect(prisma.jobRun.update).toHaveBeenCalledTimes(1);
+
+    prisma.jobRun.update.mockClear();
+
+    await ctx.patchSummary({
+      progress: {
+        step: 'phase1_classification',
+        current: 2,
+        total: 10,
+        updatedAt: '2026-04-20T12:00:01.000Z',
+      },
+    });
+    await ctx.patchSummary({
+      progress: {
+        step: 'phase1_classification',
+        current: 3,
+        total: 10,
+        updatedAt: '2026-04-20T12:00:02.000Z',
+      },
+    });
+
+    expect(prisma.jobRun.update).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prisma.jobRun.update).toHaveBeenCalledTimes(1);
+    expect(prisma.jobRun.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: run.id },
+      }),
+    );
+    const summary = getPersistedSummary(prisma);
+    const progress = (summary?.['progress'] as Record<string, unknown>) ?? null;
+    expect(progress).toMatchObject({
+      step: 'phase1_classification',
+      current: 3,
+      total: 10,
+    });
+  });
+
+  it('flushes the latest debounced summary before finishing a run', async () => {
+    jest.useFakeTimers();
+    const { service, prisma } = makeService();
+    const input = makeRunInput();
+    const run = makeCreatedRun({
+      jobId: 'importNetflixHistory',
+      trigger: 'manual',
+      input,
+    });
+    const { ctx, awaitSummaryWrites } = callCreateJobContext(service, {
+      run,
+      input,
+    });
+
+    await ctx.patchSummary({
+      progress: {
+        step: 'phase1_classification',
+        current: 1,
+        total: 10,
+        updatedAt: '2026-04-20T12:00:00.000Z',
+      },
+    });
+    prisma.jobRun.update.mockClear();
+
+    await ctx.patchSummary({
+      progress: {
+        step: 'phase1_classification',
+        current: 4,
+        total: 10,
+        updatedAt: '2026-04-20T12:00:03.000Z',
+      },
+    });
+    expect(prisma.jobRun.update).not.toHaveBeenCalled();
+
+    await awaitSummaryWrites();
+
+    expect(prisma.jobRun.update).toHaveBeenCalledTimes(1);
+    expect(prisma.jobRun.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: run.id },
+      }),
+    );
+    const summary = getPersistedSummary(prisma);
+    const progress = (summary?.['progress'] as Record<string, unknown>) ?? null;
+    expect(progress).toMatchObject({
+      step: 'phase1_classification',
+      current: 4,
+      total: 10,
+    });
   });
 });

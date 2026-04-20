@@ -15,6 +15,7 @@ import {
   JOB_QUEUE_HEARTBEAT_MS,
   JOB_QUEUE_PUMP_INTERVAL_MS,
   JOB_RUN_TIMEOUT_MS,
+  JOB_SUMMARY_WRITE_INTERVAL_MS,
   MAX_PENDING_RUNS_GLOBAL,
   MAX_PENDING_RUNS_PER_JOB,
   QUEUE_COOLDOWN_MS,
@@ -332,6 +333,14 @@ function getProgressSnapshot(summary: JsonObject | null): JsonObject | null {
   if (!summary) return null;
   const raw = (summary as Record<string, unknown>)['progress'];
   return isPlainObject(raw) ? (raw as JsonObject) : null;
+}
+
+function getProgressStep(summary: JsonObject | null): string | null {
+  const progress = getProgressSnapshot(summary);
+  const raw = progress?.['step'];
+  if (typeof raw !== 'string') return null;
+  const step = raw.trim();
+  return step ? step : null;
 }
 
 function resolveQueuedAt(run: {
@@ -1178,11 +1187,39 @@ export class JobsService implements OnModuleInit {
     run: QueueRunRecord;
     input?: JsonObject;
   }) {
+    const { ctx, awaitSummaryWrites } = this.createJobContext(params);
+
+    void this.executeJobRun({
+      run: params.run,
+      ctx,
+      awaitSummaryWrites,
+    }).catch((error) => {
+      this.logger.error(
+        `Unhandled job execution error jobId=${params.run.jobId} runId=${params.run.id}: ${errToMessage(error)}`,
+      );
+    });
+  }
+
+  private createJobContext(params: {
+    run: QueueRunRecord;
+    input?: JsonObject;
+  }) {
     const { run, input } = params;
     let summaryCache: JsonObject | null = asJsonObject(run.summary) ?? null;
+    let persistedSummaryCache: JsonObject | null = summaryCache;
+    let pendingSummarySnapshot: JsonObject | null = summaryCache;
     let summaryWriteChain: Promise<void> = Promise.resolve();
+    let summaryWriteTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastSummaryPersistedAt = Date.now();
+
+    const clearSummaryWriteTimer = () => {
+      if (!summaryWriteTimer) return;
+      clearTimeout(summaryWriteTimer);
+      summaryWriteTimer = null;
+    };
 
     const enqueueSummaryWrite = (snapshot: JsonObject | null) => {
+      pendingSummarySnapshot = snapshot;
       summaryWriteChain = summaryWriteChain
         .catch(() => undefined)
         .then(async () => {
@@ -1190,6 +1227,8 @@ export class JobsService implements OnModuleInit {
             where: { id: run.id },
             data: { summary: snapshot ?? Prisma.DbNull },
           });
+          persistedSummaryCache = snapshot;
+          lastSummaryPersistedAt = Date.now();
         })
         .catch((error) => {
           this.logger.warn(
@@ -1199,7 +1238,43 @@ export class JobsService implements OnModuleInit {
       return summaryWriteChain;
     };
 
+    const scheduleSummaryWrite = () => {
+      if (summaryWriteTimer) return;
+      summaryWriteTimer = setTimeout(() => {
+        const snapshot = pendingSummarySnapshot;
+        clearSummaryWriteTimer();
+        void enqueueSummaryWrite(snapshot);
+      }, JOB_SUMMARY_WRITE_INTERVAL_MS);
+      if (
+        typeof summaryWriteTimer === 'object' &&
+        summaryWriteTimer &&
+        'unref' in summaryWriteTimer
+      ) {
+        summaryWriteTimer.unref();
+      }
+    };
+
+    const persistSummary = async (
+      snapshot: JsonObject | null,
+      force = false,
+    ) => {
+      pendingSummarySnapshot = snapshot;
+      const shouldWriteNow =
+        force ||
+        Date.now() - lastSummaryPersistedAt >= JOB_SUMMARY_WRITE_INTERVAL_MS;
+      if (shouldWriteNow) {
+        clearSummaryWriteTimer();
+        await enqueueSummaryWrite(snapshot);
+        return;
+      }
+      scheduleSummaryWrite();
+    };
+
     const awaitSummaryWrites = async () => {
+      clearSummaryWriteTimer();
+      if (pendingSummarySnapshot !== persistedSummaryCache) {
+        await enqueueSummaryWrite(pendingSummarySnapshot);
+      }
       await summaryWriteChain.catch(() => undefined);
     };
 
@@ -1228,11 +1303,14 @@ export class JobsService implements OnModuleInit {
       getSummary: () => summaryCache,
       setSummary: async (summary) => {
         summaryCache = summary;
-        await enqueueSummaryWrite(summaryCache);
+        await persistSummary(summaryCache, true);
       },
       patchSummary: async (patch) => {
         summaryCache = { ...(summaryCache ?? {}), ...(patch ?? {}) };
-        await enqueueSummaryWrite(summaryCache);
+        const forceImmediateWrite =
+          getProgressStep(summaryCache) !==
+          getProgressStep(persistedSummaryCache);
+        await persistSummary(summaryCache, forceImmediateWrite);
       },
       log,
       debug: (message, context) => log('debug', message, context),
@@ -1241,15 +1319,7 @@ export class JobsService implements OnModuleInit {
       error: (message, context) => log('error', message, context),
     };
 
-    void this.executeJobRun({
-      run,
-      ctx,
-      awaitSummaryWrites,
-    }).catch((error) => {
-      this.logger.error(
-        `Unhandled job execution error jobId=${run.jobId} runId=${run.id}: ${errToMessage(error)}`,
-      );
-    });
+    return { ctx, awaitSummaryWrites };
   }
 
   private async executeJobRun(params: {
