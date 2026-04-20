@@ -104,6 +104,9 @@ export const JOB_QUEUE_HEARTBEAT_LEASE_MS = 45 * 1000;
 /** Fallback poll interval for the persisted queue pump. */
 export const JOB_QUEUE_PUMP_INTERVAL_MS = 10 * 1000;
 
+/** Maximum frequency for persisting in-flight job summary progress updates. */
+export const JOB_SUMMARY_WRITE_INTERVAL_MS = 1000;
+
 /** Cap for third-party HTTP response bodies in log output. */
 export const LOG_BODY_MAX_LENGTH = 200;
 
