@@ -23,7 +23,7 @@ import type {
   JsonValue,
   JobRunResult,
 } from '../jobs/jobs.types';
-import type { JobReportV1 } from '../jobs/job-report-v1';
+import type { JobReportTaskStatus, JobReportV1 } from '../jobs/job-report-v1';
 import { metricRow, issue } from '../jobs/job-report-v1';
 
 const SEED_CAP = 50;
@@ -1777,10 +1777,12 @@ export class ImportService {
 
     // Task 3b: Failed seeds
     if (failedSeeds.length) {
+      const failedSeedTaskStatus: JobReportTaskStatus =
+        movieSeeds.length > 0 || tvSeeds.length > 0 ? 'success' : 'failed';
       tasks.push({
         id: 'failed_seeds',
         title: `${srcLabel} — Failed Titles (${failedSeeds.length})`,
-        status: 'failed',
+        status: failedSeedTaskStatus,
         facts: failedSeeds.map((s) => ({
           label: s.title,
           value: s.error,

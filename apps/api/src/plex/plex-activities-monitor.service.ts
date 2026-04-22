@@ -146,6 +146,36 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
     this.lastError = error ?? this.lastError;
   }
 
+  private logActivityEvent(params: {
+    event: 'added' | 'updated' | 'removed';
+    act: PlexActivityDetails | ActivitySnapshot;
+  }) {
+    const { event, act } = params;
+    const parts = [
+      `event=${event}`,
+      `uuid=${JSON.stringify(act.uuid)}`,
+      `type=${JSON.stringify(act.type)}`,
+    ];
+    if (typeof act.userId === 'number' && Number.isFinite(act.userId)) {
+      parts.push(`userId=${act.userId}`);
+    }
+    const title = (act.title ?? '').trim();
+    if (title) {
+      parts.push(`title=${JSON.stringify(title)}`);
+    }
+    const subtitle = (act.subtitle ?? '').trim();
+    if (subtitle) {
+      parts.push(`subtitle=${JSON.stringify(subtitle)}`);
+    }
+    if (act.progress !== null && Number.isFinite(act.progress)) {
+      parts.push(`progress=${act.progress}`);
+    }
+    if (act.librarySectionId) {
+      parts.push(`librarySectionId=${JSON.stringify(act.librarySectionId)}`);
+    }
+    this.logger.debug(`Plex activity ${parts.join(' ')}`);
+  }
+
   private diffAndLog(next: PlexActivityDetails[]) {
     const now = Date.now();
     const nextUuids = new Set(next.map((a) => a.uuid));
@@ -153,28 +183,11 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
     // Log ended activities.
     for (const [uuid, prev] of this.lastByUuid) {
       if (!nextUuids.has(uuid)) {
-        this.logger.debug({
-          NotificationContainer: {
-            type: 'activity',
-            size: 1,
-            ActivityNotification: [
-              {
-                event: 'removed',
-                uuid,
-                Activity: {
-                  uuid,
-                  type: prev.type,
-                  cancellable: prev.cancellable,
-                  userID: prev.userId,
-                  title: prev.title,
-                  subtitle: prev.subtitle,
-                  progress: prev.progress,
-                  ...(prev.librarySectionId
-                    ? { Context: { librarySectionID: prev.librarySectionId } }
-                    : {}),
-                },
-              },
-            ],
+        this.logActivityEvent({
+          event: 'removed',
+          act: {
+            ...prev,
+            uuid,
           },
         });
         this.lastByUuid.delete(uuid);
@@ -186,30 +199,7 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
       const prev = this.lastByUuid.get(act.uuid) ?? null;
 
       if (!prev) {
-        this.logger.debug({
-          NotificationContainer: {
-            type: 'activity',
-            size: 1,
-            ActivityNotification: [
-              {
-                event: 'added',
-                uuid: act.uuid,
-                Activity: {
-                  uuid: act.uuid,
-                  type: act.type,
-                  cancellable: act.cancellable,
-                  userID: act.userId,
-                  title: act.title,
-                  subtitle: act.subtitle,
-                  progress: act.progress,
-                  ...(act.librarySectionId
-                    ? { Context: { librarySectionID: act.librarySectionId } }
-                    : {}),
-                },
-              },
-            ],
-          },
-        });
+        this.logActivityEvent({ event: 'added', act });
 
         this.logProgressIfUseful({ act, when: 'start' });
 
@@ -234,30 +224,7 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
         act.librarySectionId !== prev.librarySectionId;
 
       if (progressChanged || subtitleChanged || otherChanged) {
-        this.logger.debug({
-          NotificationContainer: {
-            type: 'activity',
-            size: 1,
-            ActivityNotification: [
-              {
-                event: 'updated',
-                uuid: act.uuid,
-                Activity: {
-                  uuid: act.uuid,
-                  type: act.type,
-                  cancellable: act.cancellable,
-                  userID: act.userId,
-                  title: act.title,
-                  subtitle: act.subtitle,
-                  progress: act.progress,
-                  ...(act.librarySectionId
-                    ? { Context: { librarySectionID: act.librarySectionId } }
-                    : {}),
-                },
-              },
-            ],
-          },
-        });
+        this.logActivityEvent({ event: 'updated', act });
 
         this.logProgressIfUseful({
           act,
@@ -288,12 +255,8 @@ export class PlexActivitiesMonitorService implements OnModuleInit {
     if (!raw) return;
     const message = /^scanning\b/i.test(raw) ? raw : `Scanning ${raw}`;
 
-    this.logger.debug({
-      NotificationContainer: {
-        type: 'progress',
-        size: 1,
-        ProgressNotification: [{ message }],
-      },
-    });
+    this.logger.debug(
+      `Plex activity progress message=${JSON.stringify(message)}`,
+    );
   }
 }

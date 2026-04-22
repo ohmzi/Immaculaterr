@@ -110,6 +110,7 @@ type SessionAutomationState = {
 @Injectable()
 export class PlexPollingService implements OnModuleInit {
   private readonly logger = new Logger(PlexPollingService.name);
+  private static readonly INVALID_FUTURE_ADDED_AT_REMINDER_MS = 10 * 60_000;
 
   private readonly enabled = parseBoolEnv(
     process.env.PLEX_POLLING_ENABLED,
@@ -176,6 +177,8 @@ export class PlexPollingService implements OnModuleInit {
 
   private lastRecentlyAddedPollAtMs: number | null = null;
   private lastSeenAddedAtSec: number | null = null;
+  private lastInvalidFutureAddedAtLogAtMs: number | null = null;
+  private lastInvalidFutureAddedAtCount: number | null = null;
   private lastLibraryNewTriggeredAtMs: number | null = null;
   private pendingLibraryNew: {
     newest: PlexRecentlyAddedItem;
@@ -494,9 +497,21 @@ export class PlexPollingService implements OnModuleInit {
       return Math.trunc(raw) > nowSec + MAX_FUTURE_SKEW_SEC ? acc + 1 : acc;
     }, 0);
     if (invalidFutureCount > 0) {
-      this.logger.debug(
-        `Plex recentlyAdded: ${invalidFutureCount} item(s) had invalid future addedAt; using updatedAt fallback`,
-      );
+      const shouldLogInvalidFuture =
+        this.lastInvalidFutureAddedAtCount !== invalidFutureCount ||
+        this.lastInvalidFutureAddedAtLogAtMs === null ||
+        now - this.lastInvalidFutureAddedAtLogAtMs >=
+          PlexPollingService.INVALID_FUTURE_ADDED_AT_REMINDER_MS;
+      if (shouldLogInvalidFuture) {
+        this.logger.debug(
+          `Plex recentlyAdded: ${invalidFutureCount} item(s) had invalid future addedAt; using updatedAt fallback`,
+        );
+        this.lastInvalidFutureAddedAtCount = invalidFutureCount;
+        this.lastInvalidFutureAddedAtLogAtMs = now;
+      }
+    } else {
+      this.lastInvalidFutureAddedAtCount = null;
+      this.lastInvalidFutureAddedAtLogAtMs = null;
     }
 
     const maxAddedAt =
@@ -908,15 +923,23 @@ export class PlexPollingService implements OnModuleInit {
     const state =
       this.nowPlayingLogStateBySessionKey.get(snap.sessionKey) ?? null;
     if (!state) return true;
+    const currentViewOffsetMs =
+      snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null;
     if (this.didNowPlayingMediaChange(state.lastRatingKey, snap.ratingKey)) {
       return true;
     }
-    if (this.didNowPlayingLogIntervalElapse(state.lastLogAtMs, nowMs)) {
+    if (
+      this.didNowPlayingLogIntervalElapse(state.lastLogAtMs, nowMs) &&
+      this.didNowPlayingOffsetChange({
+        previousViewOffsetMs: state.lastViewOffsetMs,
+        currentViewOffsetMs,
+      })
+    ) {
       return true;
     }
     return this.didNowPlayingProgressAdvance({
       previousViewOffsetMs: state.lastViewOffsetMs,
-      currentViewOffsetMs: snap.lastViewOffsetMs ?? snap.viewOffsetMs ?? null,
+      currentViewOffsetMs,
     });
   }
 
@@ -934,6 +957,16 @@ export class PlexPollingService implements OnModuleInit {
     nowMs: number,
   ): boolean {
     return nowMs - lastLogAtMs >= this.nowPlayingLogIntervalMs;
+  }
+
+  private didNowPlayingOffsetChange(params: {
+    previousViewOffsetMs: number | null;
+    currentViewOffsetMs: number | null;
+  }): boolean {
+    const { previousViewOffsetMs, currentViewOffsetMs } = params;
+    if (currentViewOffsetMs === null) return false;
+    if (previousViewOffsetMs === null) return true;
+    return currentViewOffsetMs !== previousViewOffsetMs;
   }
 
   private didNowPlayingProgressAdvance(params: {

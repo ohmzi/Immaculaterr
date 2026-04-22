@@ -408,6 +408,13 @@ describe('ImportService', () => {
       parsedTitle: 'Seed Movie',
       watchedAt: new Date('2026-04-21T00:00:00.000Z'),
     };
+    const recoveredMovieEntry = {
+      tmdbId: 456,
+      mediaType: 'movie',
+      matchedTitle: 'Recovered Seed',
+      parsedTitle: 'Recovered Seed',
+      watchedAt: new Date('2026-04-22T00:00:00.000Z'),
+    };
 
     beforeEach(() => {
       prisma.importedWatchEntry.findMany.mockReset();
@@ -513,6 +520,70 @@ describe('ImportService', () => {
         expect.stringContaining(
           'Seed failed: Seed Movie — TMDB request failed',
         ),
+      );
+    });
+
+    it('keeps the report non-fatal when one seed fails but another seed still completes', async () => {
+      jest.useFakeTimers();
+      prisma.importedWatchEntry.findMany.mockReset();
+      prisma.importedWatchEntry.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([matchedMovieEntry, recoveredMovieEntry])
+        .mockResolvedValueOnce([]);
+      recommendations.buildSimilarMovieTitles
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockResolvedValueOnce({
+          titles: ['Recovered Similar Pick'],
+          strategy: 'tmdb',
+          debug: {},
+        });
+      recommendations.buildChangeOfTasteMovieTitles.mockResolvedValue({
+        titles: ['Recovered Contrast Pick'],
+        strategy: 'tmdb',
+        debug: {},
+      });
+
+      const ctx = mockJobContext({ jobId: 'importPlexHistory' });
+      const runPromise = service.processImportedEntries(ctx, 'plex');
+
+      await jest.advanceTimersByTimeAsync(0);
+      await jest.advanceTimersByTimeAsync(60_000);
+      await jest.advanceTimersByTimeAsync(180_000);
+      const result = await runPromise;
+      const summary = result.summary as unknown as {
+        tasks?: Array<{ id?: string; status?: string }>;
+        issues?: Array<{ level?: string; message?: string }>;
+      };
+
+      expect(recommendations.buildSimilarMovieTitles).toHaveBeenCalledTimes(5);
+      expect(
+        recommendations.buildChangeOfTasteMovieTitles,
+      ).toHaveBeenCalledTimes(1);
+      expect(prisma.importedWatchEntry.updateMany).toHaveBeenCalledTimes(1);
+      expect(summary.tasks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'failed_seeds',
+            status: 'success',
+          }),
+          expect.objectContaining({
+            id: 'movie_seeds',
+            status: 'success',
+          }),
+        ]),
+      );
+      expect(summary.tasks?.some((task) => task.status === 'failed')).toBe(
+        false,
+      );
+      expect(summary.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: 'warn',
+          }),
+        ]),
       );
     });
   });
