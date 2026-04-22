@@ -2064,6 +2064,11 @@ export class JobsService implements OnModuleInit {
       )
       .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
       .join(' ');
-    this.logger.log(`queue.${event}${context ? ` ${context}` : ''}`);
+    const message = `queue.${event}${context ? ` ${context}` : ''}`;
+    if (event === 'heartbeat') {
+      this.logger.debug(message);
+      return;
+    }
+    this.logger.log(message);
   }
 }

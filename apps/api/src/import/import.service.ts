@@ -23,11 +23,12 @@ import type {
   JsonValue,
   JobRunResult,
 } from '../jobs/jobs.types';
-import type { JobReportV1 } from '../jobs/job-report-v1';
+import type { JobReportTaskStatus, JobReportV1 } from '../jobs/job-report-v1';
 import { metricRow, issue } from '../jobs/job-report-v1';
 
 const SEED_CAP = 50;
 const TMDB_THROTTLE_MS = 200;
+const TMDB_SEED_RETRY_DELAYS_MS = [0, 60_000, 180_000] as const;
 const NETFLIX_IMPORT_DB_BATCH_SIZE = 200;
 const NETFLIX_IMPORT_SIMILAR_BASE = 'Netflix Import Picks';
 const NETFLIX_IMPORT_CONTRAST_BASE = 'Netflix Import: Change of Taste';
@@ -35,6 +36,41 @@ const PLEX_HISTORY_SIMILAR_BASE = 'Plex History Picks';
 const PLEX_HISTORY_CONTRAST_BASE = 'Plex History: Change of Taste';
 
 type ImportSource = 'netflix' | 'plex';
+
+type RecommendationOpenAiConfig = {
+  apiKey: string;
+  model?: string | null;
+};
+
+type RecommendationGoogleConfig = {
+  apiKey: string;
+  searchEngineId: string;
+};
+
+type SeedRecommendationProviders = {
+  openai: RecommendationOpenAiConfig | null;
+  google: RecommendationGoogleConfig | null;
+};
+
+type SeedResult = {
+  title: string;
+  tmdbId: number;
+  similarTitles: string[];
+  changeOfTasteTitles: string[];
+};
+
+type RecItem = {
+  title: string;
+  tmdbId?: number;
+  tvdbId?: number;
+  seedTitle: string;
+};
+
+type BuiltSeedRecommendations = {
+  seedResult: SeedResult;
+  similarTitles: string[];
+  changeOfTasteTitles: string[];
+};
 
 function importSourceLabel(source: ImportSource): string {
   if (source === 'plex') return 'Plex History';
@@ -98,6 +134,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function parseHttpStatus(message: string): number | null {
+  const match = message.match(/\bHTTP\s+(\d{3})\b/);
+  if (!match) return null;
+  const status = Number.parseInt(match[1], 10);
+  return Number.isFinite(status) ? status : null;
+}
+
+function isRetryableTmdbSeedError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  if (!message.includes('TMDB request failed')) return false;
+  const status = parseHttpStatus(message);
+  if (status !== null) return status >= 500;
+  return true;
+}
+
+function formatRetryDelay(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const batches: T[][] = [];
   for (let index = 0; index < items.length; index += size) {
@@ -143,6 +208,207 @@ export class ImportService {
     private readonly immaculateTaste: ImmaculateTasteCollectionService,
     private readonly immaculateTasteTv: ImmaculateTasteShowCollectionService,
   ) {}
+
+  private async runSeedWithTransientTmdbRetries<T>(
+    ctx: JobContext,
+    seedTitle: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const totalAttempts = TMDB_SEED_RETRY_DELAYS_MS.length + 1;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableTmdbSeedError(error) || attempt === totalAttempts) {
+          throw error;
+        }
+
+        const delayMs = TMDB_SEED_RETRY_DELAYS_MS[attempt - 1] ?? 0;
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+
+        await ctx.warn(
+          delayMs > 0
+            ? `Seed transient TMDB failure: ${seedTitle} — retrying in ${formatRetryDelay(delayMs)}`
+            : `Seed transient TMDB failure: ${seedTitle} — retrying immediately`,
+          {
+            attempt,
+            totalAttempts,
+            delayMs,
+            error: errorMessage,
+            seedTitle,
+          },
+        );
+
+        if (delayMs > 0) {
+          await sleep(delayMs);
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(
+          typeof lastError === 'string' && lastError.trim()
+            ? lastError
+            : 'Unknown seed failure',
+        );
+  }
+
+  private buildSeedRecommendationProviders(params: {
+    openAiEnabled: boolean;
+    openAiApiKey: string;
+    openAiModel: string | null;
+    googleEnabled: boolean;
+    googleApiKey: string;
+    googleSearchEngineId: string;
+  }): SeedRecommendationProviders {
+    const {
+      openAiEnabled,
+      openAiApiKey,
+      openAiModel,
+      googleEnabled,
+      googleApiKey,
+      googleSearchEngineId,
+    } = params;
+
+    return {
+      openai: openAiEnabled
+        ? { apiKey: openAiApiKey, model: openAiModel }
+        : null,
+      google:
+        googleEnabled && googleApiKey && googleSearchEngineId
+          ? {
+              apiKey: googleApiKey,
+              searchEngineId: googleSearchEngineId,
+            }
+          : null,
+    };
+  }
+
+  private async buildMovieSeedRecommendations(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    tmdbId: number;
+    tmdbApiKey: string;
+    recCount: number;
+    webContextFraction: number;
+    upcomingPercent: number;
+    providers: SeedRecommendationProviders;
+  }): Promise<BuiltSeedRecommendations> {
+    const {
+      ctx,
+      seedTitle,
+      tmdbId,
+      tmdbApiKey,
+      recCount,
+      webContextFraction,
+      upcomingPercent,
+      providers,
+    } = params;
+    const similar = await this.recommendations.buildSimilarMovieTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      webContextFraction,
+      upcomingPercent,
+      openai: providers.openai,
+      google: providers.google,
+    });
+    const contrast = await this.recommendations.buildChangeOfTasteMovieTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      upcomingPercent,
+      openai: providers.openai,
+    });
+
+    return {
+      seedResult: {
+        title: seedTitle,
+        tmdbId,
+        similarTitles: [...similar.titles].sort(),
+        changeOfTasteTitles: [...contrast.titles].sort(),
+      },
+      similarTitles: similar.titles,
+      changeOfTasteTitles: contrast.titles,
+    };
+  }
+
+  private async buildTvSeedRecommendations(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    tmdbId: number;
+    tmdbApiKey: string;
+    recCount: number;
+    webContextFraction: number;
+    upcomingPercent: number;
+    providers: SeedRecommendationProviders;
+  }): Promise<BuiltSeedRecommendations> {
+    const {
+      ctx,
+      seedTitle,
+      tmdbId,
+      tmdbApiKey,
+      recCount,
+      webContextFraction,
+      upcomingPercent,
+      providers,
+    } = params;
+    const similar = await this.recommendations.buildSimilarTvTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      webContextFraction,
+      upcomingPercent,
+      openai: providers.openai,
+      google: providers.google,
+    });
+    const contrast = await this.recommendations.buildChangeOfTasteTvTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      upcomingPercent,
+      openai: providers.openai,
+    });
+
+    return {
+      seedResult: {
+        title: seedTitle,
+        tmdbId,
+        similarTitles: [...similar.titles].sort(),
+        changeOfTasteTitles: [...contrast.titles].sort(),
+      },
+      similarTitles: similar.titles,
+      changeOfTasteTitles: contrast.titles,
+    };
+  }
+
+  private appendSeedRecommendations(params: {
+    seedTitle: string;
+    result: BuiltSeedRecommendations;
+    similarPool: RecItem[];
+    contrastPool: RecItem[];
+    seedResults: SeedResult[];
+  }) {
+    const { seedTitle, result, similarPool, contrastPool, seedResults } =
+      params;
+
+    for (const title of result.similarTitles) {
+      similarPool.push({ title, seedTitle });
+    }
+    for (const title of result.changeOfTasteTitles) {
+      contrastPool.push({ title, seedTitle });
+    }
+    seedResults.push(result.seedResult);
+  }
 
   async fetchAndStorePlexHistory(
     userId: string,
@@ -857,28 +1123,22 @@ export class ImportService {
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ?? 0.3;
 
-    type SeedResult = {
-      title: string;
-      tmdbId: number;
-      similarTitles: string[];
-      changeOfTasteTitles: string[];
-    };
-
     const movieSeeds: SeedResult[] = [];
     const tvSeeds: SeedResult[] = [];
     const failedSeeds: Array<{ title: string; error: string }> = [];
-
-    type RecItem = {
-      title: string;
-      tmdbId?: number;
-      tvdbId?: number;
-      seedTitle: string;
-    };
 
     const movieSimilarPool: RecItem[] = [];
     const movieContrastPool: RecItem[] = [];
     const tvSimilarPool: RecItem[] = [];
     const tvContrastPool: RecItem[] = [];
+    const seedRecommendationProviders = this.buildSeedRecommendationProviders({
+      openAiEnabled,
+      openAiApiKey,
+      openAiModel,
+      googleEnabled,
+      googleApiKey,
+      googleSearchEngineId,
+    });
 
     for (let i = 0; i < matchedEntries.length; i++) {
       const entry = matchedEntries[i];
@@ -896,100 +1156,54 @@ export class ImportService {
       });
 
       try {
-        if (isMovie && movieLibKeys.length > 0) {
-          const similar = await this.recommendations.buildSimilarMovieTitles({
-            ctx,
-            seedTitle,
-            tmdbApiKey,
-            count: recCount,
-            webContextFraction,
-            upcomingPercent,
-            openai: openAiEnabled
-              ? { apiKey: openAiApiKey, model: openAiModel }
-              : null,
-            google:
-              googleEnabled && googleApiKey && googleSearchEngineId
-                ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
-                : null,
-          });
-
-          const contrast =
-            await this.recommendations.buildChangeOfTasteMovieTitles({
+        await this.runSeedWithTransientTmdbRetries(ctx, seedTitle, async () => {
+          if (isMovie && movieLibKeys.length > 0) {
+            const result = await this.buildMovieSeedRecommendations({
               ctx,
               seedTitle,
+              tmdbId: entry.tmdbId,
               tmdbApiKey,
-              count: recCount,
+              recCount,
+              webContextFraction,
               upcomingPercent,
-              openai: openAiEnabled
-                ? { apiKey: openAiApiKey, model: openAiModel }
-                : null,
+              providers: seedRecommendationProviders,
             });
-
-          for (const t of similar.titles) {
-            movieSimilarPool.push({ title: t, seedTitle });
-          }
-          for (const t of contrast.titles) {
-            movieContrastPool.push({ title: t, seedTitle });
-          }
-
-          movieSeeds.push({
-            title: seedTitle,
-            tmdbId: entry.tmdbId,
-            similarTitles: [...similar.titles].sort(),
-            changeOfTasteTitles: [...contrast.titles].sort(),
-          });
-        } else if (!isMovie && tvLibKeys.length > 0) {
-          const similar = await this.recommendations.buildSimilarTvTitles({
-            ctx,
-            seedTitle,
-            tmdbApiKey,
-            count: recCount,
-            webContextFraction,
-            upcomingPercent,
-            openai: openAiEnabled
-              ? { apiKey: openAiApiKey, model: openAiModel }
-              : null,
-            google:
-              googleEnabled && googleApiKey && googleSearchEngineId
-                ? { apiKey: googleApiKey, searchEngineId: googleSearchEngineId }
-                : null,
-          });
-
-          const contrast =
-            await this.recommendations.buildChangeOfTasteTvTitles({
+            this.appendSeedRecommendations({
+              seedTitle,
+              result,
+              similarPool: movieSimilarPool,
+              contrastPool: movieContrastPool,
+              seedResults: movieSeeds,
+            });
+          } else if (!isMovie && tvLibKeys.length > 0) {
+            const result = await this.buildTvSeedRecommendations({
               ctx,
               seedTitle,
+              tmdbId: entry.tmdbId,
               tmdbApiKey,
-              count: recCount,
+              recCount,
+              webContextFraction,
               upcomingPercent,
-              openai: openAiEnabled
-                ? { apiKey: openAiApiKey, model: openAiModel }
-                : null,
+              providers: seedRecommendationProviders,
             });
-
-          for (const t of similar.titles) {
-            tvSimilarPool.push({ title: t, seedTitle });
+            this.appendSeedRecommendations({
+              seedTitle,
+              result,
+              similarPool: tvSimilarPool,
+              contrastPool: tvContrastPool,
+              seedResults: tvSeeds,
+            });
           }
-          for (const t of contrast.titles) {
-            tvContrastPool.push({ title: t, seedTitle });
-          }
 
-          tvSeeds.push({
-            title: seedTitle,
-            tmdbId: entry.tmdbId,
-            similarTitles: [...similar.titles].sort(),
-            changeOfTasteTitles: [...contrast.titles].sort(),
+          await this.prisma.importedWatchEntry.updateMany({
+            where: {
+              userId,
+              source,
+              tmdbId: entry.tmdbId,
+              status: 'matched',
+            },
+            data: { status: 'processed' },
           });
-        }
-
-        await this.prisma.importedWatchEntry.updateMany({
-          where: {
-            userId,
-            source,
-            tmdbId: entry.tmdbId,
-            status: 'matched',
-          },
-          data: { status: 'processed' },
         });
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -1690,10 +1904,12 @@ export class ImportService {
 
     // Task 3b: Failed seeds
     if (failedSeeds.length) {
+      const failedSeedTaskStatus: JobReportTaskStatus =
+        movieSeeds.length > 0 || tvSeeds.length > 0 ? 'success' : 'failed';
       tasks.push({
         id: 'failed_seeds',
         title: `${srcLabel} — Failed Titles (${failedSeeds.length})`,
-        status: 'failed',
+        status: failedSeedTaskStatus,
         facts: failedSeeds.map((s) => ({
           label: s.title,
           value: s.error,

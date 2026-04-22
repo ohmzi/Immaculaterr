@@ -10,6 +10,21 @@ type InternalPlexPollingService = {
   }): Promise<Record<string, unknown>>;
 };
 
+type InternalPlexPollingLoggingService = {
+  shouldLogNowPlaying(snap: Record<string, unknown>, nowMs: number): boolean;
+  updateNowPlayingLogState(snap: Record<string, unknown>, nowMs: number): void;
+  pollRecentlyAdded(args: {
+    userId: string;
+    baseUrl: string;
+    token: string;
+    settings: Record<string, unknown>;
+  }): Promise<void>;
+  lastRecentlyAddedPollAtMs: number | null;
+  logger: {
+    debug: (...args: unknown[]) => void;
+  };
+};
+
 function makeAlreadyProcessedConflict() {
   return new ConflictException({
     reason: 'already_processed',
@@ -62,6 +77,7 @@ function makeService() {
   return {
     service,
     jobsService,
+    plexServer,
     plexUsers,
     webhooksService,
   };
@@ -349,5 +365,94 @@ describe('PlexPollingService durable auto-run dedupe', () => {
     const differentLibraryFingerprint = getRunJobFingerprint(jobsService, 4);
     expect(baseFingerprint).not.toBe(differentUserFingerprint);
     expect(baseFingerprint).not.toBe(differentLibraryFingerprint);
+  });
+});
+
+describe('PlexPollingService log throttling', () => {
+  it('does not emit interval-only now-playing progress logs when playback offset is unchanged', () => {
+    const { service } = makeService();
+    const internalService =
+      service as unknown as InternalPlexPollingLoggingService;
+    const baselineMs = 1_000;
+    const baselineSnap = makeMovieSnap({
+      sessionKey: 'session-static',
+      viewOffsetMs: 95_000,
+      lastViewOffsetMs: 95_000,
+    });
+
+    expect(internalService.shouldLogNowPlaying(baselineSnap, baselineMs)).toBe(
+      true,
+    );
+    internalService.updateNowPlayingLogState(baselineSnap, baselineMs);
+
+    expect(
+      internalService.shouldLogNowPlaying(
+        makeMovieSnap({
+          sessionKey: 'session-static',
+          viewOffsetMs: 95_000,
+          lastViewOffsetMs: 95_000,
+        }),
+        baselineMs + 31_000,
+      ),
+    ).toBe(false);
+
+    expect(
+      internalService.shouldLogNowPlaying(
+        makeMovieSnap({
+          sessionKey: 'session-static',
+          viewOffsetMs: 125_000,
+          lastViewOffsetMs: 125_000,
+        }),
+        baselineMs + 31_000,
+      ),
+    ).toBe(true);
+  });
+
+  it('logs repeated invalid future recentlyAdded timestamps only once until the reminder window changes', async () => {
+    const { service, plexServer } = makeService();
+    const internalService =
+      service as unknown as InternalPlexPollingLoggingService;
+    const debugSpy = jest.spyOn(internalService.logger, 'debug');
+    const nowSec = Math.floor(Date.now() / 1000);
+    plexServer.listRecentlyAdded.mockResolvedValue([
+      {
+        addedAt: nowSec + 2 * 24 * 60 * 60,
+        updatedAt: nowSec,
+        type: 'movie',
+        title: 'Future Timestamp Movie',
+        ratingKey: 'movie-1',
+        librarySectionId: 1,
+      },
+    ]);
+
+    const settings = makeSettings({
+      jobs: {
+        webhookEnabled: {
+          mediaAddedCleanup: true,
+        },
+      },
+    });
+
+    await internalService.pollRecentlyAdded({
+      userId: 'admin',
+      baseUrl: 'http://plex:32400',
+      token: 'plex-token',
+      settings,
+    });
+    internalService.lastRecentlyAddedPollAtMs = null;
+    await internalService.pollRecentlyAdded({
+      userId: 'admin',
+      baseUrl: 'http://plex:32400',
+      token: 'plex-token',
+      settings,
+    });
+
+    const invalidFutureLogs = debugSpy.mock.calls.filter(([message]) => {
+      return (
+        typeof message === 'string' &&
+        message.includes('invalid future addedAt')
+      );
+    });
+    expect(invalidFutureLogs).toHaveLength(1);
   });
 });

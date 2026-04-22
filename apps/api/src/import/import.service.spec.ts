@@ -25,11 +25,60 @@ function mockJobContext(overrides: Partial<JobContext> = {}): JobContext {
   } as unknown as JobContext;
 }
 
+function buildTransientTmdbSeedError(): Error {
+  return new Error(
+    'TMDB request failed: HTTP 500 {"success":false,"status_code":11,"status_message":"Internal error: Something went wrong, contact TMDb."}',
+  );
+}
+
+type ImportedWatchEntryMock = {
+  findMany: jest.Mock;
+  create: jest.Mock;
+  createMany: jest.Mock;
+  updateMany: jest.Mock;
+  count: jest.Mock;
+  groupBy: jest.Mock;
+  update: jest.Mock;
+};
+
+type PrismaMock = {
+  importedWatchEntry: ImportedWatchEntryMock;
+  plexUser: { findMany: jest.Mock };
+  immaculateTasteMovieLibrary: { findMany: jest.Mock };
+  immaculateTasteShowLibrary: { findMany: jest.Mock };
+};
+
+type CreateEntryCall = {
+  data: {
+    source: string;
+    status: string;
+    mediaType: string;
+    tmdbId: number;
+    tvdbId?: number | null;
+  };
+};
+
+type FindManyCall = {
+  where?: {
+    source?: string;
+    status?: string;
+  };
+};
+
 describe('ImportService', () => {
   let service: ImportService;
-  let prisma: { importedWatchEntry: Record<string, jest.Mock> };
+  let prisma: PrismaMock;
   let settingsService: { getInternalSettings: jest.Mock };
+  let recommendations: {
+    buildSimilarMovieTitles: jest.Mock;
+    buildChangeOfTasteMovieTitles: jest.Mock;
+    buildSimilarTvTitles: jest.Mock;
+    buildChangeOfTasteTvTitles: jest.Mock;
+  };
+  let watchedRefresher: { refresh: jest.Mock };
   let plexServer: Record<string, jest.Mock>;
+  let immaculateTaste: { applyPointsUpdate: jest.Mock };
+  let immaculateTasteTv: { applyPointsUpdate: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -55,7 +104,18 @@ describe('ImportService', () => {
       immaculateTasteShowLibrary: {
         findMany: jest.fn().mockResolvedValue([]),
       },
-    } as unknown as { importedWatchEntry: Record<string, jest.Mock> };
+    };
+
+    recommendations = {
+      buildSimilarMovieTitles: jest.fn(),
+      buildChangeOfTasteMovieTitles: jest.fn(),
+      buildSimilarTvTitles: jest.fn(),
+      buildChangeOfTasteTvTitles: jest.fn(),
+    };
+
+    watchedRefresher = {
+      refresh: jest.fn().mockResolvedValue(undefined),
+    };
 
     settingsService = {
       getInternalSettings: jest.fn().mockResolvedValue({
@@ -84,21 +144,43 @@ describe('ImportService', () => {
       getMachineIdentifier: jest.fn().mockResolvedValue('abc123'),
     };
 
+    immaculateTaste = {
+      applyPointsUpdate: jest.fn().mockResolvedValue(undefined),
+    };
+
+    immaculateTasteTv = {
+      applyPointsUpdate: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ImportService,
         { provide: PrismaService, useValue: prisma },
         { provide: TmdbService, useValue: {} },
-        { provide: RecommendationsService, useValue: {} },
+        { provide: RecommendationsService, useValue: recommendations },
         { provide: SettingsService, useValue: settingsService },
-        { provide: WatchedCollectionsRefresherService, useValue: {} },
+        {
+          provide: WatchedCollectionsRefresherService,
+          useValue: watchedRefresher,
+        },
         { provide: PlexServerService, useValue: plexServer },
-        { provide: ImmaculateTasteCollectionService, useValue: {} },
-        { provide: ImmaculateTasteShowCollectionService, useValue: {} },
+        {
+          provide: ImmaculateTasteCollectionService,
+          useValue: immaculateTaste,
+        },
+        {
+          provide: ImmaculateTasteShowCollectionService,
+          useValue: immaculateTasteTv,
+        },
       ],
     }).compile();
 
     service = module.get<ImportService>(ImportService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   describe('fetchAndStorePlexHistory', () => {
@@ -121,13 +203,16 @@ describe('ImportService', () => {
 
       expect(prisma.importedWatchEntry.create).toHaveBeenCalledTimes(3);
 
-      const movieCall = prisma.importedWatchEntry.create.mock.calls[0][0];
+      const createCalls = prisma.importedWatchEntry.create.mock.calls as [
+        CreateEntryCall,
+      ][];
+      const movieCall = createCalls[0][0];
       expect(movieCall.data.source).toBe('plex');
       expect(movieCall.data.status).toBe('matched');
       expect(movieCall.data.mediaType).toBe('movie');
       expect(movieCall.data.tmdbId).toBe(100);
 
-      const tvCall = prisma.importedWatchEntry.create.mock.calls[2][0];
+      const tvCall = createCalls[2][0];
       expect(tvCall.data.source).toBe('plex');
       expect(tvCall.data.status).toBe('matched');
       expect(tvCall.data.mediaType).toBe('tv');
@@ -147,9 +232,11 @@ describe('ImportService', () => {
       await service.fetchAndStorePlexHistory('test-user-id', ctx);
 
       expect(prisma.importedWatchEntry.create).toHaveBeenCalledTimes(1);
-      expect(
-        prisma.importedWatchEntry.create.mock.calls[0][0].data.tmdbId,
-      ).toBe(200);
+      const createCalls = prisma.importedWatchEntry.create.mock.calls as [
+        CreateEntryCall,
+      ][];
+      const createCall = createCalls[0][0];
+      expect(createCall.data.tmdbId).toBe(200);
     });
 
     it('should handle empty history gracefully', async () => {
@@ -280,9 +367,11 @@ describe('ImportService', () => {
       const ctx = mockJobContext({ jobId: 'importPlexHistory' });
       await service.processImportedEntries(ctx, 'plex');
 
-      const pendingCall = prisma.importedWatchEntry.findMany.mock.calls.find(
-        (call: Record<string, Record<string, Record<string, unknown>>>[]) =>
-          call[0]?.where?.status === 'pending',
+      const findManyCalls = prisma.importedWatchEntry.findMany.mock.calls as [
+        FindManyCall,
+      ][];
+      const pendingCall = findManyCalls.find(
+        (call) => call[0]?.where?.status === 'pending',
       );
       expect(pendingCall).toBeDefined();
       if (!pendingCall) {
@@ -297,15 +386,205 @@ describe('ImportService', () => {
       const ctx = mockJobContext({ jobId: 'importNetflixHistory' });
       await service.processImportedEntries(ctx);
 
-      const pendingCall = prisma.importedWatchEntry.findMany.mock.calls.find(
-        (call: Record<string, Record<string, Record<string, unknown>>>[]) =>
-          call[0]?.where?.status === 'pending',
+      const findManyCalls = prisma.importedWatchEntry.findMany.mock.calls as [
+        FindManyCall,
+      ][];
+      const pendingCall = findManyCalls.find(
+        (call) => call[0]?.where?.status === 'pending',
       );
       expect(pendingCall).toBeDefined();
       if (!pendingCall) {
         throw new Error('Expected pending query for netflix source');
       }
       expect(pendingCall[0].where.source).toBe('netflix');
+    });
+  });
+
+  describe('processImportedEntries transient TMDB retries', () => {
+    const matchedMovieEntry = {
+      tmdbId: 123,
+      mediaType: 'movie',
+      matchedTitle: 'Seed Movie',
+      parsedTitle: 'Seed Movie',
+      watchedAt: new Date('2026-04-21T00:00:00.000Z'),
+    };
+    const recoveredMovieEntry = {
+      tmdbId: 456,
+      mediaType: 'movie',
+      matchedTitle: 'Recovered Seed',
+      parsedTitle: 'Recovered Seed',
+      watchedAt: new Date('2026-04-22T00:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      prisma.importedWatchEntry.findMany.mockReset();
+      prisma.importedWatchEntry.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([matchedMovieEntry])
+        .mockResolvedValueOnce([]);
+      prisma.importedWatchEntry.updateMany.mockResolvedValue({ count: 1 });
+      jest
+        .spyOn(service as never, 'resolveAndDedup' as never)
+        .mockResolvedValue([]);
+    });
+
+    it('retries transient TMDB seed failures immediately, then after 1 minute and 3 minutes before succeeding', async () => {
+      jest.useFakeTimers();
+      recommendations.buildSimilarMovieTitles
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockResolvedValue({
+          titles: ['Recovered Similar Pick'],
+          strategy: 'tmdb',
+          debug: {},
+        });
+      recommendations.buildChangeOfTasteMovieTitles.mockResolvedValue({
+        titles: ['Recovered Contrast Pick'],
+        strategy: 'tmdb',
+        debug: {},
+      });
+
+      const ctx = mockJobContext({ jobId: 'importPlexHistory' });
+      const runPromise = service.processImportedEntries(ctx, 'plex');
+
+      await jest.advanceTimersByTimeAsync(0);
+      await jest.advanceTimersByTimeAsync(60_000);
+      await jest.advanceTimersByTimeAsync(180_000);
+      const result = await runPromise;
+      const summary = result.summary as unknown as {
+        tasks?: Array<{ id?: string; status?: string }>;
+      };
+
+      expect(recommendations.buildSimilarMovieTitles).toHaveBeenCalledTimes(4);
+      expect(
+        recommendations.buildChangeOfTasteMovieTitles,
+      ).toHaveBeenCalledTimes(1);
+      expect(prisma.importedWatchEntry.updateMany).toHaveBeenCalledTimes(1);
+      expect(ctx.warn).toHaveBeenCalledWith(
+        'Seed transient TMDB failure: Seed Movie — retrying immediately',
+        expect.objectContaining({ attempt: 1, totalAttempts: 4, delayMs: 0 }),
+      );
+      expect(ctx.warn).toHaveBeenCalledWith(
+        'Seed transient TMDB failure: Seed Movie — retrying in 1 minute',
+        expect.objectContaining({
+          attempt: 2,
+          totalAttempts: 4,
+          delayMs: 60_000,
+        }),
+      );
+      expect(ctx.warn).toHaveBeenCalledWith(
+        'Seed transient TMDB failure: Seed Movie — retrying in 3 minutes',
+        expect.objectContaining({
+          attempt: 3,
+          totalAttempts: 4,
+          delayMs: 180_000,
+        }),
+      );
+      expect(summary.tasks?.some((task) => task.id === 'failed_seeds')).toBe(
+        false,
+      );
+    });
+
+    it('marks the seed failed after the final transient TMDB retry is exhausted', async () => {
+      jest.useFakeTimers();
+      recommendations.buildSimilarMovieTitles.mockRejectedValue(
+        buildTransientTmdbSeedError(),
+      );
+
+      const ctx = mockJobContext({ jobId: 'importPlexHistory' });
+      const runPromise = service.processImportedEntries(ctx, 'plex');
+
+      await jest.advanceTimersByTimeAsync(0);
+      await jest.advanceTimersByTimeAsync(60_000);
+      await jest.advanceTimersByTimeAsync(180_000);
+      const result = await runPromise;
+      const summary = result.summary as unknown as {
+        tasks?: Array<{ id?: string; status?: string }>;
+      };
+
+      expect(recommendations.buildSimilarMovieTitles).toHaveBeenCalledTimes(4);
+      expect(
+        recommendations.buildChangeOfTasteMovieTitles,
+      ).not.toHaveBeenCalled();
+      expect(prisma.importedWatchEntry.updateMany).not.toHaveBeenCalled();
+      expect(summary.tasks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'failed_seeds',
+            status: 'failed',
+          }),
+        ]),
+      );
+      expect(ctx.warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Seed failed: Seed Movie — TMDB request failed',
+        ),
+      );
+    });
+
+    it('keeps the report non-fatal when one seed fails but another seed still completes', async () => {
+      jest.useFakeTimers();
+      prisma.importedWatchEntry.findMany.mockReset();
+      prisma.importedWatchEntry.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([matchedMovieEntry, recoveredMovieEntry])
+        .mockResolvedValueOnce([]);
+      recommendations.buildSimilarMovieTitles
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockRejectedValueOnce(buildTransientTmdbSeedError())
+        .mockResolvedValueOnce({
+          titles: ['Recovered Similar Pick'],
+          strategy: 'tmdb',
+          debug: {},
+        });
+      recommendations.buildChangeOfTasteMovieTitles.mockResolvedValue({
+        titles: ['Recovered Contrast Pick'],
+        strategy: 'tmdb',
+        debug: {},
+      });
+
+      const ctx = mockJobContext({ jobId: 'importPlexHistory' });
+      const runPromise = service.processImportedEntries(ctx, 'plex');
+
+      await jest.advanceTimersByTimeAsync(0);
+      await jest.advanceTimersByTimeAsync(60_000);
+      await jest.advanceTimersByTimeAsync(180_000);
+      const result = await runPromise;
+      const summary = result.summary as unknown as {
+        tasks?: Array<{ id?: string; status?: string }>;
+        issues?: Array<{ level?: string; message?: string }>;
+      };
+
+      expect(recommendations.buildSimilarMovieTitles).toHaveBeenCalledTimes(5);
+      expect(
+        recommendations.buildChangeOfTasteMovieTitles,
+      ).toHaveBeenCalledTimes(1);
+      expect(prisma.importedWatchEntry.updateMany).toHaveBeenCalledTimes(1);
+      expect(summary.tasks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'failed_seeds',
+            status: 'success',
+          }),
+          expect.objectContaining({
+            id: 'movie_seeds',
+            status: 'success',
+          }),
+        ]),
+      );
+      expect(summary.tasks?.some((task) => task.status === 'failed')).toBe(
+        false,
+      );
+      expect(summary.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: 'warn',
+          }),
+        ]),
+      );
     });
   });
 });
