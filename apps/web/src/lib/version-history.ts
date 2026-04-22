@@ -37,7 +37,7 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.8-beta-2',
+    version: '1.7.8-beta-3',
     popupHighlights: [
       'Netflix import no longer fails when legacy databases are missing the releaseDate column.',
       'Startup self-repair now restores missing columns and tables across JobRun, JobQueueState, RejectedSuggestion, LoginThrottle, and UserRecovery.',
