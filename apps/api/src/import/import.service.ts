@@ -37,6 +37,41 @@ const PLEX_HISTORY_CONTRAST_BASE = 'Plex History: Change of Taste';
 
 type ImportSource = 'netflix' | 'plex';
 
+type RecommendationOpenAiConfig = {
+  apiKey: string;
+  model?: string | null;
+};
+
+type RecommendationGoogleConfig = {
+  apiKey: string;
+  searchEngineId: string;
+};
+
+type SeedRecommendationProviders = {
+  openai: RecommendationOpenAiConfig | null;
+  google: RecommendationGoogleConfig | null;
+};
+
+type SeedResult = {
+  title: string;
+  tmdbId: number;
+  similarTitles: string[];
+  changeOfTasteTitles: string[];
+};
+
+type RecItem = {
+  title: string;
+  tmdbId?: number;
+  tvdbId?: number;
+  seedTitle: string;
+};
+
+type BuiltSeedRecommendations = {
+  seedResult: SeedResult;
+  similarTitles: string[];
+  changeOfTasteTitles: string[];
+};
+
 function importSourceLabel(source: ImportSource): string {
   if (source === 'plex') return 'Plex History';
   return 'Netflix Import';
@@ -221,6 +256,158 @@ export class ImportService {
             ? lastError
             : 'Unknown seed failure',
         );
+  }
+
+  private buildSeedRecommendationProviders(params: {
+    openAiEnabled: boolean;
+    openAiApiKey: string;
+    openAiModel: string | null;
+    googleEnabled: boolean;
+    googleApiKey: string;
+    googleSearchEngineId: string;
+  }): SeedRecommendationProviders {
+    const {
+      openAiEnabled,
+      openAiApiKey,
+      openAiModel,
+      googleEnabled,
+      googleApiKey,
+      googleSearchEngineId,
+    } = params;
+
+    return {
+      openai: openAiEnabled
+        ? { apiKey: openAiApiKey, model: openAiModel }
+        : null,
+      google:
+        googleEnabled && googleApiKey && googleSearchEngineId
+          ? {
+              apiKey: googleApiKey,
+              searchEngineId: googleSearchEngineId,
+            }
+          : null,
+    };
+  }
+
+  private async buildMovieSeedRecommendations(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    tmdbId: number;
+    tmdbApiKey: string;
+    recCount: number;
+    webContextFraction: number;
+    upcomingPercent: number;
+    providers: SeedRecommendationProviders;
+  }): Promise<BuiltSeedRecommendations> {
+    const {
+      ctx,
+      seedTitle,
+      tmdbId,
+      tmdbApiKey,
+      recCount,
+      webContextFraction,
+      upcomingPercent,
+      providers,
+    } = params;
+    const similar = await this.recommendations.buildSimilarMovieTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      webContextFraction,
+      upcomingPercent,
+      openai: providers.openai,
+      google: providers.google,
+    });
+    const contrast = await this.recommendations.buildChangeOfTasteMovieTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      upcomingPercent,
+      openai: providers.openai,
+    });
+
+    return {
+      seedResult: {
+        title: seedTitle,
+        tmdbId,
+        similarTitles: [...similar.titles].sort(),
+        changeOfTasteTitles: [...contrast.titles].sort(),
+      },
+      similarTitles: similar.titles,
+      changeOfTasteTitles: contrast.titles,
+    };
+  }
+
+  private async buildTvSeedRecommendations(params: {
+    ctx: JobContext;
+    seedTitle: string;
+    tmdbId: number;
+    tmdbApiKey: string;
+    recCount: number;
+    webContextFraction: number;
+    upcomingPercent: number;
+    providers: SeedRecommendationProviders;
+  }): Promise<BuiltSeedRecommendations> {
+    const {
+      ctx,
+      seedTitle,
+      tmdbId,
+      tmdbApiKey,
+      recCount,
+      webContextFraction,
+      upcomingPercent,
+      providers,
+    } = params;
+    const similar = await this.recommendations.buildSimilarTvTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      webContextFraction,
+      upcomingPercent,
+      openai: providers.openai,
+      google: providers.google,
+    });
+    const contrast = await this.recommendations.buildChangeOfTasteTvTitles({
+      ctx,
+      seedTitle,
+      tmdbApiKey,
+      count: recCount,
+      upcomingPercent,
+      openai: providers.openai,
+    });
+
+    return {
+      seedResult: {
+        title: seedTitle,
+        tmdbId,
+        similarTitles: [...similar.titles].sort(),
+        changeOfTasteTitles: [...contrast.titles].sort(),
+      },
+      similarTitles: similar.titles,
+      changeOfTasteTitles: contrast.titles,
+    };
+  }
+
+  private appendSeedRecommendations(params: {
+    seedTitle: string;
+    result: BuiltSeedRecommendations;
+    similarPool: RecItem[];
+    contrastPool: RecItem[];
+    seedResults: SeedResult[];
+  }) {
+    const { seedTitle, result, similarPool, contrastPool, seedResults } =
+      params;
+
+    for (const title of result.similarTitles) {
+      similarPool.push({ title, seedTitle });
+    }
+    for (const title of result.changeOfTasteTitles) {
+      contrastPool.push({ title, seedTitle });
+    }
+    seedResults.push(result.seedResult);
   }
 
   async fetchAndStorePlexHistory(
@@ -936,28 +1123,22 @@ export class ImportService {
     const webContextFraction =
       pickNumber(settings, 'recommendations.webContextFraction') ?? 0.3;
 
-    type SeedResult = {
-      title: string;
-      tmdbId: number;
-      similarTitles: string[];
-      changeOfTasteTitles: string[];
-    };
-
     const movieSeeds: SeedResult[] = [];
     const tvSeeds: SeedResult[] = [];
     const failedSeeds: Array<{ title: string; error: string }> = [];
-
-    type RecItem = {
-      title: string;
-      tmdbId?: number;
-      tvdbId?: number;
-      seedTitle: string;
-    };
 
     const movieSimilarPool: RecItem[] = [];
     const movieContrastPool: RecItem[] = [];
     const tvSimilarPool: RecItem[] = [];
     const tvContrastPool: RecItem[] = [];
+    const seedRecommendationProviders = this.buildSeedRecommendationProviders({
+      openAiEnabled,
+      openAiApiKey,
+      openAiModel,
+      googleEnabled,
+      googleApiKey,
+      googleSearchEngineId,
+    });
 
     for (let i = 0; i < matchedEntries.length; i++) {
       const entry = matchedEntries[i];
@@ -977,94 +1158,40 @@ export class ImportService {
       try {
         await this.runSeedWithTransientTmdbRetries(ctx, seedTitle, async () => {
           if (isMovie && movieLibKeys.length > 0) {
-            const similar = await this.recommendations.buildSimilarMovieTitles({
+            const result = await this.buildMovieSeedRecommendations({
               ctx,
               seedTitle,
+              tmdbId: entry.tmdbId,
               tmdbApiKey,
-              count: recCount,
+              recCount,
               webContextFraction,
               upcomingPercent,
-              openai: openAiEnabled
-                ? { apiKey: openAiApiKey, model: openAiModel }
-                : null,
-              google:
-                googleEnabled && googleApiKey && googleSearchEngineId
-                  ? {
-                      apiKey: googleApiKey,
-                      searchEngineId: googleSearchEngineId,
-                    }
-                  : null,
+              providers: seedRecommendationProviders,
             });
-
-            const contrast =
-              await this.recommendations.buildChangeOfTasteMovieTitles({
-                ctx,
-                seedTitle,
-                tmdbApiKey,
-                count: recCount,
-                upcomingPercent,
-                openai: openAiEnabled
-                  ? { apiKey: openAiApiKey, model: openAiModel }
-                  : null,
-              });
-
-            for (const t of similar.titles) {
-              movieSimilarPool.push({ title: t, seedTitle });
-            }
-            for (const t of contrast.titles) {
-              movieContrastPool.push({ title: t, seedTitle });
-            }
-
-            movieSeeds.push({
-              title: seedTitle,
-              tmdbId: entry.tmdbId,
-              similarTitles: [...similar.titles].sort(),
-              changeOfTasteTitles: [...contrast.titles].sort(),
+            this.appendSeedRecommendations({
+              seedTitle,
+              result,
+              similarPool: movieSimilarPool,
+              contrastPool: movieContrastPool,
+              seedResults: movieSeeds,
             });
           } else if (!isMovie && tvLibKeys.length > 0) {
-            const similar = await this.recommendations.buildSimilarTvTitles({
+            const result = await this.buildTvSeedRecommendations({
               ctx,
               seedTitle,
+              tmdbId: entry.tmdbId,
               tmdbApiKey,
-              count: recCount,
+              recCount,
               webContextFraction,
               upcomingPercent,
-              openai: openAiEnabled
-                ? { apiKey: openAiApiKey, model: openAiModel }
-                : null,
-              google:
-                googleEnabled && googleApiKey && googleSearchEngineId
-                  ? {
-                      apiKey: googleApiKey,
-                      searchEngineId: googleSearchEngineId,
-                    }
-                  : null,
+              providers: seedRecommendationProviders,
             });
-
-            const contrast =
-              await this.recommendations.buildChangeOfTasteTvTitles({
-                ctx,
-                seedTitle,
-                tmdbApiKey,
-                count: recCount,
-                upcomingPercent,
-                openai: openAiEnabled
-                  ? { apiKey: openAiApiKey, model: openAiModel }
-                  : null,
-              });
-
-            for (const t of similar.titles) {
-              tvSimilarPool.push({ title: t, seedTitle });
-            }
-            for (const t of contrast.titles) {
-              tvContrastPool.push({ title: t, seedTitle });
-            }
-
-            tvSeeds.push({
-              title: seedTitle,
-              tmdbId: entry.tmdbId,
-              similarTitles: [...similar.titles].sort(),
-              changeOfTasteTitles: [...contrast.titles].sort(),
+            this.appendSeedRecommendations({
+              seedTitle,
+              result,
+              similarPool: tvSimilarPool,
+              contrastPool: tvContrastPool,
+              seedResults: tvSeeds,
             });
           }
 
