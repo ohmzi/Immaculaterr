@@ -233,7 +233,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'unmonitorConfirm',
     name: 'Confirm Unmonitored',
     description:
-      'Checks Radarr unmonitored movies against Plex movie libraries and re-monitors anything that is not actually present in Plex.',
+      'Manual-only confirmation pass. Run now asks for Radarr or Sonarr: Radarr re-monitors unmonitored movies missing from Plex, and Sonarr re-monitors missing unmonitored episodes for monitored series.',
     defaultScheduleCron: undefined,
     defaultEstimatedRuntimeMs: 20 * 60_000,
     dedupePolicy: 'none',

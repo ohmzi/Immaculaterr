@@ -21,7 +21,7 @@ Pick a feature area first, then jump into the full section below.
 > [What does Confirm Monitored do?](#what-does-confirm-monitored-do) · [When should I use Confirm Monitored?](#when-should-i-use-confirm-monitored) · [Does Confirm Monitored have any special settings?](#does-confirm-monitored-have-any-special-settings)
 
 > ### [Confirm Unmonitored](#confirm-unmonitored)
-> Verify Radarr unmonitored movies still exist in Plex and re-monitor anything missing.
+> Choose Radarr or Sonarr, then re-monitor missing unmonitored movies or episodes that Plex does not have.
 > [What does Confirm Unmonitored do?](#what-does-confirm-unmonitored-do) · [When should I use Confirm Unmonitored?](#when-should-i-use-confirm-unmonitored) · [Does Confirm Unmonitored have any special settings?](#does-confirm-unmonitored-have-any-special-settings)
 
 > ### [Cleanup After Adding New Content](#cleanup-after-adding-new-content)
@@ -264,17 +264,23 @@ Open in app: [Task Manager -> Confirm Unmonitored](/task-manager#job-unmonitorCo
 
 ### What does Confirm Unmonitored do?
 
-It checks Radarr movies that are already marked unmonitored and verifies they really exist in Plex. If a movie is unmonitored in Radarr but missing from every Plex movie library, this task re-monitors it so Radarr can pay attention to it again.
+**Run now** now asks whether you want the Radarr or Sonarr branch.
+
+The **Radarr** branch keeps the existing movie behavior: it checks Radarr movies that are already marked unmonitored and verifies they really exist in Plex.
+
+The **Sonarr** branch checks monitored series and re-monitors only the currently unmonitored non-special episodes that Plex is still missing.
 
 ### When should I use Confirm Unmonitored?
 
-Use it after library rebuilds, large cleanups, storage moves, or anytime you suspect Radarr has stale unmonitored state.
+Use the Radarr branch after library rebuilds, large cleanups, storage moves, or anytime you suspect movie monitoring drifted out of sync with Plex.
 
-It is especially useful when you have a very large collection and want a deliberate maintenance pass instead of letting missing titles stay unmonitored quietly.
+Use the Sonarr branch after show imports, metadata repairs, or TV library churn when you want a deliberate pass that restores monitoring only for the episodes Plex does not actually have.
 
 ### Does Confirm Unmonitored have any special settings?
 
-No. This card is intentionally manual-only. Use **Run now** when you want a full cross-check across all Plex movie libraries. It needs Plex and Radarr configured, and the report shows what stayed unmonitored, what was re-monitored, and what was skipped.
+This card is still intentionally manual-only, but **Run now** now opens a small chooser for **Radarr** or **Sonarr**.
+
+Pick Radarr for movie libraries or Sonarr for monitored-series episode cleanup. If the service you choose is disabled, incomplete, or unreachable, Immaculaterr sends you to the matching Vault setup card instead of queueing the run.
 
 ## Cleanup After Adding New Content
 

@@ -27,8 +27,8 @@ export class PrismaService
     if (!databaseUrl.startsWith('file:')) return;
 
     try {
-      await this.$executeRawUnsafe('PRAGMA journal_mode=WAL');
-      await this.$executeRawUnsafe('PRAGMA busy_timeout=10000');
+      await this.$queryRawUnsafe('PRAGMA journal_mode=WAL');
+      await this.$queryRawUnsafe('PRAGMA busy_timeout=10000');
     } catch (error) {
       this.logger.warn(
         `SQLite pragmas not applied: ${

@@ -42,6 +42,7 @@ import { NetflixImportUpload } from '@/components/NetflixImportUpload';
 import { getTmdbMovieFilters, testSavedIntegration } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { cn } from '@/components/ui/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
@@ -70,6 +71,7 @@ type ScheduleDraft = {
 };
 
 type IntegrationSetupTarget = 'radarr' | 'sonarr' | 'seerr';
+type UnmonitorConfirmRunTarget = 'radarr' | 'sonarr';
 
 type TmdbUpcomingFilterDraft = {
   id: string;
@@ -149,7 +151,7 @@ const JOB_CONFIG: Record<
     icon: <MonitorPlay className="w-8 h-8" />,
     color: 'text-red-300',
     description:
-      'Cross-checks Radarr unmonitored movies against Plex and re-monitors anything Plex does not actually have.',
+      'Manual Run now asks for Radarr or Sonarr, then re-monitors missing unmonitored movies or episodes that Plex does not actually have.',
   },
   arrMonitoredSearch: {
     icon: <Search className="w-8 h-8" />,
@@ -732,6 +734,8 @@ export function TaskManagerPage() {
   const [movieSeedError, setMovieSeedError] = useState<string | null>(null);
   const movieSeedTitleRef = useRef<HTMLInputElement | null>(null);
   const resetMovieSeedDialogOnCloseRef = useRef(false);
+  const [unmonitorConfirmDialogOpen, setUnmonitorConfirmDialogOpen] =
+    useState(false);
 
   // Netflix import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -2009,12 +2013,30 @@ export function TaskManagerPage() {
     setMovieSeedDialogOpen(false);
     setMovieSeedDialogJobId(null);
   }, []);
+  const closeUnmonitorConfirmDialog = useCallback(() => {
+    setUnmonitorConfirmDialogOpen(false);
+  }, []);
   const resetMovieSeedDialogState = useCallback(() => {
     setMovieSeedMediaType('movie');
     setMovieSeedTitle('');
     setMovieSeedYear('');
     setMovieSeedError(null);
   }, []);
+  const runJobNow = useCallback(
+    (params: { jobId: string; input?: unknown }) => {
+      startRunNowUi(params.jobId);
+      setTerminalState((prev) => ({
+        ...prev,
+        [params.jobId]: { status: 'running' },
+      }));
+      runMutation.mutate({
+        jobId: params.jobId,
+        dryRun: false,
+        ...(params.input !== undefined ? { input: params.input } : {}),
+      });
+    },
+    [runMutation, startRunNowUi],
+  );
   const submitMovieSeedRun = useCallback((): boolean => {
     const title = movieSeedTitle.trim();
     if (!title) {
@@ -2029,15 +2051,9 @@ export function TaskManagerPage() {
       return false;
     }
 
-    if (movieSeedDialogJobId) startRunNowUi(movieSeedDialogJobId);
-    setTerminalState((prev) => ({
-      ...prev,
-      ...(movieSeedDialogJobId ? { [movieSeedDialogJobId]: { status: 'running' } } : {}),
-    }));
     if (movieSeedDialogJobId) {
-      runMutation.mutate({
+      runJobNow({
         jobId: movieSeedDialogJobId,
-        dryRun: false,
         input: {
           source: 'manualRun',
           plexEvent: 'media.scrobble',
@@ -2057,8 +2073,7 @@ export function TaskManagerPage() {
     movieSeedMediaType,
     movieSeedTitle,
     movieSeedYear,
-    runMutation,
-    startRunNowUi,
+    runJobNow,
   ]);
   const handleMovieSeedExitComplete = useCallback(() => {
     if (!resetMovieSeedDialogOnCloseRef.current) return;
@@ -2106,6 +2121,44 @@ export function TaskManagerPage() {
     closeIntegrationSetupDialog();
     navigate(target ? `/vault#vault-${target}` : '/vault');
   }, [closeIntegrationSetupDialog, integrationSetupMeta?.id, navigate]);
+  const handleRunUnmonitorConfirmTarget = useCallback(
+    (target: UnmonitorConfirmRunTarget) => {
+      const integrationEnabled = target === 'radarr' ? isRadarrEnabled : isSonarrEnabled;
+      const hasBaseUrl = target === 'radarr' ? hasRadarrBaseUrl : hasSonarrBaseUrl;
+      const hasApiKey = target === 'radarr' ? hasRadarrApiKey : hasSonarrApiKey;
+      const pingReady = !arrPing.loading && arrPing.checkedAtMs !== null;
+      const integrationReachable =
+        target === 'radarr' ? arrPing.radarrOk === true : arrPing.sonarrOk === true;
+      const integrationAvailable =
+        integrationEnabled && hasBaseUrl && hasApiKey && (!pingReady || integrationReachable);
+
+      closeUnmonitorConfirmDialog();
+      if (!integrationAvailable) {
+        openIntegrationSetupDialog(target);
+        return;
+      }
+
+      runJobNow({
+        jobId: 'unmonitorConfirm',
+        input: { target },
+      });
+    },
+    [
+      arrPing.checkedAtMs,
+      arrPing.loading,
+      arrPing.radarrOk,
+      arrPing.sonarrOk,
+      closeUnmonitorConfirmDialog,
+      hasRadarrApiKey,
+      hasRadarrBaseUrl,
+      hasSonarrApiKey,
+      hasSonarrBaseUrl,
+      isRadarrEnabled,
+      isSonarrEnabled,
+      openIntegrationSetupDialog,
+      runJobNow,
+    ],
+  );
   const handleToggleImmaculateRefresherDetails = useCallback(() => {
     setImmaculateRefresherDetailsOpen((value) => !value);
   }, []);
@@ -2284,14 +2337,14 @@ export function TaskManagerPage() {
         return;
       }
 
-      startRunNowUi(jobId);
-      setTerminalState((prev) => ({
-        ...prev,
-        [jobId]: { status: 'running' },
-      }));
-      runMutation.mutate({ jobId, dryRun: false });
+      if (jobId === 'unmonitorConfirm') {
+        setUnmonitorConfirmDialogOpen(true);
+        return;
+      }
+
+      runJobNow({ jobId });
     },
-    [runMutation, startRunNowUi],
+    [runJobNow],
   );
   const handleToggleMediaAddedCleanupDeleteDuplicates = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -6425,6 +6478,117 @@ export function TaskManagerPage() {
                     )}
                   </button>
                 </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {unmonitorConfirmDialogOpen && (
+          <motion.div
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeUnmonitorConfirmDialog}
+          >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 26 }}
+              onClick={handleStopPropagation}
+              className="relative w-full sm:max-w-lg rounded-[32px] border border-white/10 bg-[#1a1625]/80 p-6 shadow-2xl shadow-red-500/10 backdrop-blur-2xl sm:p-7"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold uppercase tracking-wider text-white/50">
+                    Run now
+                  </div>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                    Confirm Unmonitored
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-white/70">
+                    Choose which integration to cross-check against Plex. If the selected service
+                    is disabled, incomplete, or unreachable, this will open the matching Vault
+                    setup card instead of queueing the job.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeUnmonitorConfirmDialog}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 transition hover:bg-white/10 active:scale-[0.98]"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => handleRunUnmonitorConfirmTarget('radarr')}
+                  className="group rounded-[28px] border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-white/20 hover:bg-white/[0.08] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={
+                    runMutation.isPending ||
+                    terminalState.unmonitorConfirm?.status === 'running'
+                  }
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10">
+                      <RadarrLogo className="h-7 w-7 object-contain" />
+                    </div>
+                    <div>
+                      <div className="text-base font-bold text-white">Radarr</div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/70">
+                        Movies
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm leading-relaxed text-white/65">
+                    Keep the current movie flow: verify unmonitored Radarr movies across Plex movie
+                    libraries, then re-monitor anything Plex does not actually have.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRunUnmonitorConfirmTarget('sonarr')}
+                  className="group rounded-[28px] border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-white/20 hover:bg-white/[0.08] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={
+                    runMutation.isPending ||
+                    terminalState.unmonitorConfirm?.status === 'running'
+                  }
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-400/10">
+                      <SonarrLogo className="h-7 w-7 object-contain" />
+                    </div>
+                    <div>
+                      <div className="text-base font-bold text-white">Sonarr</div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-emerald-200/70">
+                        Episodes
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm leading-relaxed text-white/65">
+                    Check monitored Sonarr series and re-monitor only the unmonitored non-special
+                    episodes that are still missing from Plex.
+                  </p>
+                </button>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeUnmonitorConfirmDialog}
+                  className="h-12 rounded-full border border-white/15 bg-white/5 px-6 text-white/80 transition hover:bg-white/10 active:scale-[0.98]"
+                >
+                  Cancel
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
