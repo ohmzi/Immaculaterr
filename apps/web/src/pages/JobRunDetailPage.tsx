@@ -54,6 +54,88 @@ function sortTitles(list: string[]): string[] {
     );
 }
 
+type ExpandableFactValue = {
+  count: number | null;
+  unit: string | null;
+  items: string[];
+};
+
+function getExpandableFactValue(rawValue: unknown): ExpandableFactValue | null {
+  if (!isPlainObject(rawValue)) return null;
+  const count = pickNumber(rawValue, 'count');
+  const unit = pickString(rawValue, 'unit');
+  const items = pickStringArray(rawValue, 'items');
+  if (count === null && items.length === 0) return null;
+  return { count, unit, items };
+}
+
+function formatFactCount(count: number | null, unit?: string | null): string {
+  if (count === null) return '—';
+  const value = Number.isInteger(count)
+    ? count.toLocaleString()
+    : count.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const normalizedUnit = (unit ?? '').trim();
+  return normalizedUnit ? `${value} ${normalizedUnit}` : value;
+}
+
+function getFactPresentation(params: {
+  jobId: string;
+  label: string;
+  value: unknown;
+}): { label: string; summary: string } {
+  const { jobId, label, value } = params;
+  const expandable = getExpandableFactValue(value);
+
+  if (jobId === 'unmonitorConfirm' && expandable) {
+    const countText = formatFactCount(expandable.count, expandable.unit);
+    if (label === 'Kept unmonitored') {
+      return {
+        label: 'Confirmed still in Plex',
+        summary: `${countText} confirmed in Plex and kept unmonitored.`,
+      };
+    }
+    if (label === 'Re-monitored') {
+      return {
+        label: 'Changed to monitored',
+        summary: `${countText} changed to monitored.`,
+      };
+    }
+    if (label === 'Would re-monitor') {
+      return {
+        label: 'Would change to monitored',
+        summary: `${countText} would change to monitored.`,
+      };
+    }
+    if (label === 'Missing from Plex') {
+      return {
+        label,
+        summary: `${countText} missing from Plex.`,
+      };
+    }
+  }
+
+  if (expandable) {
+    return {
+      label,
+      summary: formatFactCount(expandable.count, expandable.unit),
+    };
+  }
+
+  if (typeof value === 'boolean') {
+    return { label, summary: value ? 'Yes' : 'No' };
+  }
+
+  if (typeof value === 'string') {
+    return { label, summary: decodeHtmlEntities(value) };
+  }
+
+  if (value === null || value === undefined) {
+    return { label, summary: '—' };
+  }
+
+  return { label, summary: JSON.stringify(value) };
+}
+
 async function copyToClipboard(text: string) {
   // Prefer async clipboard API when available (secure contexts).
   if (navigator?.clipboard?.writeText) {
@@ -479,6 +561,71 @@ export function JobRunDetailPage() {
     if (!headline) return null;
     return decodeHtmlEntities(headline);
   }, [reportV1]);
+  const unmonitorOutcomeFacts = useMemo(() => {
+    if (run?.jobId !== 'unmonitorConfirm' || !reportV1) return [];
+
+    const tasksRaw = reportV1.tasks;
+    const tasks = Array.isArray(tasksRaw)
+      ? tasksRaw.filter(
+          (task): task is Record<string, unknown> =>
+            Boolean(task) && typeof task === 'object' && !Array.isArray(task),
+        )
+      : [];
+
+    const factOrder = new Map<string, number>([
+      ['Kept unmonitored', 0],
+      ['Re-monitored', 1],
+      ['Would re-monitor', 1],
+      ['Missing from Plex', 2],
+    ]);
+
+    const facts = tasks.flatMap((task) => {
+      const taskId = pickString(task, 'id') ?? '';
+      const factsRaw = task.facts;
+      const taskFacts = Array.isArray(factsRaw)
+        ? factsRaw.filter(
+            (fact): fact is Record<string, unknown> =>
+              Boolean(fact) && typeof fact === 'object' && !Array.isArray(fact),
+          )
+        : [];
+
+      return taskFacts.flatMap((fact) => {
+        const rawLabel = String(fact.label ?? '').trim();
+        if (!factOrder.has(rawLabel)) return [];
+
+        const rawValue = (fact as Record<string, unknown>).value;
+        const expandable = getExpandableFactValue(rawValue);
+        if (!expandable) return [];
+
+        const shouldSortList = shouldSortFactItems && taskId !== 'plex_collection';
+        const items = shouldSortList
+          ? sortTitles(expandable.items)
+          : expandable.items;
+        const presentation = getFactPresentation({
+          jobId: 'unmonitorConfirm',
+          label: rawLabel,
+          value: rawValue,
+        });
+
+        return [
+          {
+            rawLabel,
+            label: presentation.label,
+            summary: presentation.summary,
+            count: expandable.count,
+            unit: expandable.unit,
+            items,
+          },
+        ];
+      });
+    });
+
+    return facts.sort(
+      (a, b) =>
+        (factOrder.get(a.rawLabel) ?? Number.MAX_SAFE_INTEGER) -
+        (factOrder.get(b.rawLabel) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [reportV1, run?.jobId, shouldSortFactItems]);
   const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
   const runSummaryJson = useMemo(() => {
     const serialized = JSON.stringify(run?.summary ?? null, null, 2);
@@ -1278,6 +1425,79 @@ export function JobRunDetailPage() {
                                 <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-5">
                                   <div className="text-sm font-semibold text-white">
                                     {decodeHtmlEntities(headline)}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {jobId === 'unmonitorConfirm' &&
+                              unmonitorOutcomeFacts.length ? (
+                                <div className="mb-6 space-y-4">
+                                  {(() => {
+                                    const confirmedOutcome = unmonitorOutcomeFacts.find(
+                                      (fact) => fact.rawLabel === 'Kept unmonitored',
+                                    );
+                                    const changedOutcome = unmonitorOutcomeFacts.find(
+                                      (fact) =>
+                                        fact.rawLabel === 'Re-monitored' ||
+                                        fact.rawLabel === 'Would re-monitor',
+                                    );
+
+                                    if (!confirmedOutcome && !changedOutcome) return null;
+
+                                    return (
+                                      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                                        <div className="text-sm font-semibold text-white">
+                                          Outcome
+                                        </div>
+                                        <div className="mt-2 text-sm text-white/75">
+                                          {[confirmedOutcome?.summary, changedOutcome?.summary]
+                                            .filter(Boolean)
+                                            .join(' ')}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  <div className="grid gap-4 lg:grid-cols-3">
+                                    {unmonitorOutcomeFacts.map((fact) => {
+                                      const previewItems = fact.items.slice(0, 5);
+                                      const remainingItems = Math.max(
+                                        0,
+                                        fact.items.length - previewItems.length,
+                                      );
+                                      return (
+                                        <div
+                                          key={`${fact.rawLabel}-${fact.label}`}
+                                          className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-5"
+                                        >
+                                          <div className="text-[11px] font-mono text-white/60">
+                                            {fact.label}
+                                          </div>
+                                          <div className="mt-2 text-sm font-semibold text-white">
+                                            {fact.summary}
+                                          </div>
+
+                                          {previewItems.length ? (
+                                            <ul className="mt-4 space-y-2 text-xs font-mono text-white/75">
+                                              {previewItems.map((item) => (
+                                                <li
+                                                  key={`${fact.rawLabel}-${item}`}
+                                                  className="break-words"
+                                                >
+                                                  {decodeHtmlEntities(item)}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          ) : null}
+
+                                          {remainingItems ? (
+                                            <div className="mt-3 text-[11px] font-mono text-white/50">
+                                              +{remainingItems.toLocaleString()} more
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               ) : null}
@@ -2158,8 +2378,13 @@ export function JobRunDetailPage() {
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       {facts.slice(0, 50).map((f) => {
                                         const labelRaw = String(f.label ?? '').trim() || 'Fact';
-                                        const label = decodeHtmlEntities(labelRaw);
                                         const rawValue = (f as Record<string, unknown>).value;
+                                        const presentation = getFactPresentation({
+                                          jobId: String(run?.jobId ?? ''),
+                                          label: labelRaw,
+                                          value: rawValue,
+                                        });
+                                        const label = decodeHtmlEntities(presentation.label);
                                         const factValueKey =
                                           typeof rawValue === 'string'
                                             ? rawValue
@@ -2189,23 +2414,7 @@ export function JobRunDetailPage() {
                                           return { collectionName, lastAddedItems };
                                         })();
 
-                                        const expandable = (() => {
-                                          if (!isPlainObject(rawValue)) return null;
-                                          const count = pickNumber(rawValue, 'count');
-                                          const unit = pickString(rawValue, 'unit');
-                                          const items = pickStringArray(rawValue, 'items');
-                                          if (count === null && items.length === 0) return null;
-                                          return { count, unit, items };
-                                        })();
-
-                                        const formatCount = (count: number | null, unit?: string | null) => {
-                                          if (count === null) return '—';
-                                          const s = Number.isInteger(count)
-                                            ? count.toLocaleString()
-                                            : count.toLocaleString(undefined, { maximumFractionDigits: 2 });
-                                          const u = (unit ?? '').trim();
-                                          return u ? `${s} ${u}` : s;
-                                        };
+                                        const expandable = getExpandableFactValue(rawValue);
 
                                         if (collectionDetails) {
                                           if (collectionDetails.lastAddedItems.length) {
@@ -2278,7 +2487,7 @@ export function JobRunDetailPage() {
                                                   {label}
                                                 </div>
                                                 <div className="mt-1 text-xs text-white/80 font-mono break-words">
-                                                  {formatCount(expandable.count, expandable.unit)}
+                                                  {presentation.summary}
                                                   {listItems.length ? (
                                                     <span className="ml-2 text-white/50">
                                                       (tap to view)
@@ -2319,11 +2528,7 @@ export function JobRunDetailPage() {
                                               {label}
                                             </div>
                                             <div className="mt-1 text-xs text-white/80 font-mono break-words">
-                                              {typeof rawValue === 'string'
-                                                ? decodeHtmlEntities(rawValue)
-                                                : rawValue === null || rawValue === undefined
-                                                  ? '—'
-                                                  : JSON.stringify(rawValue)}
+                                              {presentation.summary}
                                             </div>
                                           </div>
                                         );

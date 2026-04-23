@@ -247,6 +247,8 @@ Open in app: [Task Manager -> Confirm Monitored](/task-manager#job-monitorConfir
 ### What does Confirm Monitored do?
 
 It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if Plex already has the movie or the episode, this task helps stop Radarr or Sonarr from still treating that specific item like something that needs attention.
+For Sonarr, it also cascades upward: if every regular episode in a season ends unmonitored, the season is unmonitored too.
+If every tracked season ends unmonitored, the series itself is unmonitored too.
 
 ### When should I use Confirm Monitored?
 

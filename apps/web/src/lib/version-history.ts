@@ -39,17 +39,25 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.8-beta-4',
     popupHighlights: [
+      'Confirm Monitored now cascades Sonarr season and series unmonitoring when all regular episodes are already cleared.',
       'Netflix import no longer fails when legacy databases are missing the releaseDate column.',
-      'Startup self-repair now restores missing columns and tables across JobRun, JobQueueState, RejectedSuggestion, LoginThrottle, and UserRecovery.',
     ],
     sections: [
+      {
+        title: 'Confirm Monitored Sonarr cascade',
+        bullets: [
+          'Confirm Monitored now unmonitors Sonarr seasons once every positive-numbered episode in that season ends unmonitored.',
+          'If every tracked positive-numbered season ends unmonitored, the series itself is unmonitored too.',
+          'That Sonarr cascade also runs when Plex never matched the show metadata but Sonarr already has every positive-numbered episode unmonitored.',
+        ],
+      },
       {
         title: 'Netflix import reliability (issue #199)',
         bullets: [
           'Preserved releaseDate and firstAirDate when rebuilding ImmaculateTasteMovieLibrary and ImmaculateTasteShowLibrary so imports stop failing with "column does not exist".',
           'Added an idempotent ensure step that backfills releaseDate and firstAirDate on older SQLite databases regardless of migration history state.',
         ],
-      }
+      },
     ],
   },
   {

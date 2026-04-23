@@ -145,7 +145,7 @@ const JOB_CONFIG: Record<
     icon: <MonitorPlay className="w-8 h-8" />,
     color: 'text-emerald-300',
     description:
-      'Keeps Radarr movies and Sonarr episodes in sync with what’s already in Plex.',
+      'Keeps Radarr movies and Sonarr episodes, seasons, and series in sync with what’s already in Plex.',
   },
   unmonitorConfirm: {
     icon: <MonitorPlay className="w-8 h-8" />,

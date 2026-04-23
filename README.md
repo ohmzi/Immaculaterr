@@ -70,7 +70,7 @@
   - `Fresh Out Of The Oven` builds recent-release movie and TV rows for titles a user has not watched yet.
   - `TMDB Upcoming Movies` finds upcoming movies with filter sets and routes matches to Radarr or Seerr.
   - `Rotten Tomatoes Upcoming Movies` scrapes fixed Rotten Tomatoes pages and routes safe matches to Radarr or Seerr.
-  - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads.
+  - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads, including season-aware Sonarr monitoring cleanup.
 
 - **Supports history imports from day one**
   - Netflix CSV import creates dedicated Netflix import collections and feeds the main recommendation system.

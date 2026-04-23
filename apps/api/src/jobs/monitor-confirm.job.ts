@@ -496,8 +496,8 @@ export class MonitorConfirmJob {
     let sonarrEpisodesInPlex = 0;
     let sonarrEpisodesUnmonitored = 0;
     let sonarrSeriesWithMissing = 0;
-    const sonarrSeriesUnmonitored = 0;
-    const sonarrSeasonsUnmonitored = 0;
+    let sonarrSeriesUnmonitored = 0;
+    let sonarrSeasonsUnmonitored = 0;
     let sonarrSeriesProcessed = 0;
     let sonarrEpisodesMonitoredBefore = 0;
     let sonarrSearchQueued: boolean | null = null;
@@ -550,19 +550,19 @@ export class MonitorConfirmJob {
         }
 
         const showRatingKeys = plexTvdbRatingKeys.get(tvdbId) ?? [];
-        if (showRatingKeys.length === 0) {
-          continue;
-        }
+        const showFoundInPlex = showRatingKeys.length > 0;
 
         // Union episodes across all Plex libraries where the show exists.
         const plexEpisodes = new Set<string>();
-        for (const ratingKey of showRatingKeys) {
-          const eps = await this.plexServer.getEpisodesSet({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            showRatingKey: ratingKey,
-          });
-          for (const k of eps) plexEpisodes.add(k);
+        if (showFoundInPlex) {
+          for (const ratingKey of showRatingKeys) {
+            const eps = await this.plexServer.getEpisodesSet({
+              baseUrl: plexBaseUrl,
+              token: plexToken,
+              showRatingKey: ratingKey,
+            });
+            for (const k of eps) plexEpisodes.add(k);
+          }
         }
 
         const episodes = await this.sonarr.getEpisodesBySeries({
@@ -581,59 +581,158 @@ export class MonitorConfirmJob {
         }
 
         let hasMissing = false;
+        const seasonHasPositiveEpisodes = new Map<number, boolean>();
+        const seasonHasMonitoredEpisodesAfter = new Map<number, boolean>();
 
         for (const [season, seasonEpisodes] of episodesBySeason.entries()) {
-          const seasonEpisodesToUnmonitor: SonarrEpisode[] = [];
+          let seasonHasPositiveEpisode = false;
+          let seasonHasMonitoredEpisodeAfter = false;
+          let seasonEpisodesUnmonitoredCount = 0;
 
           // Process all episodes in the season (matching Python script logic)
           for (const ep of seasonEpisodes) {
             const epNum = toInt(ep.episodeNumber);
             if (!epNum) continue;
+            seasonHasPositiveEpisode = true;
             sonarrEpisodesChecked += 1;
 
             const epKey = episodeKey(season, epNum);
-            const isInPlex = plexEpisodes.has(epKey);
+            const isInPlex = showFoundInPlex && plexEpisodes.has(epKey);
             const isMonitored = Boolean(ep.monitored);
+            let isMonitoredAfter = isMonitored;
             if (isMonitored) sonarrEpisodesMonitoredBefore += 1;
 
             if (isInPlex) {
               sonarrEpisodesInPlex += 1;
               if (isMonitored) {
-                seasonEpisodesToUnmonitor.push(ep);
+                if (ctx.dryRun) {
+                  sonarrEpisodesUnmonitored += 1;
+                  seasonEpisodesUnmonitoredCount += 1;
+                  isMonitoredAfter = false;
+                } else {
+                  const success = await this.sonarr.setEpisodeMonitored({
+                    baseUrl: sonarrBaseUrl as string,
+                    apiKey: sonarrApiKey as string,
+                    episode: ep,
+                    monitored: false,
+                  });
+                  if (success) {
+                    sonarrEpisodesUnmonitored += 1;
+                    seasonEpisodesUnmonitoredCount += 1;
+                    isMonitoredAfter = false;
+                  } else {
+                    await ctx.warn('sonarr: failed to unmonitor episode', {
+                      title,
+                      season,
+                      episode: toInt(ep.episodeNumber),
+                    });
+                  }
+                }
               }
-            } else {
+            } else if (showFoundInPlex) {
               hasMissing = true;
+            }
+
+            if (isMonitoredAfter) {
+              seasonHasMonitoredEpisodeAfter = true;
             }
           }
 
-          // Unmonitor episodes that are in Plex (matching Python script logic)
-          if (seasonEpisodesToUnmonitor.length > 0) {
-            for (const ep of seasonEpisodesToUnmonitor) {
-              if (ctx.dryRun) {
-                sonarrEpisodesUnmonitored += 1;
-              } else {
-                const success = await this.sonarr.setEpisodeMonitored({
-                  baseUrl: sonarrBaseUrl as string,
-                  apiKey: sonarrApiKey as string,
-                  episode: ep,
-                  monitored: false,
-                });
-                if (success) {
-                  sonarrEpisodesUnmonitored += 1;
-                } else {
-                  await ctx.warn('sonarr: failed to unmonitor episode', {
-                    title,
-                    season,
-                    episode: toInt(ep.episodeNumber),
-                  });
-                }
-              }
-            }
+          seasonHasPositiveEpisodes.set(season, seasonHasPositiveEpisode);
+          seasonHasMonitoredEpisodesAfter.set(
+            season,
+            seasonHasMonitoredEpisodeAfter,
+          );
 
+          if (seasonEpisodesUnmonitoredCount > 0) {
             await ctx.info('sonarr: season episode unmonitor complete', {
               title,
               season,
-              episodesUnmonitored: seasonEpisodesToUnmonitor.length,
+              episodesUnmonitored: seasonEpisodesUnmonitoredCount,
+              dryRun: ctx.dryRun,
+            });
+          }
+        }
+
+        if (showFoundInPlex && Array.isArray(series.seasons)) {
+          let seasonsUpdatedForSeries = 0;
+          const nextSeasons = series.seasons.map((seasonEntry) => {
+            const seasonNumber = toInt(seasonEntry.seasonNumber);
+            if (!seasonNumber) return seasonEntry;
+            if (seasonEntry.monitored !== true) return seasonEntry;
+            if (!(seasonHasPositiveEpisodes.get(seasonNumber) ?? false)) {
+              return seasonEntry;
+            }
+            if (seasonHasMonitoredEpisodesAfter.get(seasonNumber) ?? false) {
+              return seasonEntry;
+            }
+
+            seasonsUpdatedForSeries += 1;
+            return { ...seasonEntry, monitored: false };
+          });
+
+          const trackedPositiveSeasonCount = nextSeasons.reduce(
+            (count, seasonEntry) => {
+              const seasonNumber = toInt(seasonEntry.seasonNumber);
+              return seasonNumber ? count + 1 : count;
+            },
+            0,
+          );
+          const hasMonitoredPositiveEpisodesAfter = Array.from(
+            seasonHasMonitoredEpisodesAfter.values(),
+          ).some(Boolean);
+          const seriesShouldUnmonitor =
+            Boolean(series.monitored) &&
+            trackedPositiveSeasonCount > 0 &&
+            !hasMonitoredPositiveEpisodesAfter &&
+            nextSeasons.every((seasonEntry) => {
+              const seasonNumber = toInt(seasonEntry.seasonNumber);
+              if (!seasonNumber) return true;
+              return seasonEntry.monitored === false;
+            });
+          const needsSeriesUpdate =
+            seasonsUpdatedForSeries > 0 || seriesShouldUnmonitor;
+
+          if (needsSeriesUpdate) {
+            if (ctx.dryRun) {
+              sonarrSeasonsUnmonitored += seasonsUpdatedForSeries;
+              if (seriesShouldUnmonitor) {
+                sonarrSeriesUnmonitored += 1;
+              }
+            } else {
+              try {
+                await this.sonarr.updateSeries({
+                  baseUrl: sonarrBaseUrl as string,
+                  apiKey: sonarrApiKey as string,
+                  series: {
+                    ...series,
+                    ...(seriesShouldUnmonitor ? { monitored: false } : {}),
+                    seasons: nextSeasons,
+                  },
+                });
+                sonarrSeasonsUnmonitored += seasonsUpdatedForSeries;
+                if (seriesShouldUnmonitor) {
+                  sonarrSeriesUnmonitored += 1;
+                }
+              } catch (error) {
+                await ctx.warn(
+                  'sonarr: failed to apply season or series unmonitor cascade',
+                  {
+                    title,
+                    seriesId: series.id,
+                    seasonsUnmonitored: seasonsUpdatedForSeries,
+                    seriesUnmonitored: seriesShouldUnmonitor,
+                    error: (error as Error)?.message ?? String(error),
+                  },
+                );
+              }
+            }
+
+            await ctx.info('sonarr: series monitoring cascade complete', {
+              title,
+              showFoundInPlex,
+              seasonsUnmonitored: seasonsUpdatedForSeries,
+              seriesUnmonitored: seriesShouldUnmonitor,
               dryRun: ctx.dryRun,
             });
           }
