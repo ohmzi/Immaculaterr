@@ -1,5 +1,10 @@
 const mockSpawnSync = jest.fn();
 const mockExistsSync = jest.fn(() => true);
+const mockPrismaInstances: Array<{
+  $disconnect: jest.Mock<Promise<void>, []>;
+  $executeRawUnsafe: jest.Mock<Promise<void>, [string]>;
+  $queryRawUnsafe: jest.Mock<Promise<unknown>, [string, ...unknown[]]>;
+}> = [];
 
 jest.mock('node:child_process', () => ({
   spawnSync: (...args: unknown[]) => mockSpawnSync(...args) as unknown,
@@ -10,9 +15,15 @@ jest.mock('node:fs', () => ({
 }));
 
 jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn().mockImplementation(() => ({
-    $disconnect: jest.fn(),
-  })),
+  PrismaClient: jest.fn().mockImplementation(() => {
+    const instance = {
+      $disconnect: jest.fn(() => Promise.resolve()),
+      $executeRawUnsafe: jest.fn(() => Promise.resolve()),
+      $queryRawUnsafe: jest.fn(() => Promise.resolve([])),
+    };
+    mockPrismaInstances.push(instance);
+    return instance;
+  }),
 }));
 
 import {
@@ -23,6 +34,7 @@ import {
   ensureRejectedSuggestionSchema,
   ensureUserRecoverySchema,
   logFailedMigrationDiagnostics,
+  main,
   repairApril2026MigrationEdgeCases,
   repairMarch2026MigrationEdgeCases,
 } from './migrate-with-repair';
@@ -45,6 +57,7 @@ type PrismaMockState = {
 };
 
 function createPrismaMock(state: Partial<PrismaMockState> = {}): {
+  $disconnect: jest.Mock<Promise<void>, []>;
   $executeRawUnsafe: jest.Mock<Promise<void>, [string]>;
   $queryRawUnsafe: jest.Mock<Promise<unknown>, [string, ...unknown[]]>;
 } {
@@ -58,6 +71,7 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
   };
 
   return {
+    $disconnect: jest.fn(() => Promise.resolve()),
     $executeRawUnsafe: jest.fn((sql: string) => {
       if (sql.includes('CREATE TABLE "ImmaculateTasteProfile"')) {
         mockState.tables.add('ImmaculateTasteProfile');
@@ -127,6 +141,7 @@ describe('scripts/migrate-with-repair', () => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     mockExistsSync.mockReset();
     mockExistsSync.mockReturnValue(true);
+    mockPrismaInstances.length = 0;
     mockSpawnSync.mockReset();
     mockSpawnSync.mockReturnValue({ status: 0 });
   });
@@ -307,6 +322,27 @@ describe('scripts/migrate-with-repair', () => {
         '20260316200000_add_scope_all_users_to_taste_profile',
       ]),
       expect.objectContaining({ env: process.env, stdio: 'inherit' }),
+    );
+  });
+
+  it('disconnects Prisma before running migrate resolve during repair', async () => {
+    const prisma = createPrismaMock({
+      columns: {
+        ImmaculateTasteProfile: ['id', 'scopeAllUsers'],
+      },
+      migrationRows: {
+        '20260316200000_add_scope_all_users_to_taste_profile': [
+          { finished_at: null, rolled_back_at: null },
+        ],
+      },
+      tables: new Set(['User', 'ImmaculateTasteProfile']),
+    });
+
+    await repairMarch2026MigrationEdgeCases(prisma as never);
+
+    expect(prisma.$disconnect).toHaveBeenCalled();
+    expect(prisma.$disconnect.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSpawnSync.mock.invocationCallOrder[0],
     );
   });
 
@@ -716,6 +752,29 @@ describe('scripts/migrate-with-repair', () => {
       expect.stringContaining(
         '- 20260317120000_fresh_out_of_the_oven_recent_release_cache',
       ),
+    );
+  });
+
+  it('disconnects Prisma before running migrate deploy in main', async () => {
+    await main();
+
+    expect(mockPrismaInstances).toHaveLength(1);
+    expect(mockPrismaInstances[0].$disconnect).toHaveBeenCalled();
+    expect(
+      mockPrismaInstances[0].$disconnect.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockSpawnSync.mock.invocationCallOrder[0]);
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        'migrate',
+        'deploy',
+        '--schema',
+        expect.any(String),
+      ]),
+      expect.objectContaining({
+        env: process.env,
+        stdio: 'inherit',
+      }),
     );
   });
 });

@@ -611,10 +611,12 @@ export async function logFailedMigrationDiagnostics(
   );
 }
 
-function resolveMigrationAsApplied(
+async function resolveMigrationAsApplied(
+  prisma: PrismaClient,
   migrationName: string,
   reason?: string,
-): void {
+): Promise<void> {
+  await prisma.$disconnect();
   const reasonSuffix = reason ? ` (${reason})` : '';
   logRepair(`Resolving migration as applied: ${migrationName}${reasonSuffix}`);
   runPrisma(
@@ -623,10 +625,12 @@ function resolveMigrationAsApplied(
   );
 }
 
-function resolveMigrationAsRolledBack(
+async function resolveMigrationAsRolledBack(
+  prisma: PrismaClient,
   migrationName: string,
   reason?: string,
-): void {
+): Promise<void> {
+  await prisma.$disconnect();
   const reasonSuffix = reason ? ` (${reason})` : '';
   logRepair(
     `Resolving migration as rolled back: ${migrationName}${reasonSuffix}`,
@@ -680,16 +684,21 @@ function shouldRepairPartialSessionSchema(
   );
 }
 
-function resolveTargetMigrationState(sessionSchemaUpgraded: boolean): void {
+async function resolveTargetMigrationState(
+  prisma: PrismaClient,
+  sessionSchemaUpgraded: boolean,
+): Promise<void> {
   if (sessionSchemaUpgraded) {
-    resolveMigrationAsApplied(
+    await resolveMigrationAsApplied(
+      prisma,
       TARGET_MIGRATION,
       'Session schema already reflects auth security hardening',
     );
     return;
   }
 
-  resolveMigrationAsRolledBack(
+  await resolveMigrationAsRolledBack(
+    prisma,
     TARGET_MIGRATION,
     'Session schema still needs auth security hardening migration rerun',
   );
@@ -727,7 +736,10 @@ async function repairFailedMigrationIfNeeded(
     sessionInfo = await tableInfo(prisma, 'Session');
   }
 
-  resolveTargetMigrationState(isSessionSchemaUpgraded(sessionInfo));
+  await resolveTargetMigrationState(
+    prisma,
+    isSessionSchemaUpgraded(sessionInfo),
+  );
 }
 
 export async function repairMarch2026MigrationEdgeCases(
@@ -764,7 +776,8 @@ export async function repairMarch2026MigrationEdgeCases(
     (profileExistedBeforeRepair &&
       createProfilesMigrationState === 'not_recorded')
   ) {
-    resolveMigrationAsApplied(
+    await resolveMigrationAsApplied(
+      prisma,
       CREATE_TASTE_PROFILES_MIGRATION,
       'ImmaculateTasteProfile already exists',
     );
@@ -775,7 +788,8 @@ export async function repairMarch2026MigrationEdgeCases(
       scopeMigrationState !== 'applied' &&
       scopeMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(
+      await resolveMigrationAsApplied(
+        prisma,
         IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION,
         'ImmaculateTasteProfile.scopeAllUsers already exists',
       );
@@ -784,7 +798,8 @@ export async function repairMarch2026MigrationEdgeCases(
     scopeMigrationState === 'failed' ||
     scopeMigrationState === 'applied'
   ) {
-    resolveMigrationAsRolledBack(
+    await resolveMigrationAsRolledBack(
+      prisma,
       IMMACULATE_TASTE_SCOPE_ALL_USERS_MIGRATION,
       'ImmaculateTasteProfile.scopeAllUsers is still missing',
     );
@@ -805,7 +820,8 @@ export async function repairMarch2026MigrationEdgeCases(
       freshReleaseMigrationState !== 'applied' &&
       freshReleaseMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(
+      await resolveMigrationAsApplied(
+        prisma,
         FRESH_RELEASE_CACHE_MIGRATION,
         'FreshReleaseMovieLibrary already exists',
       );
@@ -814,7 +830,8 @@ export async function repairMarch2026MigrationEdgeCases(
     freshReleaseMigrationState === 'failed' ||
     freshReleaseMigrationState === 'applied'
   ) {
-    resolveMigrationAsRolledBack(
+    await resolveMigrationAsRolledBack(
+      prisma,
       FRESH_RELEASE_CACHE_MIGRATION,
       'FreshReleaseMovieLibrary is still missing',
     );
@@ -851,7 +868,8 @@ export async function repairApril2026MigrationEdgeCases(
       importedWatchEntryMigrationState !== 'applied' &&
       importedWatchEntryMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(
+      await resolveMigrationAsApplied(
+        prisma,
         IMPORTED_WATCH_ENTRY_MIGRATION,
         importedWatchEntryExists
           ? 'ImportedWatchEntry already exists'
@@ -871,7 +889,8 @@ export async function repairApril2026MigrationEdgeCases(
       autoRunMediaHistoryMigrationState !== 'applied' &&
       autoRunMediaHistoryMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(
+      await resolveMigrationAsApplied(
+        prisma,
         AUTO_RUN_MEDIA_HISTORY_MIGRATION,
         'AutoRunMediaHistory already exists',
       );
@@ -888,7 +907,8 @@ export async function repairApril2026MigrationEdgeCases(
       freshReleaseShowLibraryMigrationState !== 'applied' &&
       freshReleaseShowLibraryMigrationState !== 'migrations_table_missing'
     ) {
-      resolveMigrationAsApplied(
+      await resolveMigrationAsApplied(
+        prisma,
         FRESH_RELEASE_SHOW_LIBRARY_MIGRATION,
         'FreshReleaseShowLibrary already exists',
       );
@@ -897,7 +917,8 @@ export async function repairApril2026MigrationEdgeCases(
     freshReleaseShowLibraryMigrationState === 'failed' ||
     freshReleaseShowLibraryMigrationState === 'applied'
   ) {
-    resolveMigrationAsRolledBack(
+    await resolveMigrationAsRolledBack(
+      prisma,
       FRESH_RELEASE_SHOW_LIBRARY_MIGRATION,
       'FreshReleaseShowLibrary is still missing',
     );
@@ -1348,6 +1369,7 @@ export async function main() {
     await repairApril2026MigrationEdgeCases(prisma);
 
     try {
+      await prisma.$disconnect();
       runPrisma(['migrate', 'deploy'], 'prisma migrate deploy');
     } catch (err) {
       await logFailedMigrationDiagnostics(prisma);

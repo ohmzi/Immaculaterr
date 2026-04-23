@@ -478,11 +478,22 @@ export const FaqPage = () => {
           id: 'task-manager-confirm-unmonitored-what-does',
           question: 'What does Confirm Unmonitored do?',
           answer: (
-            <p>
-              It checks Radarr movies that are already marked unmonitored and verifies they really
-              exist in Plex. If a movie is unmonitored in Radarr but missing from every Plex movie
-              library, this task re-monitors it so Radarr can pay attention to it again.
-            </p>
+            <>
+              <p>
+                <span className="font-semibold text-white/85">Run now</span> now asks whether you
+                want to run the Radarr or Sonarr branch.
+              </p>
+              <p>
+                The <span className="font-semibold text-white/85">Radarr</span> branch keeps the
+                existing movie behavior: it checks Radarr movies that are already marked
+                unmonitored and verifies they really exist in Plex.
+              </p>
+              <p>
+                The <span className="font-semibold text-white/85">Sonarr</span> branch checks
+                monitored series and re-monitors only the currently unmonitored non-special
+                episodes that Plex is still missing.
+              </p>
+            </>
           ),
         },
         {
@@ -491,12 +502,13 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Use it after library rebuilds, large cleanups, storage moves, or anytime you suspect
-                Radarr has stale unmonitored state.
+                Use the Radarr branch after library rebuilds, large cleanups, storage moves, or
+                anytime you suspect movie monitoring drifted out of sync with Plex.
               </p>
               <p>
-                It is especially useful when you have a very large collection and want a deliberate
-                maintenance pass instead of letting missing titles stay unmonitored quietly.
+                Use the Sonarr branch after show imports, metadata repairs, or TV library churn
+                when you want a deliberate pass that restores monitoring only for the episodes Plex
+                does not actually have.
               </p>
             </>
           ),
@@ -505,12 +517,19 @@ export const FaqPage = () => {
           id: 'task-manager-confirm-unmonitored-settings',
           question: 'Does Confirm Unmonitored have any special settings?',
           answer: (
-            <p>
-              No. This card is intentionally manual-only. Use{' '}
-              <span className="font-semibold text-white/85">Run now</span> when you want a full
-              cross-check across all Plex movie libraries. It needs Plex and Radarr configured, and
-              the report shows what stayed unmonitored, what was re-monitored, and what was skipped.
-            </p>
+            <>
+              <p>
+                This card is still intentionally manual-only, but{' '}
+                <span className="font-semibold text-white/85">Run now</span> now opens a small
+                chooser for <span className="font-semibold text-white/85">Radarr</span> or{' '}
+                <span className="font-semibold text-white/85">Sonarr</span>.
+              </p>
+              <p>
+                Pick Radarr for movie libraries or Sonarr for monitored-series episode cleanup. If
+                the service you choose is disabled, incomplete, or unreachable, Immaculaterr sends
+                you to the matching Vault setup card instead of queueing the run.
+              </p>
+            </>
           ),
         },
       ],
@@ -2876,7 +2895,7 @@ export const FaqPage = () => {
     'task-manager-confirm-monitored':
       'Keep ARR monitoring aligned with what already exists in Plex.',
     'task-manager-confirm-unmonitored':
-      'Verify Radarr unmonitored movies still exist in Plex and re-monitor anything missing.',
+      'Choose Radarr or Sonarr, then re-monitor missing unmonitored movies or episodes that Plex does not have.',
     'task-manager-cleanup-after-adding-new-content':
       'Plex-triggered cleanup actions for newly added media.',
     'task-manager-search-monitored': 'Off-peak missing searches for monitored ARR items.',

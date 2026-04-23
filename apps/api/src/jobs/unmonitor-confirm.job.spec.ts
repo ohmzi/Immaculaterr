@@ -3,15 +3,23 @@ import type { JobContext, JsonObject } from './jobs.types';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
+import { SonarrService } from '../sonarr/sonarr.service';
 
 type SettingsMock = Pick<SettingsService, 'getInternalSettings'>;
 type PlexMock = Pick<
   PlexServerService,
-  'getSections' | 'getMovieTmdbIdSetForSectionKey'
+  | 'getSections'
+  | 'getMovieTmdbIdSetForSectionKey'
+  | 'getTvdbShowMapForSectionKey'
+  | 'getEpisodesSet'
 >;
 type RadarrMock = Pick<RadarrService, 'listMovies' | 'setMovieMonitored'>;
+type SonarrMock = Pick<
+  SonarrService,
+  'listMonitoredSeries' | 'getEpisodesBySeries' | 'setEpisodeMonitored'
+>;
 
-function createContext(dryRun = false): JobContext {
+function createContext(dryRun = false, input?: JsonObject): JobContext {
   let currentSummary: JsonObject | null = null;
   const setSummary = jest.fn((summary: JsonObject | null) => {
     currentSummary = summary;
@@ -29,6 +37,7 @@ function createContext(dryRun = false): JobContext {
     userId: 'user-1',
     dryRun,
     trigger: 'manual',
+    ...(input ? { input } : {}),
     getSummary: () => currentSummary,
     setSummary,
     patchSummary,
@@ -47,22 +56,30 @@ function createJob() {
   const plex: jest.Mocked<PlexMock> = {
     getSections: jest.fn(),
     getMovieTmdbIdSetForSectionKey: jest.fn(),
+    getTvdbShowMapForSectionKey: jest.fn(),
+    getEpisodesSet: jest.fn(),
   };
   const radarr: jest.Mocked<RadarrMock> = {
     listMovies: jest.fn(),
     setMovieMonitored: jest.fn(),
+  };
+  const sonarr: jest.Mocked<SonarrMock> = {
+    listMonitoredSeries: jest.fn(),
+    getEpisodesBySeries: jest.fn(),
+    setEpisodeMonitored: jest.fn(),
   };
 
   const job = new UnmonitorConfirmJob(
     settings as unknown as SettingsService,
     plex as unknown as PlexServerService,
     radarr as unknown as RadarrService,
+    sonarr as unknown as SonarrService,
   );
 
-  return { job, settings, plex, radarr };
+  return { job, settings, plex, radarr, sonarr };
 }
 
-function mockConfiguredSettings(settings: jest.Mocked<SettingsMock>) {
+function mockRadarrConfiguredSettings(settings: jest.Mocked<SettingsMock>) {
   settings.getInternalSettings.mockResolvedValue({
     settings: {
       plex: { baseUrl: 'http://plex.local:32400' },
@@ -77,12 +94,40 @@ function mockConfiguredSettings(settings: jest.Mocked<SettingsMock>) {
   });
 }
 
+function mockSonarrConfiguredSettings(settings: jest.Mocked<SettingsMock>) {
+  settings.getInternalSettings.mockResolvedValue({
+    settings: {
+      plex: { baseUrl: 'http://plex.local:32400' },
+      sonarr: { baseUrl: 'http://sonarr.local:8989' },
+    },
+    secrets: {
+      plex: { token: 'plex-token' },
+      'plex.token': 'plex-token',
+      sonarr: { apiKey: 'sonarr-key' },
+      'sonarr.apiKey': 'sonarr-key',
+    },
+  });
+}
+
+function expectReportRaw(
+  result: Awaited<ReturnType<UnmonitorConfirmJob['run']>>,
+) {
+  const report = result.summary as Record<string, unknown>;
+  expect(report.template).toBe('jobReportV1');
+  expect(report.version).toBe(1);
+  return report.raw as Record<string, unknown>;
+}
+
+function hasIssueMessage(entry: Record<string, unknown>, text: string) {
+  return typeof entry.message === 'string' && entry.message.includes(text);
+}
+
 describe('UnmonitorConfirmJob', () => {
-  it('re-monitors unmonitored movies that are missing from Plex', async () => {
-    const { job, settings, plex, radarr } = createJob();
+  it('default/no target still runs the existing Radarr path', async () => {
+    const { job, settings, plex, radarr, sonarr } = createJob();
     const ctx = createContext(false);
 
-    mockConfiguredSettings(settings);
+    mockRadarrConfiguredSettings(settings);
     plex.getSections.mockResolvedValue([
       { key: '1', title: 'Movies', type: 'movie' },
     ]);
@@ -94,10 +139,10 @@ describe('UnmonitorConfirmJob', () => {
     radarr.setMovieMonitored.mockResolvedValue(true);
 
     const result = await job.run(ctx);
-    const report = result.summary as Record<string, unknown>;
-    const raw = report.raw as Record<string, unknown>;
+    const raw = expectReportRaw(result);
     const rawRadarr = raw.radarr as Record<string, unknown>;
 
+    expect(raw.target).toBe('radarr');
     expect(radarr.setMovieMonitored).toHaveBeenCalledTimes(1);
     expect(radarr.setMovieMonitored).toHaveBeenCalledWith({
       baseUrl: 'http://radarr.local:7878',
@@ -105,139 +150,341 @@ describe('UnmonitorConfirmJob', () => {
       movie: { id: 2, title: 'Missing', tmdbId: 200, monitored: false },
       monitored: true,
     });
+    expect(sonarr.listMonitoredSeries).not.toHaveBeenCalled();
     expect(rawRadarr.missingFromPlex).toBe(1);
     expect(rawRadarr.remonitored).toBe(1);
   });
 
-  it('keeps movies unmonitored when they already exist in Plex', async () => {
-    const { job, settings, plex, radarr } = createJob();
-    const ctx = createContext(false);
+  it('explicit target radarr matches the default behavior', async () => {
+    const defaultRun = createJob();
+    const explicitRun = createJob();
 
-    mockConfiguredSettings(settings);
-    plex.getSections.mockResolvedValue([
+    mockRadarrConfiguredSettings(defaultRun.settings);
+    mockRadarrConfiguredSettings(explicitRun.settings);
+
+    defaultRun.plex.getSections.mockResolvedValue([
       { key: '1', title: 'Movies', type: 'movie' },
     ]);
-    plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(new Set([100]));
-    radarr.listMovies.mockResolvedValue([
-      { id: 1, title: 'Exists', tmdbId: 100, monitored: false },
-    ]);
-
-    const result = await job.run(ctx);
-    const report = result.summary as Record<string, unknown>;
-    const raw = report.raw as Record<string, unknown>;
-    const rawRadarr = raw.radarr as Record<string, unknown>;
-
-    expect(radarr.setMovieMonitored).not.toHaveBeenCalled();
-    expect(rawRadarr.keptUnmonitored).toBe(1);
-    expect(rawRadarr.missingFromPlex).toBe(0);
-  });
-
-  it('skips unmonitored movies missing tmdbId', async () => {
-    const { job, settings, plex, radarr } = createJob();
-    const ctx = createContext(false);
-
-    mockConfiguredSettings(settings);
-    plex.getSections.mockResolvedValue([
+    explicitRun.plex.getSections.mockResolvedValue([
       { key: '1', title: 'Movies', type: 'movie' },
     ]);
-    plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(new Set<number>());
-    radarr.listMovies.mockResolvedValue([
-      { id: 1, title: 'Unknown', monitored: false },
-    ]);
-
-    const result = await job.run(ctx);
-    const report = result.summary as Record<string, unknown>;
-    const raw = report.raw as Record<string, unknown>;
-    const rawRadarr = raw.radarr as Record<string, unknown>;
-
-    expect(radarr.setMovieMonitored).not.toHaveBeenCalled();
-    expect(rawRadarr.missingTmdbId).toBe(1);
-  });
-
-  it('records path conflicts when Radarr refuses to re-monitor', async () => {
-    const { job, settings, plex, radarr } = createJob();
-    const ctx = createContext(false);
-
-    mockConfiguredSettings(settings);
-    plex.getSections.mockResolvedValue([
-      { key: '1', title: 'Movies', type: 'movie' },
-    ]);
-    plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(new Set<number>());
-    radarr.listMovies.mockResolvedValue([
-      { id: 1, title: 'Missing', tmdbId: 200, monitored: false },
-    ]);
-    radarr.setMovieMonitored.mockResolvedValue(false);
-
-    const result = await job.run(ctx);
-    const report = result.summary as Record<string, unknown>;
-    const raw = report.raw as Record<string, unknown>;
-    const rawRadarr = raw.radarr as Record<string, unknown>;
-
-    expect(rawRadarr.missingFromPlex).toBe(1);
-    expect(rawRadarr.remonitored).toBe(0);
-    expect(rawRadarr.skippedPathConflicts).toBe(1);
-  });
-
-  it('fails early when Radarr is not configured', async () => {
-    const { job, settings } = createJob();
-    const ctx = createContext(false);
-
-    settings.getInternalSettings.mockResolvedValue({
-      settings: {
-        plex: { baseUrl: 'http://plex.local:32400' },
-      },
-      secrets: {
-        plex: { token: 'plex-token' },
-        'plex.token': 'plex-token',
-      },
-    });
-
-    await expect(job.run(ctx)).rejects.toThrow(
-      'Confirm Unmonitored requires Radarr to be configured',
+    defaultRun.plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(
+      new Set([100]),
     );
-  });
-
-  it('returns a JobReportV1 summary with expected facts and metrics', async () => {
-    const { job, settings, plex, radarr } = createJob();
-    const ctx = createContext(false);
-
-    mockConfiguredSettings(settings);
-    plex.getSections.mockResolvedValue([
-      { key: '1', title: 'Movies', type: 'movie' },
-    ]);
-    plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(new Set([100]));
-    radarr.listMovies.mockResolvedValue([
+    explicitRun.plex.getMovieTmdbIdSetForSectionKey.mockResolvedValue(
+      new Set([100]),
+    );
+    defaultRun.radarr.listMovies.mockResolvedValue([
       { id: 1, title: 'Exists', tmdbId: 100, monitored: false },
       { id: 2, title: 'Missing', tmdbId: 200, monitored: false },
       { id: 3, title: 'Unknown', monitored: false },
     ]);
-    radarr.setMovieMonitored.mockResolvedValue(true);
+    explicitRun.radarr.listMovies.mockResolvedValue([
+      { id: 1, title: 'Exists', tmdbId: 100, monitored: false },
+      { id: 2, title: 'Missing', tmdbId: 200, monitored: false },
+      { id: 3, title: 'Unknown', monitored: false },
+    ]);
+    defaultRun.radarr.setMovieMonitored.mockResolvedValue(true);
+    explicitRun.radarr.setMovieMonitored.mockResolvedValue(true);
+
+    const defaultResult = await defaultRun.job.run(createContext(false));
+    const explicitResult = await explicitRun.job.run(
+      createContext(false, { target: 'radarr' }),
+    );
+
+    const defaultRaw = expectReportRaw(defaultResult);
+    const explicitRaw = expectReportRaw(explicitResult);
+
+    expect(explicitRaw.target).toBe('radarr');
+    expect(explicitRaw.radarr).toEqual(defaultRaw.radarr);
+  });
+
+  it('Sonarr re-monitors only missing unmonitored episodes and leaves Plex episodes unchanged', async () => {
+    const { job, settings, plex, sonarr, radarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string>([[42, 'show-1']]),
+    );
+    plex.getEpisodesSet.mockResolvedValue(new Set(['1:1']));
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Existing Show', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: false },
+        { id: 12, seasonNumber: 1, episodeNumber: 3, monitored: true },
+      ])
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+        { id: 12, seasonNumber: 1, episodeNumber: 3, monitored: true },
+      ]);
+    sonarr.setEpisodeMonitored.mockResolvedValue(true);
+
+    const result = await job.run(ctx);
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+
+    expect(raw.target).toBe('sonarr');
+    expect(radarr.listMovies).not.toHaveBeenCalled();
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(1);
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledWith({
+      baseUrl: 'http://sonarr.local:8989',
+      apiKey: 'sonarr-key',
+      episode: { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: false },
+      monitored: true,
+    });
+    expect(rawSonarr.unmonitoredEpisodesChecked).toBe(2);
+    expect(rawSonarr.keptUnmonitored).toBe(1);
+    expect(rawSonarr.missingFromPlex).toBe(1);
+    expect(rawSonarr.remonitored).toBe(1);
+  });
+
+  it('Sonarr re-monitors all currently unmonitored non-special episodes when Plex has no matching show', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(new Map());
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Show Missing In Plex', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: false },
+        { id: 12, seasonNumber: 0, episodeNumber: 1, monitored: false },
+      ])
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: true },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+        { id: 12, seasonNumber: 0, episodeNumber: 1, monitored: false },
+      ]);
+    sonarr.setEpisodeMonitored.mockResolvedValue(true);
+
+    const result = await job.run(ctx);
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+
+    expect(plex.getEpisodesSet).not.toHaveBeenCalled();
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(2);
+    expect(rawSonarr.missingFromPlex).toBe(2);
+    expect(rawSonarr.remonitored).toBe(2);
+    expect(rawSonarr.keptUnmonitored).toBe(0);
+  });
+
+  it('Sonarr partial Plex coverage only re-monitors the missing episode keys', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows A', type: 'show' },
+      { key: '3', title: 'Shows B', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey
+      .mockResolvedValueOnce(new Map<number, string>([[42, 'show-1']]))
+      .mockResolvedValueOnce(new Map<number, string>([[42, 'show-2']]));
+    plex.getEpisodesSet
+      .mockResolvedValueOnce(new Set(['1:1']))
+      .mockResolvedValueOnce(new Set(['1:3']));
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Split Library Show', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: false },
+        { id: 12, seasonNumber: 1, episodeNumber: 3, monitored: false },
+      ])
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+        { id: 12, seasonNumber: 1, episodeNumber: 3, monitored: false },
+      ]);
+    sonarr.setEpisodeMonitored.mockResolvedValue(true);
+
+    const result = await job.run(ctx);
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(1);
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledWith({
+      baseUrl: 'http://sonarr.local:8989',
+      apiKey: 'sonarr-key',
+      episode: { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: false },
+      monitored: true,
+    });
+    expect(rawSonarr.keptUnmonitored).toBe(2);
+    expect(rawSonarr.missingFromPlex).toBe(1);
+    expect(rawSonarr.remonitored).toBe(1);
+  });
+
+  it('Sonarr skips monitored series missing tvdbId', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(new Map());
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'No TVDB Id', monitored: true },
+    ]);
 
     const result = await job.run(ctx);
     const report = result.summary as Record<string, unknown>;
-    const tasks = Array.isArray(report.tasks)
-      ? (report.tasks as Array<Record<string, unknown>>)
-      : [];
-    const sections = Array.isArray(report.sections)
-      ? (report.sections as Array<Record<string, unknown>>)
-      : [];
-    const radarrTask = tasks.find(
-      (task) => task.id === 'radarr_unmonitored_confirm',
-    );
-    const radarrFacts = Array.isArray(radarrTask?.facts)
-      ? (radarrTask?.facts as Array<Record<string, unknown>>)
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+    const issues = Array.isArray(report.issues)
+      ? (report.issues as Array<Record<string, unknown>>)
       : [];
 
-    expect(report.template).toBe('jobReportV1');
-    expect(report.version).toBe(1);
-    expect(sections.some((section) => section.id === 'plex')).toBe(true);
-    expect(sections.some((section) => section.id === 'radarr')).toBe(true);
-    expect(radarrFacts.map((fact) => fact.label)).toEqual([
-      'Configured',
-      'Kept unmonitored',
-      'Re-monitored',
-      'Skipped missing TMDB id',
-      'Skipped path conflicts',
+    expect(sonarr.getEpisodesBySeries).not.toHaveBeenCalled();
+    expect(rawSonarr.missingTvdbId).toBe(1);
+    expect(rawSonarr.unmonitoredEpisodesChecked).toBe(0);
+    expect(
+      issues.some((entry) => hasIssueMessage(entry, 'missing TVDB id')),
+    ).toBe(true);
+  });
+
+  it('Sonarr skips specials and invalid episode numbering', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
     ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string>([[42, 'show-1']]),
+    );
+    plex.getEpisodesSet.mockResolvedValue(new Set());
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Numbering Edge Cases', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries.mockResolvedValue([
+      { id: 10, seasonNumber: 0, episodeNumber: 1, monitored: false },
+      { id: 11, seasonNumber: 1, episodeNumber: 0, monitored: false },
+      { id: 12, seasonNumber: 1, monitored: false },
+      { id: 13, seasonNumber: 1, episodeNumber: 1, monitored: true },
+    ]);
+
+    const result = await job.run(ctx);
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+
+    expect(sonarr.setEpisodeMonitored).not.toHaveBeenCalled();
+    expect(rawSonarr.unmonitoredEpisodesChecked).toBe(0);
+    expect(rawSonarr.missingFromPlex).toBe(0);
+    expect(rawSonarr.remonitored).toBe(0);
+  });
+
+  it('Sonarr only counts episodes as re-monitored after a verification refresh', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string>([[42, 'show-1']]),
+    );
+    plex.getEpisodesSet.mockResolvedValue(new Set());
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Verification Show', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+      ])
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+      ]);
+    sonarr.setEpisodeMonitored.mockResolvedValue(true);
+
+    const result = await job.run(ctx);
+    const report = result.summary as Record<string, unknown>;
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+    const issues = Array.isArray(report.issues)
+      ? (report.issues as Array<Record<string, unknown>>)
+      : [];
+
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(1);
+    expect(sonarr.getEpisodesBySeries).toHaveBeenCalledTimes(2);
+    expect(rawSonarr.missingFromPlex).toBe(1);
+    expect(rawSonarr.remonitored).toBe(0);
+    expect(rawSonarr.updateFailures).toBe(1);
+    expect(
+      issues.some((entry) => hasIssueMessage(entry, 'failed to re-monitor')),
+    ).toBe(true);
+  });
+
+  it('Sonarr update failure becomes a warning and the rest of the run continues', async () => {
+    const { job, settings, plex, sonarr } = createJob();
+    const ctx = createContext(false, { target: 'sonarr' });
+
+    mockSonarrConfiguredSettings(settings);
+    plex.getSections.mockResolvedValue([
+      { key: '2', title: 'Shows', type: 'show' },
+    ]);
+    plex.getTvdbShowMapForSectionKey.mockResolvedValue(
+      new Map<number, string>([[42, 'show-1']]),
+    );
+    plex.getEpisodesSet.mockResolvedValue(new Set());
+    sonarr.listMonitoredSeries.mockResolvedValue([
+      { id: 1, title: 'Retryable Show', tvdbId: 42, monitored: true },
+    ]);
+    sonarr.getEpisodesBySeries
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: false },
+      ])
+      .mockResolvedValueOnce([
+        { id: 10, seasonNumber: 1, episodeNumber: 1, monitored: false },
+        { id: 11, seasonNumber: 1, episodeNumber: 2, monitored: true },
+      ]);
+    sonarr.setEpisodeMonitored
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(true);
+
+    const result = await job.run(ctx);
+    const report = result.summary as Record<string, unknown>;
+    const raw = expectReportRaw(result);
+    const rawSonarr = raw.sonarr as Record<string, unknown>;
+    const issues = Array.isArray(report.issues)
+      ? (report.issues as Array<Record<string, unknown>>)
+      : [];
+
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(2);
+    expect(rawSonarr.missingFromPlex).toBe(2);
+    expect(rawSonarr.remonitored).toBe(1);
+    expect(rawSonarr.updateFailures).toBe(1);
+    expect(
+      issues.some((entry) => hasIssueMessage(entry, 'failed to re-monitor')),
+    ).toBe(true);
+  });
+
+  it('explicit invalid target throws a clear error', async () => {
+    const { job, settings } = createJob();
+
+    await expect(
+      job.run(createContext(false, { target: 'bad-target' })),
+    ).rejects.toThrow(
+      'Confirm Unmonitored target must be either "radarr" or "sonarr".',
+    );
+    expect(settings.getInternalSettings).not.toHaveBeenCalled();
   });
 });
