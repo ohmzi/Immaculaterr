@@ -435,11 +435,18 @@ export const FaqPage = () => {
           id: 'task-manager-confirm-monitored-what-does',
           question: 'What does Confirm Monitored do?',
           answer: (
-            <p>
-              It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if
-              Plex already has the movie or the episode, this task helps stop Radarr or Sonarr from
-              still treating that specific item like something that needs attention.
-            </p>
+            <>
+              <p>
+                It keeps ARR monitoring aligned with what already exists in Plex. In simple English:
+                if Plex already has the movie or the episode, this task helps stop Radarr or Sonarr
+                from still treating that specific item like something that needs attention.
+              </p>
+              <p>
+                On the Sonarr side, it also cascades upward. If every regular episode in a season
+                ends unmonitored, the season is unmonitored too. If every tracked season ends
+                unmonitored, the series itself is unmonitored too.
+              </p>
+            </>
           ),
         },
         {
