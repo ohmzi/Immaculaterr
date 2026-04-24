@@ -7,136 +7,181 @@ Deep-linkable answers for Task Manager and Command Center features, plus update,
 Pick a feature area first, then jump into the full section below.
 
 > ### [Getting started](#getting-started)
+>
 > Basics, first-run setup, and how to reach the app.
 > [What is Immaculaterr?](#what-is-immaculaterr) · [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand) · [How do I do first-time setup?](#how-do-i-do-first-time-setup)
-> + 1 more answer in the section below.
+>
+> - 1 more answer in the section below.
 
 > ### [Task Manager](#task-manager)
+>
 > How jobs run, what the main controls mean, and how to keep automation simple.
 > [What is Task Manager for?](#what-is-task-manager-for) · [How do I keep Task Manager simple by default?](#how-do-i-keep-task-manager-simple-by-default) · [What is the difference between manual runs, Plex-Triggered Auto-Run, and Scheduled Auto-Run?](#what-is-the-difference-between-manual-runs-plex-triggered-auto-run-and-scheduled-auto-run)
-> + 4 more answers in the section below.
+>
+> - 4 more answers in the section below.
 
 > ### [Confirm Monitored](#confirm-monitored)
+>
 > Keep ARR monitoring aligned with what already exists in Plex.
 > [What does Confirm Monitored do?](#what-does-confirm-monitored-do) · [When should I use Confirm Monitored?](#when-should-i-use-confirm-monitored) · [Does Confirm Monitored have any special settings?](#does-confirm-monitored-have-any-special-settings)
 
 > ### [Confirm Unmonitored](#confirm-unmonitored)
+>
 > Choose Radarr or Sonarr, then re-monitor missing unmonitored movies or episodes that Plex does not have.
 > [What does Confirm Unmonitored do?](#what-does-confirm-unmonitored-do) · [When should I use Confirm Unmonitored?](#when-should-i-use-confirm-unmonitored) · [Does Confirm Unmonitored have any special settings?](#does-confirm-unmonitored-have-any-special-settings)
 
 > ### [Cleanup After Adding New Content](#cleanup-after-adding-new-content)
+>
 > Plex-triggered cleanup actions for newly added media.
 > [What does Cleanup After Adding New Content do?](#what-does-cleanup-after-adding-new-content-do) · [What do the cleanup toggles mean?](#what-do-the-cleanup-toggles-mean) · [What is the difference between Plex-Triggered Auto-Run and Run now for this card?](#what-is-the-difference-between-plex-triggered-auto-run-and-run-now-for-this-card)
-> + 1 more answer in the section below.
+>
+> - 1 more answer in the section below.
 
 > ### [Search Monitored](#search-monitored)
+>
 > Off-peak missing searches for monitored ARR items.
 > [What does Search Monitored do?](#what-does-search-monitored-do) · [What does the Includes section do?](#what-does-the-includes-section-do) · [When should I use Search Monitored instead of Start search immediately?](#when-should-i-use-search-monitored-instead-of-start-search-immediately)
 
 > ### [TMDB Upcoming Movies](#tmdb-upcoming-movies)
+>
 > What this task does, how each run works, and how to edit filters.
 > [How does TMDB Upcoming Movies work?](#how-does-tmdb-upcoming-movies-work) · [What are the defaults if I do not create custom filters?](#what-are-the-defaults-if-i-do-not-create-custom-filters) · [How do I set custom filters on this card?](#how-do-i-set-custom-filters-on-this-card)
-> + 1 more answer in the section below.
+>
+> - 1 more answer in the section below.
 
 > ### [Rotten Tomatoes Upcoming Movies](#rotten-tomatoes-upcoming-movies)
+>
 > Fixed-source Rotten Tomatoes discovery that routes safe matches to Radarr or Seerr.
 > [How does Rotten Tomatoes Upcoming Movies work?](#how-does-rotten-tomatoes-upcoming-movies-work) · [What sources does it check?](#what-sources-does-it-check) · [What does the Route via Seerr toggle do?](#what-does-the-route-via-seerr-toggle-do) · [What results should I expect after a run?](#what-results-should-i-expect-after-a-run)
 
 > ### [Immaculate Taste Collection](#immaculate-taste-collection)
+>
 > Watch-triggered Immaculate Taste updates and missing-item routing.
 > [What does Immaculate Taste Collection do?](#what-does-immaculate-taste-collection-do) · [What does the Immaculate Taste Refresher toggle do?](#what-does-the-immaculate-taste-refresher-toggle-do) · [What does Fetch Missing items do on this card?](#what-does-fetch-missing-items-do-on-this-card)
-> + 4 more answers in the section below.
+>
+> - 4 more answers in the section below.
 
 > ### [Immaculate Taste Refresher](#immaculate-taste-refresher)
+>
 > Standalone off-peak rebuilds for the Immaculate Taste collection.
 > [What does Immaculate Taste Refresher do?](#what-does-immaculate-taste-refresher-do) · [When should I use the separate refresher card if the collection card already has a refresher toggle?](#when-should-i-use-the-separate-refresher-card-if-the-collection-card-already-has-a-refresher-toggle) · [What is a good default setup for Immaculate Taste Refresher?](#what-is-a-good-default-setup-for-immaculate-taste-refresher)
 
 > ### [Based on Latest Watched Collection](#based-on-latest-watched-collection)
+>
 > Watch-triggered recommendation generation from your latest watch.
 > [What does Based on Latest Watched Collection do?](#what-does-based-on-latest-watched-collection-do) · [What does Fetch Missing items do on this card?](#what-does-fetch-missing-items-do-on-this-card-1) · [What does Approval required from Observatory do here?](#what-does-approval-required-from-observatory-do-here)
-> + 2 more answers in the section below.
+>
+> - 2 more answers in the section below.
 
 > ### [Based on Latest Watched Refresher](#based-on-latest-watched-refresher)
+>
 > Off-peak refreshes for latest-watched recommendation rows.
 > [What does Based on Latest Watched Refresher do?](#what-does-based-on-latest-watched-refresher-do) · [When should I use this refresher instead of the collection card?](#when-should-i-use-this-refresher-instead-of-the-collection-card) · [What is a good default setup for Based on Latest Watched Refresher?](#what-is-a-good-default-setup-for-based-on-latest-watched-refresher)
 
 > ### [Fresh Out Of The Oven](#fresh-out-of-the-oven)
+>
 > Per-user unseen recent-release movie rows for the last 3 months.
 > [What does Fresh Out Of The Oven do?](#what-does-fresh-out-of-the-oven-do) · [Where does Fresh Out Of The Oven pin in Plex?](#where-does-fresh-out-of-the-oven-pin-in-plex) · [What is a good default setup for Fresh Out Of The Oven?](#what-is-a-good-default-setup-for-fresh-out-of-the-oven)
 
 > ### [Plex Watch History Import](#plex-watch-history-import)
+>
 > Scan your Plex watched history to seed recommendations and build dedicated collections.
 > [What does Plex Watch History Import do?](#what-does-plex-watch-history-import-do) · [What Plex collections does the import affect?](#what-plex-collections-does-the-plex-history-import-affect) · [How do I see which titles were used as seeds?](#how-do-i-see-which-titles-were-used-as-seeds)
-> + 4 more answers in the section below.
+>
+> - 4 more answers in the section below.
 
 > ### [Netflix Watch History Import](#netflix-watch-history-import)
+>
 > Upload a Netflix CSV to seed recommendations from your external watch history.
 > [What does Netflix Watch History Import do?](#what-does-netflix-watch-history-import-do) · [Where do I get the Netflix CSV file?](#where-do-i-get-the-netflix-csv-file) · [What Plex collections does the import affect?](#what-plex-collections-does-the-import-affect)
-> + 4 more answers in the section below.
+>
+> - 4 more answers in the section below.
 
 > ### [Recommendations](#recommendations)
+>
 > Seeds, generated lists, and how recommendation rows refresh over time.
 > [What does Recommendations control?](#what-does-recommendations-control) · [What does "Plex-Triggered Auto-Run" mean?](#what-does-plex-triggered-auto-run-mean) · [How can I run a job manually?](#how-can-i-run-a-job-manually)
-> + 8 more answers in the section below.
+>
+> - 8 more answers in the section below.
 
 > ### [Plex Library Selection](#plex-library-selection)
+>
 > Which Plex libraries can participate in manual and automatic runs.
 > [How does Plex Library Selection affect auto-runs and manual runs?](#how-does-plex-library-selection-affect-auto-runs-and-manual-runs)
 
 > ### [Plex User Monitoring](#plex-user-monitoring)
+>
 > How viewer-specific datasets, monitoring, and row pinning work.
 > [What does Plex User Monitoring do?](#what-does-plex-user-monitoring-do) · [How do per-viewer collections and Plex pin locations work?](#how-do-per-viewer-collections-and-plex-pin-locations-work)
 
 > ### [Immaculate Taste Profiles](#immaculate-taste-profiles)
+>
 > Advanced taste lanes, Observatory behavior, and profile matching rules.
 > [What's the difference between "Immaculate Taste" and "Based on Latest Watched"?](#whats-the-difference-between-immaculate-taste-and-based-on-latest-watched) · [How does the Immaculate Taste collection work?](#how-does-the-immaculate-taste-collection-work) · [What are Immaculate Taste profiles and smart filters, and when should I use them?](#what-are-immaculate-taste-profiles-and-smart-filters-and-when-should-i-use-them)
-> + 6 more answers in the section below.
+>
+> - 6 more answers in the section below.
 
 > ### [Reset Immaculate Taste Collection](#reset-immaculate-taste-collection)
+>
 > Reset the saved Immaculate Taste dataset for a selected library.
 > [What does "Reset Immaculate Taste Collection" do?](#what-does-reset-immaculate-taste-collection-do)
 
 > ### [Reset Seerr Requests](#reset-seerr-requests)
+>
 > Seerr routing behavior and how to clear managed request history.
 > [How do I set up Seerr mode in simple steps?](#how-do-i-set-up-seerr-mode-in-simple-steps) · [What changes when I turn on "Route missing items via Seerr"?](#what-changes-when-i-turn-on-route-missing-items-via-seerr) · [What is the difference between in-app approval mode and Seerr mode?](#what-is-the-difference-between-in-app-approval-mode-and-seerr-mode)
-> + 1 more answer in the section below.
+>
+> - 1 more answer in the section below.
 
 > ### [Reset Rejected List](#reset-rejected-list)
+>
 > Swipe actions, rejected suggestions, and how to make them eligible again.
 > [What do swipes do, and when should I reset the rejected list?](#what-do-swipes-do-and-when-should-i-reset-the-rejected-list)
 
 > ### [Collection Posters](#collection-posters)
+>
 > Custom artwork for managed collections and poster override behavior.
 > [How does poster artwork work for collections? Can I customize posters?](#how-does-poster-artwork-work-for-collections-can-i-customize-posters)
 
 > ### [Radarr](#radarr)
+>
 > Movie request routing, cleanup behavior, and direct ARR expectations.
 > [What does "Fetch Missing items" actually do?](#what-does-fetch-missing-items-actually-do) · [If I disable Radarr toggles, what changes?](#if-i-disable-radarr-toggles-what-changes) · [What happens during "Cleanup after adding new content"?](#what-happens-during-cleanup-after-adding-new-content)
-> + 1 more answer in the section below.
+>
+> - 1 more answer in the section below.
 
 > ### [Sonarr](#sonarr)
+>
 > TV request routing, duplicate handling, and what toggles actually change.
 > [How are TV duplicates handled in Sonarr?](#how-are-tv-duplicates-handled-in-sonarr) · [What changes if I disable Sonarr toggles?](#what-changes-if-i-disable-sonarr-toggles)
 
 > ### [Updates & versions](#updates--versions)
+>
 > Release checks, version visibility, and the safest update flow.
 > [How does the app check for updates?](#how-does-the-app-check-for-updates) · [Why does it say "Update available"? What should I do?](#why-does-it-say-update-available-what-should-i-do) · [Where can I see the current version and version history?](#where-can-i-see-the-current-version-and-version-history)
-> + 1 more answer in the section below.
+>
+> - 1 more answer in the section below.
 
 > ### [Security & backups](#security--backups)
+>
 > Master key handling, backups, and the app's built-in security controls.
 > [What is APP_MASTER_KEY and why is it required?](#what-is-app_master_key-and-why-is-it-required) · [Where should I store the master key (env var vs secret file)?](#where-should-i-store-the-master-key-env-var-vs-secret-file) · [What happens if I lose the master key?](#what-happens-if-i-lose-the-master-key)
-> + 3 more answers in the section below.
+>
+> - 3 more answers in the section below.
 
 > ### [Troubleshooting](#troubleshooting)
+>
 > Common login, integration, empty-run, and reset questions.
 > [I can't log in / I keep getting logged out - what do I check?](#i-cant-log-in--i-keep-getting-logged-out---what-do-i-check) · [Immaculaterr can't reach Plex/Radarr/Sonarr/Seerr - what URL should I use from Docker?](#immaculaterr-cant-reach-plexradarrsonarrseerr---what-url-should-i-use-from-docker) · [TMDB requests fail - what's required and where do I configure it?](#tmdb-requests-fail---whats-required-and-where-do-i-configure-it)
-> + 5 more answers in the section below.
+>
+> - 5 more answers in the section below.
 
 > ### [Glossary](#glossary)
+>
 > Shared terms used throughout the app and job reports.
 > [Auto-Run](#auto-run) · [Plex-Triggered](#plex-triggered) · [Scheduled](#scheduled)
-> + 4 more answers in the section below.
+>
+> - 4 more answers in the section below.
 
 ## Getting started
 
@@ -246,9 +291,9 @@ Open in app: [Task Manager -> Confirm Monitored](/task-manager#job-monitorConfir
 
 ### What does Confirm Monitored do?
 
-It keeps ARR monitoring aligned with what already exists in Plex. In simple English: if Plex already has the movie or the episode, this task helps stop Radarr or Sonarr from still treating that specific item like something that needs attention.
-For Sonarr, it also cascades upward: if every regular episode in a season ends unmonitored, the season is unmonitored too.
-If every tracked season ends unmonitored, the series itself is unmonitored too.
+It keeps ARR monitoring aligned with verified playable media already in Plex. In simple English: this task only counts a movie or episode as present after Plex can actually serve a playable media part for it, not just because metadata exists.
+On the Sonarr side, the cascade still happens, but in order: it checks episodes across all monitored shows first, then seasons, then series.
+If every regular episode in a season ends unmonitored, the season is unmonitored too. If every tracked season ends unmonitored, the series itself is unmonitored too.
 
 ### When should I use Confirm Monitored?
 

@@ -39,16 +39,16 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.8-beta-4',
     popupHighlights: [
-      'Confirm Monitored now cascades Sonarr season and series unmonitoring when all regular episodes are already cleared.',
+      'Confirm Monitored now requires Plex-verified playable media and runs Sonarr cascade in episode, season, then series order.',
       'Netflix import no longer fails when legacy databases are missing the releaseDate column.',
     ],
     sections: [
       {
         title: 'Confirm Monitored Sonarr cascade',
         bullets: [
-          'Confirm Monitored now unmonitors Sonarr seasons once every positive-numbered episode in that season ends unmonitored.',
+          'Confirm Monitored now requires Plex-verified playable media before Radarr movies or Sonarr episodes are treated as present.',
+          'Sonarr cascade still happens, but in ordered passes: all episodes first, then seasons, then series.',
           'If every tracked positive-numbered season ends unmonitored, the series itself is unmonitored too.',
-          'That Sonarr cascade also runs when Plex never matched the show metadata but Sonarr already has every positive-numbered episode unmonitored.',
         ],
       },
       {

@@ -223,7 +223,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     id: 'monitorConfirm',
     name: 'Confirm Monitored',
     description:
-      'Unmonitor monitored Radarr movies and Sonarr episodes already present in Plex, cascade Sonarr seasons or series when every regular episode is cleared, then optionally trigger Sonarr MissingEpisodeSearch.',
+      'Unmonitor monitored Radarr movies and Sonarr episodes only after Plex verifies playable media, then run Sonarr cascade in order: episodes across all shows first, then seasons, then series, then optionally trigger Sonarr MissingEpisodeSearch.',
     defaultScheduleCron: '0 1 * * *',
     defaultEstimatedRuntimeMs: 12 * 60_000,
     dedupePolicy: 'schedule_singleton',
