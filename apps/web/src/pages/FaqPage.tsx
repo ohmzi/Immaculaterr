@@ -437,14 +437,15 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                It keeps ARR monitoring aligned with what already exists in Plex. In simple English:
-                if Plex already has the movie or the episode, this task helps stop Radarr or Sonarr
-                from still treating that specific item like something that needs attention.
+                It keeps ARR monitoring aligned with verified playable media already in Plex. In
+                simple English: this task only counts a movie or episode as present after Plex can
+                actually serve a playable media part for it, not just because metadata exists.
               </p>
               <p>
-                On the Sonarr side, it also cascades upward. If every regular episode in a season
-                ends unmonitored, the season is unmonitored too. If every tracked season ends
-                unmonitored, the series itself is unmonitored too.
+                On the Sonarr side, the cascade still happens, but in order: it checks episodes
+                across all monitored shows first, then seasons, then series. If every regular
+                episode in a season ends unmonitored, the season is unmonitored too. If every
+                tracked season ends unmonitored, the series itself is unmonitored too.
               </p>
             </>
           ),

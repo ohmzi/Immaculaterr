@@ -41,6 +41,17 @@ export type PlexMediaVersion = {
   parts: PlexMediaPart[];
 };
 
+export type PlexPartPlayableProbeResult = {
+  playable: boolean;
+  probeFailureCount: number;
+};
+
+export type PlexVerifiedEpisodeAvailability = {
+  verifiedEpisodes: Set<string>;
+  metadataEpisodes: Set<string>;
+  probeFailureCount: number;
+};
+
 export type PlexMetadataDetails = {
   ratingKey: string;
   title: string;
@@ -192,8 +203,49 @@ function asPlexPartArray(value: unknown): Array<Record<string, unknown>> {
   );
 }
 
+function parseFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function parsePlexMediaVersions(value: unknown): PlexMediaVersion[] {
+  return asPlexMediaArray(value).map((m) => {
+    const mediaId = toStringSafe(m['id']).trim() || null;
+    const videoResolution = toStringSafe(m['videoResolution']).trim() || null;
+    const parts = asPlexPartArray(m['Part']).map((p) => ({
+      id: toStringSafe(p['id']).trim() || null,
+      key: toStringSafe(p['key']).trim() || null,
+      file: toStringSafe(p['file']).trim() || null,
+      size: parseFiniteNumber(p['size']),
+    }));
+    return { id: mediaId, videoResolution, parts };
+  });
+}
+
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+}
+
+function toPlexUrl(baseUrl: string, pathOrUrl: string) {
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const normalized = pathOrUrl.startsWith('/') ? pathOrUrl.slice(1) : pathOrUrl;
+  return new URL(normalized, normalizeBaseUrl(baseUrl)).toString();
+}
+
+function buildPartAttemptUrls(baseUrl: string, partKey: string): string[] {
+  const attemptUrls: string[] = [];
+  attemptUrls.push(toPlexUrl(baseUrl, partKey));
+
+  const match = partKey.match(/\/library\/parts\/(\d+)/i);
+  if (match?.[1]) {
+    attemptUrls.push(toPlexUrl(baseUrl, `library/parts/${match[1]}`));
+  }
+
+  return Array.from(new Set(attemptUrls));
 }
 
 function extractFirstInt(value: string): number | null {
@@ -980,25 +1032,7 @@ export class PlexServerService {
       }
     }
 
-    const media = asPlexMediaArray(item.Media).map((m) => {
-      const mediaId = toStringSafe(m['id']).trim() || null;
-      const videoResolution = toStringSafe(m['videoResolution']).trim() || null;
-      const parts = asPlexPartArray(m['Part']).map((p) => ({
-        id: toStringSafe(p['id']).trim() || null,
-        key: toStringSafe(p['key']).trim() || null,
-        file: toStringSafe(p['file']).trim() || null,
-        size: (() => {
-          const raw = p['size'];
-          if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
-          if (typeof raw === 'string' && raw.trim()) {
-            const n = Number.parseInt(raw.trim(), 10);
-            return Number.isFinite(n) ? n : null;
-          }
-          return null;
-        })(),
-      }));
-      return { id: mediaId, videoResolution, parts };
-    });
+    const media = parsePlexMediaVersions(item.Media);
 
     const out: PlexMetadataDetails = {
       ratingKey: rk,
@@ -1033,23 +1067,7 @@ export class PlexServerService {
       throw new Error('partKey is required');
     }
 
-    const toUrl = (pathOrUrl: string) => {
-      if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
-      const normalized = pathOrUrl.startsWith('/')
-        ? pathOrUrl.slice(1)
-        : pathOrUrl;
-      return new URL(normalized, normalizeBaseUrl(baseUrl)).toString();
-    };
-
-    const attemptUrls: string[] = [];
-    attemptUrls.push(toUrl(key));
-
-    // Fallback: if the part key includes /library/parts/<id>/..., try /library/parts/<id>
-    const match = key.match(/\/library\/parts\/(\d+)/i);
-    if (match?.[1]) {
-      attemptUrls.push(toUrl(`library/parts/${match[1]}`));
-    }
-
+    const attemptUrls = buildPartAttemptUrls(baseUrl, key);
     let lastErr: unknown = null;
     for (const u of attemptUrls) {
       try {
@@ -1097,6 +1115,114 @@ export class PlexServerService {
       normalizeBaseUrl(baseUrl),
     ).toString();
     await this.fetchNoContent(url, token, 'DELETE', 30000);
+  }
+
+  async probePartPlayable(params: {
+    baseUrl: string;
+    token: string;
+    partKey: string;
+    cache?: Map<string, PlexPartPlayableProbeResult>;
+  }): Promise<PlexPartPlayableProbeResult> {
+    const { baseUrl, token, partKey, cache } = params;
+    const key = partKey.trim();
+    if (!key) {
+      throw new Error('partKey is required');
+    }
+
+    const cached = cache?.get(key);
+    if (cached) return cached;
+
+    const attemptUrls = buildPartAttemptUrls(baseUrl, key);
+    let probeFailureCount = 0;
+
+    for (const url of attemptUrls) {
+      const status = await this.fetchProbeStatus(url, token, 15000).catch(
+        () => null,
+      );
+      if (status === 200 || status === 206) {
+        const result = { playable: true, probeFailureCount };
+        cache?.set(key, result);
+        return result;
+      }
+      if (
+        status === null ||
+        status === 401 ||
+        status === 403 ||
+        status >= 500
+      ) {
+        probeFailureCount += 1;
+      }
+    }
+
+    const result = { playable: false, probeFailureCount };
+    cache?.set(key, result);
+    return result;
+  }
+
+  async verifyPlayableMetadataByRatingKey(params: {
+    baseUrl: string;
+    token: string;
+    ratingKey: string;
+    partProbeCache?: Map<string, PlexPartPlayableProbeResult>;
+  }): Promise<PlexPartPlayableProbeResult> {
+    const { baseUrl, token, ratingKey, partProbeCache } = params;
+    const details = await this.getMetadataDetails({
+      baseUrl,
+      token,
+      ratingKey,
+    });
+    if (!details) {
+      return { playable: false, probeFailureCount: 0 };
+    }
+    return await this.verifyPlayableMediaVersions({
+      baseUrl,
+      token,
+      media: details.media,
+      partProbeCache,
+    });
+  }
+
+  async getVerifiedEpisodeAvailabilityForShowRatingKey(params: {
+    baseUrl: string;
+    token: string;
+    showRatingKey: string;
+    partProbeCache?: Map<string, PlexPartPlayableProbeResult>;
+  }): Promise<PlexVerifiedEpisodeAvailability> {
+    const { baseUrl, token, showRatingKey, partProbeCache } = params;
+    const url = new URL(
+      `library/metadata/${encodeURIComponent(showRatingKey)}/allLeaves`,
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 60000));
+
+    const container = xml.MediaContainer;
+    const items = asPlexMetadataArray(container);
+
+    const verifiedEpisodes = new Set<string>();
+    const metadataEpisodes = new Set<string>();
+    let probeFailureCount = 0;
+
+    for (const item of items) {
+      const season = parseFiniteNumber(item.parentIndex);
+      const episode = parseFiniteNumber(item.index);
+      if (!season || !episode) continue;
+
+      const key = `${season}:${episode}`;
+      metadataEpisodes.add(key);
+
+      const verification = await this.verifyPlayableMediaVersions({
+        baseUrl,
+        token,
+        media: parsePlexMediaVersions(item.Media),
+        partProbeCache,
+      });
+      probeFailureCount += verification.probeFailureCount;
+      if (verification.playable) {
+        verifiedEpisodes.add(key);
+      }
+    }
+
+    return { verifiedEpisodes, metadataEpisodes, probeFailureCount };
   }
 
   async findMovieRatingKeyByTitle(params: {
@@ -2051,6 +2177,16 @@ export class PlexServerService {
     librarySectionKey: string;
     sectionTitle?: string;
   }): Promise<Set<number>> {
+    const map = await this.getMovieTmdbRatingKeysMapForSectionKey(params);
+    return new Set(map.keys());
+  }
+
+  async getMovieTmdbRatingKeysMapForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<Map<number, string[]>> {
     const { baseUrl, token, librarySectionKey, sectionTitle } = params;
     const items = await this.listSectionItems({
       baseUrl,
@@ -2062,12 +2198,15 @@ export class PlexServerService {
       timeoutMs: 60000,
     });
 
-    const set = new Set<number>();
+    const map = new Map<number, string[]>();
     let itemsWithGuids = 0;
     let itemsWithoutGuids = 0;
     let totalGuidsProcessed = 0;
 
     for (const item of items) {
+      const ratingKey = item.ratingKey ? String(item.ratingKey) : '';
+      if (!ratingKey) continue;
+
       if (!item.Guid) {
         itemsWithoutGuids++;
         continue;
@@ -2076,11 +2215,15 @@ export class PlexServerService {
       itemsWithGuids++;
       const ids = extractIdsFromGuids(item.Guid, 'tmdb');
       totalGuidsProcessed += ids.length;
-      for (const id of ids) set.add(id);
+      for (const id of ids) {
+        const ratingKeys = map.get(id) ?? [];
+        if (!ratingKeys.includes(ratingKey)) ratingKeys.push(ratingKey);
+        map.set(id, ratingKeys);
+      }
     }
 
     this.logger.log(
-      `Plex TMDB set size=${set.size} section=${sectionTitle ?? librarySectionKey} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} totalGuids=${totalGuidsProcessed}`,
+      `Plex TMDB map size=${map.size} section=${sectionTitle ?? librarySectionKey} items=${items.length} withGuids=${itemsWithGuids} withoutGuids=${itemsWithoutGuids} totalGuids=${totalGuidsProcessed}`,
     );
 
     if (items.length > 0 && items[0]?.Guid) {
@@ -2090,7 +2233,7 @@ export class PlexServerService {
       );
     }
 
-    return set;
+    return map;
   }
 
   async getTvdbShowMap(params: {
@@ -2168,6 +2311,22 @@ export class PlexServerService {
     librarySectionKey: string;
     sectionTitle?: string;
   }): Promise<Map<number, string>> {
+    const ratingKeysMap =
+      await this.getTvdbShowRatingKeysMapForSectionKey(params);
+    const map = new Map<number, string>();
+    for (const [tvdbId, ratingKeys] of ratingKeysMap.entries()) {
+      const ratingKey = ratingKeys[0];
+      if (ratingKey) map.set(tvdbId, ratingKey);
+    }
+    return map;
+  }
+
+  async getTvdbShowRatingKeysMapForSectionKey(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    sectionTitle?: string;
+  }): Promise<Map<number, string[]>> {
     const { baseUrl, token, librarySectionKey, sectionTitle } = params;
     const items = await this.listSectionItems({
       baseUrl,
@@ -2179,7 +2338,7 @@ export class PlexServerService {
       timeoutMs: 60000,
     });
 
-    const map = new Map<number, string>();
+    const map = new Map<number, string[]>();
     let itemsWithGuids = 0;
     let itemsWithoutGuids = 0;
     let totalGuidsProcessed = 0;
@@ -2202,7 +2361,9 @@ export class PlexServerService {
       if (ids.length > 0) {
         itemsWithTvdbIds++;
         for (const id of ids) {
-          if (!map.has(id)) map.set(id, ratingKey);
+          const ratingKeys = map.get(id) ?? [];
+          if (!ratingKeys.includes(ratingKey)) ratingKeys.push(ratingKey);
+          map.set(id, ratingKeys);
         }
       } else {
         itemsWithoutTvdbIds++;
@@ -2246,6 +2407,40 @@ export class PlexServerService {
       set.add(`${season}:${episode}`);
     }
     return set;
+  }
+
+  private async verifyPlayableMediaVersions(params: {
+    baseUrl: string;
+    token: string;
+    media: PlexMediaVersion[];
+    partProbeCache?: Map<string, PlexPartPlayableProbeResult>;
+  }): Promise<PlexPartPlayableProbeResult> {
+    const { baseUrl, token, media, partProbeCache } = params;
+    let probeFailureCount = 0;
+    const seenPartKeys = new Set<string>();
+
+    for (const version of media) {
+      for (const part of version.parts) {
+        const partKey = part.key?.trim() ?? '';
+        if (!part.file?.trim() || !partKey || seenPartKeys.has(partKey)) {
+          continue;
+        }
+        seenPartKeys.add(partKey);
+
+        const probe = await this.probePartPlayable({
+          baseUrl,
+          token,
+          partKey,
+          cache: partProbeCache,
+        });
+        probeFailureCount += probe.probeFailureCount;
+        if (probe.playable) {
+          return { playable: true, probeFailureCount };
+        }
+      }
+    }
+
+    return { playable: false, probeFailureCount };
   }
 
   async findCollectionRatingKey(params: {
@@ -2929,6 +3124,47 @@ export class PlexServerService {
           `Plex HTTP ${method} ${safeUrl} -> ${res.status} (${ms}ms)`,
         );
       }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async fetchProbeStatus(
+    url: string,
+    token: string,
+    timeoutMs: number,
+  ): Promise<number> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const safeUrl = sanitizeUrlForLogs(url);
+    const startedAt = Date.now();
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: '*/*',
+          Range: 'bytes=0-0',
+          'X-Plex-Token': token,
+        },
+        signal: controller.signal,
+      });
+
+      const ms = Date.now() - startedAt;
+      if (this.logHttp) {
+        this.logger.debug(
+          `Plex HTTP GET ${safeUrl} (probe) -> ${res.status} (${ms}ms)`,
+        );
+      }
+      return res.status;
+    } catch (err) {
+      const ms = Date.now() - startedAt;
+      this.logger.warn(
+        `Plex HTTP GET ${safeUrl} (probe) -> FAILED (${ms}ms): ${(err as Error)?.message ?? String(err)}`.trim(),
+      );
+      throw new BadGatewayException(
+        `Plex probe failed: ${(err as Error)?.message ?? String(err)}`,
+      );
     } finally {
       clearTimeout(timeout);
     }

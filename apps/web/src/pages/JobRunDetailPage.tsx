@@ -1717,6 +1717,12 @@ export function JobRunDetailPage() {
                             radarr && typeof radarr.totalMonitored === 'number' ? radarr.totalMonitored : 0;
                           const radarrAlreadyInPlex =
                             radarr && typeof radarr.alreadyInPlex === 'number' ? radarr.alreadyInPlex : 0;
+                          const radarrUnverifiedMatches =
+                            radarr && typeof radarr.unverifiedMatches === 'number'
+                              ? radarr.unverifiedMatches
+                              : 0;
+                          const radarrProbeFailures =
+                            radarr && typeof radarr.probeFailures === 'number' ? radarr.probeFailures : 0;
                           const radarrMissingTmdbId =
                             radarr && typeof radarr.missingTmdbId === 'number' ? radarr.missingTmdbId : 0;
                           const radarrSkippedPathConflicts =
@@ -1732,6 +1738,12 @@ export function JobRunDetailPage() {
                             sonarr && typeof sonarr.episodesChecked === 'number' ? sonarr.episodesChecked : 0;
                           const sonarrEpisodesInPlex =
                             sonarr && typeof sonarr.episodesInPlex === 'number' ? sonarr.episodesInPlex : 0;
+                          const sonarrUnverifiedEpisodes =
+                            sonarr && typeof sonarr.unverifiedEpisodes === 'number'
+                              ? sonarr.unverifiedEpisodes
+                              : 0;
+                          const sonarrProbeFailures =
+                            sonarr && typeof sonarr.probeFailures === 'number' ? sonarr.probeFailures : 0;
                           const sonarrEpisodesUnmonitored =
                             sonarr && typeof sonarr.episodesUnmonitored === 'number' ? sonarr.episodesUnmonitored : 0;
                           const sonarrSeasonsUnmonitored =
@@ -1787,9 +1799,21 @@ export function JobRunDetailPage() {
                                       <div>
                                         <span className="text-white font-semibold">{radarrAlreadyInPlex}</span>{' '}
                                         {radarrAlreadyInPlex === 1
-                                          ? 'Movie found in Plex'
-                                          : 'Movies found in Plex'}
+                                          ? 'Movie verified playable in Plex'
+                                          : 'Movies verified playable in Plex'}
                                       </div>
+                                      {radarrUnverifiedMatches ? (
+                                        <div>
+                                          <span className="text-white font-semibold">{radarrUnverifiedMatches}</span>{' '}
+                                          metadata matches not verified playable
+                                        </div>
+                                      ) : null}
+                                      {radarrProbeFailures ? (
+                                        <div>
+                                          <span className="text-white font-semibold">{radarrProbeFailures}</span>{' '}
+                                          Plex probe failures
+                                        </div>
+                                      ) : null}
                                       <div>
                                         <span className="text-white font-semibold">
                                           {radarrMissingTmdbId + radarrSkippedPathConflicts}
@@ -1809,8 +1833,20 @@ export function JobRunDetailPage() {
                                         <span className="text-white font-semibold">{sonarrEpisodesChecked}</span> episodes checked
                                       </div>
                                       <div>
-                                        <span className="text-white font-semibold">{sonarrEpisodesInPlex}</span> episodes found in Plex
+                                        <span className="text-white font-semibold">{sonarrEpisodesInPlex}</span> episodes verified playable in Plex
                                       </div>
+                                      {sonarrUnverifiedEpisodes ? (
+                                        <div>
+                                          <span className="text-white font-semibold">{sonarrUnverifiedEpisodes}</span>{' '}
+                                          episode metadata matches not verified playable
+                                        </div>
+                                      ) : null}
+                                      {sonarrProbeFailures ? (
+                                        <div>
+                                          <span className="text-white font-semibold">{sonarrProbeFailures}</span>{' '}
+                                          Plex probe failures
+                                        </div>
+                                      ) : null}
                                       <div>
                                         <span className="text-white font-semibold">{sonarrTotalSeries}</span> series scanned
                                         {sonarrSeriesProcessed !== null ? (

@@ -1,22 +1,21 @@
-Version History
-===
+# Version History
 
 This file tracks notable changes by version.
 
-1.7.8-beta-4
----
+## 1.7.8-beta-4
 
 - What's new in 1.7.8 beta 4:
 - Confirm Monitored Sonarr cascade:
-  - Confirm Monitored now unmonitors Sonarr seasons once every positive-numbered episode in that season ends unmonitored.
+  - Confirm Monitored now requires Plex-verified playable media before Radarr movies or Sonarr episodes are treated as present.
+  - Sonarr cascade still happens, but in ordered passes: all episodes first, then seasons, then series.
   - If every tracked positive-numbered season ends unmonitored, the series itself is unmonitored too.
-  - That Sonarr cascade also runs when Plex never matched the show metadata but Sonarr already has every positive-numbered episode unmonitored.
 - Netflix import reliability (issue #199):
   - Fixed `/api/import/netflix` failing with "column `releaseDate` does not exist" on older SQLite databases whose schema had drifted from the Prisma schema.
   - `ImmaculateTasteMovieLibrary` and `ImmaculateTasteShowLibrary` rebuild paths now preserve `releaseDate` and `firstAirDate` instead of silently dropping them.
   - Added an idempotent startup step that restores `releaseDate` and `firstAirDate` plus their indexes regardless of migration history state.
 
-1.7.7
+  1.7.7
+
 ---
 
 - What's new in 1.7.7:
@@ -41,8 +40,8 @@ This file tracks notable changes by version.
   - The same durable dedupe applies across Plex polling and the existing Immaculate Taste webhook trigger so both paths stay aligned.
   - Manual and scheduled runs still work normally, and only new successful auto-runs start building this dedupe history.
 
+  1.7.6
 
-1.7.6
 ---
 
 - What's new since 1.7.5:
@@ -75,8 +74,8 @@ This file tracks notable changes by version.
   - Job reports continue to include a "Seed Titles" section listing every movie and TV show used as a recommendation seed.
   - Fixed a bug where Plex history import collections were incorrectly named "Netflix Import" instead of "Plex History".
 
+  1.7.5
 
-1.7.5
 ---
 
 - What's new since 1.7.1:
@@ -113,8 +112,8 @@ This file tracks notable changes by version.
   - Migration repair script logs diagnostics for blocked deploys and reconciles stuck migration rows so Prisma can rerun them safely.
   - Updated fast-xml-parser, file-type, and flatted to patched versions addressing upstream security advisories.
 
+  1.7.1
 
-1.7.1
 ---
 
 - What's new since 1.7.0:
@@ -136,8 +135,8 @@ This file tracks notable changes by version.
   - Setup page now links directly to both guides for faster navigation.
   - Updated setup docs with TrueNAS and Unraid deployment flows, local CA trust steps, and HTTPS verification commands.
 
+  1.7.0
 
-1.7.0
 ---
 
 - Password recovery and reset:
@@ -158,7 +157,8 @@ This file tracks notable changes by version.
   - Poster files stay saved in app data so the look remains consistent after restarts.
   - Collections are easier to recognize and feel more personalized in Plex.
 
-1.6.1
+  1.6.1
+
 ---
 
 - Better API key protection:
@@ -174,7 +174,8 @@ This file tracks notable changes by version.
   - HTTPS on `5464` for encrypted local/LAN access (optional domain HTTPS on `443`).
 - Added security tests for key handling and transport safety.
 
-1.5.2
+  1.5.2
+
 ---
 
 - Per-viewer personalization for Movies + TV:
@@ -214,19 +215,22 @@ This file tracks notable changes by version.
   - Remove recently added media from Plex watchlist
   - Any combination of toggles is supported; all OFF runs as a no-op with skipped actions in reports.
 
-1.0.0.600
+  1.0.0.600
+
 ---
 
 - Web: fix Observatory page black-screen crash caused by Radix Select + React 19 ref loop.
 - Web: replace Observatory library dropdown with a custom glass dropdown (matches app styling).
 
-1.0.0.530
+  1.0.0.530
+
 ---
 
 - Compose: keep host networking with visible port mappings.
 - Compose: remove GitHub token env from update checks.
 
-1.0.0.0
+  1.0.0.0
+
 ---
 
 - Plex-triggered automation:
