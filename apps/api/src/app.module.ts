@@ -29,8 +29,17 @@ import { API_STATIC_EXCLUDE_PATH } from './app.constants';
 import { ArrInstanceModule } from './arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from './immaculate-taste-profiles/immaculate-taste-profile.module';
 import { ImportModule } from './import/import.module';
+import {
+  buildAppRenderPath,
+  buildPrefixedStaticExcludePath,
+  readAppBasePath,
+} from './public-base-path';
 
 const webDistPath = join(__dirname, '..', '..', 'web', 'dist');
+const appBasePath = readAppBasePath();
+const staticExcludePaths = appBasePath
+  ? [API_STATIC_EXCLUDE_PATH, buildPrefixedStaticExcludePath(appBasePath)]
+  : [API_STATIC_EXCLUDE_PATH];
 const staticImports = existsSync(webDistPath)
   ? [
       ServeStaticModule.forRoot({
@@ -38,7 +47,13 @@ const staticImports = existsSync(webDistPath)
         // Keep API routes on the Nest side.
         // NOTE: path-to-regexp v8 no longer supports legacy regexp syntax like "/api/(.*)".
         // Use an optional wildcard group instead: matches "/api" and anything under it.
-        exclude: [API_STATIC_EXCLUDE_PATH],
+        exclude: staticExcludePaths,
+        ...(appBasePath
+          ? {
+              serveRoot: appBasePath,
+              renderPath: buildAppRenderPath(appBasePath),
+            }
+          : {}),
       }),
     ]
   : [];

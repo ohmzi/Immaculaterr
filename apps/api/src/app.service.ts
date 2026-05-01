@@ -4,6 +4,7 @@ import { access, stat } from 'node:fs/promises';
 import type { HealthResponseDto } from './app.dto';
 import { PrismaService } from './db/prisma.service';
 import { readAppMeta } from './app.meta';
+import { readAppBasePath } from './public-base-path';
 
 export type ReadinessCheck =
   | { ok: true }
@@ -33,7 +34,10 @@ export class AppService {
   }
 
   getMeta() {
-    return readAppMeta();
+    return {
+      ...readAppMeta(),
+      publicBasePath: readAppBasePath(),
+    };
   }
 
   async getReadiness(): Promise<ReadinessResponse> {

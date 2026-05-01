@@ -126,6 +126,43 @@ Then open either:
 
 The `.env` file above sets the app container timezone to `America/New_York`. Change it if you prefer a different IANA timezone.
 
+Optional: host under `/recommendations`
+---
+
+Set `APP_BASE_PATH=/recommendations` on the app container and keep `TRUST_PROXY=1` when a reverse proxy sits in front of Immaculaterr.
+
+Example `.env` or compose overrides:
+
+```env
+APP_BASE_PATH=/recommendations
+TRUST_PROXY=1
+```
+
+After that, browse to:
+
+- `http://<server-ip>:5454/recommendations/`
+- `https://<server-ip>:5464/recommendations/`
+
+In the app, open `Profile` to confirm the active `Public path` value.
+
+Example nginx reverse proxy:
+
+```nginx
+location = /recommendations {
+  return 301 /recommendations/;
+}
+
+location /recommendations/ {
+  proxy_pass http://127.0.0.1:5454;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Host $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Port $server_port;
+}
+```
+
 Optional (recommended for HTTPS without browser warnings):
 
 ```bash

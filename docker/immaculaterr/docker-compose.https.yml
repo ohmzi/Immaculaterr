@@ -13,6 +13,7 @@ services:
       - PORT=${APP_INTERNAL_PORT:-5455}
       - TZ=${TZ:-America/New_York}
       - APP_DATA_DIR=/data
+      - APP_BASE_PATH=${APP_BASE_PATH:-}
       - DATABASE_URL=file:/data/tcp.sqlite
       - UPDATE_CHECK_ENABLED=${UPDATE_CHECK_ENABLED:-true}
       - UPDATE_CHECK_REPO=${UPDATE_CHECK_REPO:-}

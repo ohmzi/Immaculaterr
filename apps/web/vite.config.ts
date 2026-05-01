@@ -11,7 +11,8 @@ const appVersionMatch = appVersionSource.match(/APP_VERSION = '([^']+)'/);
 const appAssetVersion = appVersionMatch?.[1] ?? 'dev';
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? './' : '/',
   define: {
     __APP_ASSET_VERSION__: JSON.stringify(appAssetVersion),
   },
@@ -49,4 +50,4 @@ export default defineConfig({
       ...(process.env.WEB_ALLOWED_HOSTS?.split(',').map((h) => h.trim()).filter(Boolean) ?? []),
     ],
   },
-});
+}));
