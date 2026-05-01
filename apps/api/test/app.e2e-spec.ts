@@ -9,6 +9,7 @@ import { createAppBasePathApiRewriteMiddleware } from '../src/public-base-path';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
+  const appBasePath = '/nested/app-base';
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -25,7 +26,7 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.use(createAppBasePathApiRewriteMiddleware('/recommendations'));
+    app.use(createAppBasePathApiRewriteMiddleware(appBasePath));
     app.setGlobalPrefix('api');
     await app.init();
   });
@@ -48,9 +49,9 @@ describe('AppController (e2e)', () => {
       });
   });
 
-  it('/recommendations/api/health (GET)', () => {
+  it('rewrites health checks under an arbitrary app base path (GET)', () => {
     return request(app.getHttpServer())
-      .get('/recommendations/api/health')
+      .get(`${appBasePath}/api/health`)
       .expect(200)
       .expect((res) => {
         const body = res.body as unknown;

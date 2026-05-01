@@ -42,33 +42,37 @@ Then open:
 
 The `.env` file above sets the app container timezone to `America/New_York`. Change it if you prefer a different IANA timezone.
 
-Optional: host under `/recommendations`
+Optional: host under an app base path
 ---
 
-Set `APP_BASE_PATH=/recommendations` and keep `TRUST_PROXY=1` in the app container when you want the app to live under a reverse-proxy subpath.
+Set `APP_BASE_PATH` and keep `TRUST_PROXY=1` in the app container when you want the app to live under a reverse-proxy or tunnel subpath.
+
+Replace `/immaculaterr` below with any subpath you want, such as `/recommendations` or `/media-helper`.
 
 Example `.env` additions:
 
 ```env
-APP_BASE_PATH=/recommendations
+APP_BASE_PATH=/immaculaterr
 TRUST_PROXY=1
 ```
 
 Then browse to:
 
-- `http://<server-ip>:5454/recommendations/`
-- `https://<server-ip>:5464/recommendations/`
+- `http://<server-ip>:5454/immaculaterr/`
+- `https://<server-ip>:5464/immaculaterr/`
 
-In the app, open `Profile` to confirm the active `Public path` value.
+Make sure your proxy preserves and forwards that same prefix to Immaculaterr. This works with nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar setups.
+
+In the app, open `Profile` to confirm the active `App base path` value.
 
 Example nginx reverse proxy:
 
 ```nginx
-location = /recommendations {
-  return 301 /recommendations/;
+location = /immaculaterr {
+  return 301 /immaculaterr/;
 }
 
-location /recommendations/ {
+location /immaculaterr/ {
   proxy_pass http://127.0.0.1:5454;
   proxy_http_version 1.1;
   proxy_set_header Host $host;
@@ -91,7 +95,7 @@ Supported compose templates live in `docker/immaculaterr/`:
 
 These compose files use `network_mode: host` by default. On Linux, this keeps local integrations simple (`http://localhost:<port>` from inside the app).
 If you want New York time in the app container, add `TZ=America/New_York` to the `.env` file next to the compose file.
-If you want prefix hosting, also add `APP_BASE_PATH=/recommendations`.
+If you want app-base-path hosting, also add `APP_BASE_PATH=/immaculaterr` (or your own chosen subpath).
 
 Optional: Docker secret for APP_MASTER_KEY
 ---

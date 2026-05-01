@@ -62,7 +62,7 @@ const OPTIONAL_HTTPS_SIDECAR_COMMAND = [
 ].join('\n');
 
 const PUBLIC_PATH_HOSTING_ENV_SNIPPET = [
-  'APP_BASE_PATH=/recommendations',
+  'APP_BASE_PATH=/immaculaterr',
   'TRUST_PROXY=1',
 ].join('\n');
 
@@ -353,32 +353,42 @@ export const SetupPage = () => {
         },
         {
           id: 'update-paths-public-path-hosting',
-          question: 'Public path hosting under /recommendations',
+          question: 'App base path hosting behind a reverse proxy',
           answer: (
             <>
               <p>
-                Use this when you want Immaculaterr to live under a reverse-proxy subpath like{' '}
-                <code className="font-mono">/recommendations</code>.
+                Use this when you want Immaculaterr to live under a subpath such as{' '}
+                <code className="font-mono">/immaculaterr</code>. Replace that example with any app
+                base path you want.
               </p>
               <ol className="list-decimal pl-5 space-y-1">
                 <li>
                   Add these values to the Docker env file or compose environment for the app
                   container.
                 </li>
+                <li>
+                  Make sure your proxy or tunnel preserves the same prefix instead of stripping it.
+                  This applies to Nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and
+                  similar setups.
+                </li>
                 <li>Recreate the Immaculaterr container.</li>
                 <li>
                   Open the app on{' '}
-                  <code className="font-mono">http://&lt;server-ip&gt;:5454/recommendations/</code>{' '}
-                  or <code className="font-mono">https://&lt;server-ip&gt;:5464/recommendations/</code>.
+                  <code className="font-mono">http://&lt;server-ip&gt;:5454/immaculaterr/</code> or{' '}
+                  <code className="font-mono">https://&lt;server-ip&gt;:5464/immaculaterr/</code>.
                 </li>
                 <li>
                   Confirm the result in{' '}
                   <Link to="/profile#profile-public-path-panel" className="font-semibold text-white/85 underline underline-offset-2 hover:text-white">
-                    Profile - Public path
+                    Profile - App base path
                   </Link>
                   .
                 </li>
               </ol>
+              <p>
+                The configured app base path is then used throughout the web app, API calls, and
+                Docker-served asset URLs.
+              </p>
               {renderCommandBlock(
                 'update-paths-public-path-hosting',
                 PUBLIC_PATH_HOSTING_ENV_SNIPPET,
@@ -386,7 +396,7 @@ export const SetupPage = () => {
               <p>
                 Need the full explanation? Open{' '}
                 <Link to="/faq#getting-started-public-path" className="font-semibold text-white/85 underline underline-offset-2 hover:text-white">
-                  FAQ - How do I change the Public path?
+                  FAQ - How do I host Immaculaterr under an app base path?
                 </Link>
                 .
               </p>
