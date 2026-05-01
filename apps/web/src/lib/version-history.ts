@@ -41,6 +41,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
     popupHighlights: [
       'Confirm Monitored now requires Plex-verified playable media and runs Sonarr cascade in episode, season, then series order.',
       'Netflix import no longer fails when legacy databases are missing the releaseDate column.',
+      "Rotten Tomatoes scraper: upcoming-movie discovery works again with Rotten Tomatoes' current movie-card markup.",
     ],
     sections: [
       {
@@ -56,6 +57,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         bullets: [
           'Preserved releaseDate and firstAirDate when rebuilding ImmaculateTasteMovieLibrary and ImmaculateTasteShowLibrary so imports stop failing with "column does not exist".',
           'Added an idempotent ensure step that backfills releaseDate and firstAirDate on older SQLite databases regardless of migration history state.',
+        ],
+      },
+      {
+        title: 'Rotten Tomatoes upcoming movies reliability',
+        bullets: [
+          "Fixed Rotten Tomatoes upcoming-movie discovery so current browse pages using the newer rt-text movie-card markup are parsed again.",
+          'The scraper now accepts the tagged field wrapper instead of assuming legacy span-only title and start-date markup.',
+          'This restores normal discovery for the Rotten Tomatoes Upcoming Movies job when source pages load successfully.',
         ],
       },
     ],
