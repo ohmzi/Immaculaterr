@@ -18,6 +18,7 @@ import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
 import { formatDisplayVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
+import { withPublicBasePath } from '@/lib/public-path';
 
 interface NavItem {
   label: string;
@@ -85,7 +86,6 @@ export function Navigation() {
     Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
   const updateLabel = formatDisplayVersion(updatesQuery.data?.latestVersion ?? null);
   const currentLabel = formatDisplayVersion(updatesQuery.data?.currentVersion ?? null);
-
   useEffect(() => {
     if (!updateAvailable || !updateLabel) return;
 
@@ -251,7 +251,7 @@ export function Navigation() {
       // Clear everything like logout
       queryClient.clear();
       await clearClientUserData();
-      window.location.href = '/';
+      window.location.href = withPublicBasePath('/');
     },
     onError: (err) => {
       setResetError(err instanceof Error ? err.message : String(err));

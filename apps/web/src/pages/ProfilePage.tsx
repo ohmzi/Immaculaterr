@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
 import { ShieldCheck, UserRoundCog } from 'lucide-react';
@@ -23,6 +24,7 @@ import {
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
+import { getPublicBasePath, withPublicBasePath } from '@/lib/public-path';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -81,7 +83,7 @@ export function ProfilePage() {
       queryClient.clear();
       await clearClientUserData();
       toast.success('Password updated. Please sign in again.');
-      window.location.href = '/';
+      window.location.href = withPublicBasePath('/');
     },
     onError: (error) => {
       setPasswordError(
@@ -253,6 +255,10 @@ export function ProfilePage() {
     'min-w-0 rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
   const inputClass =
     'min-w-0 w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-white placeholder-white/40 outline-none transition focus:border-transparent focus:ring-2 focus:ring-white/20';
+  const publicBasePath = getPublicBasePath();
+  const publicPathLabel = publicBasePath || '/';
+  const profileShortcutClass =
+    'inline-flex min-h-[44px] items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white';
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -451,6 +457,49 @@ export function ProfilePage() {
                     : 'Save recovery questions'}
                 </button>
               </form>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div id="profile-public-path-panel" className={cardClass}>
+              <div className="mb-4 flex items-center gap-2 text-white">
+                <ShieldCheck className="h-5 w-5 text-[#facc15]" />
+                <h2 className="text-xl font-semibold">Public path</h2>
+              </div>
+              <p className="mb-4 text-sm text-white/70">
+                This is the active browser path prefix for this Immaculaterr instance.
+                Use it when you are verifying reverse-proxy or subpath hosting. Root
+                deployments show <span className="font-mono text-white/80">/</span>.
+              </p>
+              <div className="space-y-1">
+                <label
+                  htmlFor="profile-public-path"
+                  className="block text-xs font-bold uppercase tracking-wider text-white/60"
+                >
+                  Public path
+                </label>
+                <input
+                  id="profile-public-path"
+                  type="text"
+                  readOnly
+                  value={publicPathLabel}
+                  className={`${inputClass} font-mono text-sm text-white/80`}
+                />
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <Link
+                  to="/faq#getting-started-public-path"
+                  className={profileShortcutClass}
+                >
+                  How to change this path
+                </Link>
+                <Link
+                  to="/setup#update-paths-public-path-hosting"
+                  className={profileShortcutClass}
+                >
+                  Open setup steps
+                </Link>
+              </div>
             </div>
           </div>
         </div>

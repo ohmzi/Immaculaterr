@@ -35,6 +35,11 @@ import {
   WEBHOOKS_PLEX_CANONICAL_PREFIX,
 } from './app.constants';
 import { sanitizePathForLog, truncateForLog } from './log.utils';
+import {
+  createAppBasePathApiRewriteMiddleware,
+  createAppBasePathRootRedirectMiddleware,
+  readAppBasePath,
+} from './public-base-path';
 
 function ensureLegacyGlobals() {
   const g = globalThis as Record<string, unknown>;
@@ -138,6 +143,13 @@ async function bootstrap() {
   app.use(securityHeadersMiddleware);
   app.use(privateCacheMiddleware);
   app.use(cookieParser());
+
+  const appBasePath = readAppBasePath();
+
+  if (appBasePath) {
+    app.use(createAppBasePathApiRewriteMiddleware(appBasePath));
+    app.use(createAppBasePathRootRedirectMiddleware(appBasePath));
+  }
 
   // Compatibility: people (and some guides) often paste Plex webhook URLs without the `/api` prefix.
   // Accept `/webhooks/plex` as an alias for `/api/webhooks/plex`.
@@ -367,7 +379,7 @@ async function bootstrap() {
 
   const url = await app.getUrl().catch(() => `http://${host}:${port}`);
   bootstrapLogger.log(
-    `API listening: ${url}${API_PREFIX_PATH} (dataDir=${process.env.APP_DATA_DIR ?? 'n/a'})`,
+    `API listening: ${url}${API_PREFIX_PATH} (dataDir=${process.env.APP_DATA_DIR ?? 'n/a'}, publicBasePath=${appBasePath || '/'})`,
   );
 }
 void bootstrap().catch((err) => {
