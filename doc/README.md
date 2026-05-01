@@ -126,33 +126,37 @@ Then open either:
 
 The `.env` file above sets the app container timezone to `America/New_York`. Change it if you prefer a different IANA timezone.
 
-Optional: host under `/recommendations`
+Optional: host under an app base path
 ---
 
-Set `APP_BASE_PATH=/recommendations` on the app container and keep `TRUST_PROXY=1` when a reverse proxy sits in front of Immaculaterr.
+Set `APP_BASE_PATH` on the app container and keep `TRUST_PROXY=1` when a reverse proxy or tunnel sits in front of Immaculaterr.
+
+Replace `/immaculaterr` below with any subpath you want, such as `/recommendations` or `/media-helper`.
 
 Example `.env` or compose overrides:
 
 ```env
-APP_BASE_PATH=/recommendations
+APP_BASE_PATH=/immaculaterr
 TRUST_PROXY=1
 ```
 
 After that, browse to:
 
-- `http://<server-ip>:5454/recommendations/`
-- `https://<server-ip>:5464/recommendations/`
+- `http://<server-ip>:5454/immaculaterr/`
+- `https://<server-ip>:5464/immaculaterr/`
 
-In the app, open `Profile` to confirm the active `Public path` value.
+Make sure your proxy preserves and forwards that same prefix to Immaculaterr. This works with nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar setups.
+
+In the app, open `Profile` to confirm the active `App base path` value.
 
 Example nginx reverse proxy:
 
 ```nginx
-location = /recommendations {
-  return 301 /recommendations/;
+location = /immaculaterr {
+  return 301 /immaculaterr/;
 }
 
-location /recommendations/ {
+location /immaculaterr/ {
   proxy_pass http://127.0.0.1:5454;
   proxy_http_version 1.1;
   proxy_set_header Host $host;

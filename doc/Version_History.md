@@ -6,9 +6,9 @@ This file tracks notable changes by version.
 
 - This entry combines the beta 5 and beta 6 changes.
 - Hosting and routing:
-  - Added `APP_BASE_PATH` support so Immaculaterr can run under `/recommendations` without a separate web build.
-  - Prefixed API requests now rewrite cleanly to `/api/...`, and Profile shows the active `Public path` alongside `GET /api/meta`.
-  - Web assets, router links, API helpers, and logout/reset flows now stay inside the configured public path.
+  - Added `APP_BASE_PATH` support so Immaculaterr can run under any reverse-proxy subpath without a separate web build.
+  - Prefixed API requests now rewrite cleanly to `/api/...`, and Profile shows the active app base path alongside API metadata.
+  - Web assets, router links, API helpers, and logout/reset flows now stay inside the configured app base path.
 - Confirm Monitored and imports:
   - Confirm Monitored now requires Plex-verified playable media before Radarr movies or Sonarr episodes count as present.
   - Sonarr confirmation now runs in order: episodes first, then seasons, then series.

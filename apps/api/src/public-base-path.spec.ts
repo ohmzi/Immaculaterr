@@ -9,11 +9,9 @@ describe('public base path helpers', () => {
   });
 
   it('strips trailing slashes from slash-prefixed paths', () => {
-    expect(normalizeAppBasePath('/recommendations')).toBe('/recommendations');
-    expect(normalizeAppBasePath('/recommendations/')).toBe('/recommendations');
-    expect(normalizeAppBasePath('/recommendations///')).toBe(
-      '/recommendations',
-    );
+    expect(normalizeAppBasePath('/immaculaterr')).toBe('/immaculaterr');
+    expect(normalizeAppBasePath('/immaculaterr/')).toBe('/immaculaterr');
+    expect(normalizeAppBasePath('/immaculaterr///')).toBe('/immaculaterr');
     expect(normalizeAppBasePath(' /nested/path/ ')).toBe('/nested/path');
   });
 
@@ -24,16 +22,16 @@ describe('public base path helpers', () => {
     expect(() => normalizeAppBasePath('http://example.com/path')).toThrow(
       /APP_BASE_PATH/,
     );
-    expect(() => normalizeAppBasePath('/recommendations?x=1')).toThrow(
+    expect(() => normalizeAppBasePath('/immaculaterr?x=1')).toThrow(
       /APP_BASE_PATH/,
     );
-    expect(() => normalizeAppBasePath('/recommendations#hash')).toThrow(
+    expect(() => normalizeAppBasePath('/immaculaterr#hash')).toThrow(
       /APP_BASE_PATH/,
     );
   });
 
   it('uses the render path shape Nest can append to a prefixed static mount', () => {
     expect(buildAppRenderPath('')).toBe('');
-    expect(buildAppRenderPath('/recommendations')).toBe('{*path}');
+    expect(buildAppRenderPath('/immaculaterr')).toBe('{*path}');
   });
 });

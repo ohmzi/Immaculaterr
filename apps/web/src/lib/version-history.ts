@@ -39,7 +39,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.8-beta-6',
     popupHighlights: [
-      'Prefix hosting under /recommendations now works across the app, API, and Docker setup.',
+      'App base path hosting now works across the app, API, and Docker setup.',
       'Confirm Monitored is stricter and now checks Plex-playable media before Radarr or Sonarr items are treated as present.',
       'Rotten Tomatoes Upcoming now handles separate Movies and TV settings with cleaner one-run options.',
       'Netflix import is safer on older SQLite databases, with no Prisma or stored-data changes in this beta.',
@@ -48,9 +48,9 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
       {
         title: 'Hosting and routing',
         bullets: [
-          'Added APP_BASE_PATH support so Immaculaterr can run under /recommendations without a separate web build.',
-          'Prefixed API requests now rewrite cleanly to /api/..., and Profile shows the active Public path alongside GET /api/meta.',
-          'Web assets, router links, API helpers, and logout/reset flows now stay inside the configured public path.',
+          'Added APP_BASE_PATH support so Immaculaterr can run under any reverse-proxy subpath without a separate web build.',
+          'Prefixed API requests now rewrite cleanly to /api/..., and Profile shows the active app base path alongside API metadata.',
+          'Web assets, router links, API helpers, and logout/reset flows now stay inside the configured app base path.',
         ],
       },
       {

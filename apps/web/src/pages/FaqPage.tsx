@@ -226,42 +226,54 @@ export const FaqPage = () => {
         },
         {
           id: 'getting-started-public-path',
-          question: 'How do I change the Public path?',
+          question: 'How do I host Immaculaterr under an app base path behind a reverse proxy?',
           answer: (
             <>
               <p>
-                You cannot change the Public path from inside Immaculaterr. That value is read-only
-                and reflects how the app is currently being served by Docker and your reverse proxy.
+                Set <code className="font-mono">APP_BASE_PATH</code> to the exact public prefix you
+                want, then make your proxy or tunnel forward that same prefix to Immaculaterr. This
+                works with Nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar
+                setups.
+              </p>
+              <p>
+                Replace <code className="font-mono">/immaculaterr</code> below with any subpath you
+                want, such as <code className="font-mono">/recommendations</code> or{' '}
+                <code className="font-mono">/media-helper</code>.
               </p>
               <ol className="list-decimal pl-5 space-y-1">
                 <li>
-                  Set <code className="font-mono">APP_BASE_PATH=/recommendations</code> in your
-                  Docker environment.
+                  Set <code className="font-mono">APP_BASE_PATH=/immaculaterr</code> in your Docker
+                  environment.
                 </li>
                 <li>
                   Keep <code className="font-mono">TRUST_PROXY=1</code> enabled.
                 </li>
                 <li>
-                  Make sure your proxy forwards <code className="font-mono">/recommendations/</code>{' '}
-                  to Immaculaterr.
+                  Make sure your proxy preserves and forwards{' '}
+                  <code className="font-mono">/immaculaterr/</code> to Immaculaterr instead of
+                  stripping that prefix.
                 </li>
                 <li>Recreate or restart the Immaculaterr container.</li>
                 <li>
-                  Open the app on <code className="font-mono">/recommendations/</code> and confirm
-                  the result in{' '}
+                  Open the app on <code className="font-mono">/immaculaterr/</code> and confirm the
+                  result in{' '}
                   <Link to="/profile#profile-public-path-panel" className={faqLinkClass}>
-                    Profile - Public path
+                    Profile - App base path
                   </Link>
                   .
                 </li>
               </ol>
+              <p>
+                Once set, the same app base path is used across the SPA, API requests, asset URLs,
+                redirects, and logout flows.
+              </p>
               <p>
                 Use{' '}
                 <Link
                   to="/setup#update-paths-public-path-hosting"
                   className={faqLinkClass}
                 >
-                  Setup - Public path hosting
+                  Setup - App base path hosting
                 </Link>{' '}
                 for the deployment steps.
               </p>

@@ -464,19 +464,19 @@ export function ProfilePage() {
             <div id="profile-public-path-panel" className={cardClass}>
               <div className="mb-4 flex items-center gap-2 text-white">
                 <ShieldCheck className="h-5 w-5 text-[#facc15]" />
-                <h2 className="text-xl font-semibold">Public path</h2>
+                <h2 className="text-xl font-semibold">App base path</h2>
               </div>
               <p className="mb-4 text-sm text-white/70">
                 This is the active browser path prefix for this Immaculaterr instance.
-                Use it when you are verifying reverse-proxy or subpath hosting. Root
-                deployments show <span className="font-mono text-white/80">/</span>.
+                Use it when you are verifying reverse-proxy or tunnel subpath hosting.
+                Root deployments show <span className="font-mono text-white/80">/</span>.
               </p>
               <div className="space-y-1">
                 <label
                   htmlFor="profile-public-path"
                   className="block text-xs font-bold uppercase tracking-wider text-white/60"
                 >
-                  Public path
+                  App base path
                 </label>
                 <input
                   id="profile-public-path"
@@ -491,13 +491,13 @@ export function ProfilePage() {
                   to="/faq#getting-started-public-path"
                   className={profileShortcutClass}
                 >
-                  How to change this path
+                  How to configure this path
                 </Link>
                 <Link
                   to="/setup#update-paths-public-path-hosting"
                   className={profileShortcutClass}
                 >
-                  Open setup steps
+                  Open proxy setup steps
                 </Link>
               </div>
             </div>
