@@ -9,7 +9,7 @@ Pick a feature area first, then jump into the full section below.
 > ### [Getting started](#getting-started)
 >
 > Basics, first-run setup, and how to reach the app.
-> [What is Immaculaterr?](#what-is-immaculaterr) · [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand) · [How do I do first-time setup?](#how-do-i-do-first-time-setup) · [How do I host Immaculaterr under an app base path behind a reverse proxy?](#how-do-i-host-immaculaterr-under-an-app-base-path-behind-a-reverse-proxy)
+> [What is Immaculaterr?](#what-is-immaculaterr) · [What are the three main pages I need to understand?](#what-are-the-three-main-pages-i-need-to-understand) · [How do I do first-time setup?](#how-do-i-do-first-time-setup)
 >
 > - 1 more answer in the section below.
 
@@ -218,48 +218,6 @@ For TrueNAS SCALE GUI installs, use [Setup: TrueNAS](/setup/truenas), which incl
 
 - Option 1 (recommended): HTTPS sidecar + encrypted secret transport.
 - Option 2 (compatibility): HTTP-only with `SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true` (plaintext credential transport).
-
-### How do I host Immaculaterr under an app base path behind a reverse proxy?
-
-Set `APP_BASE_PATH` to the exact public prefix you want and keep `TRUST_PROXY=1` so secure-cookie and reverse-proxy detection continue to work correctly.
-
-This works with any proxy or tunnel that preserves the prefix when forwarding to Immaculaterr, including nginx, Caddy, Traefik, Cloudflare Tunnel, and Tailscale Funnel.
-
-You cannot change this from inside the app itself. The `App base path` field in Profile is read-only and only shows the active result after Docker + proxy changes are applied.
-
-Replace `/immaculaterr` below with any subpath you want, such as `/recommendations` or `/media-helper`.
-
-```env
-APP_BASE_PATH=/immaculaterr
-TRUST_PROXY=1
-```
-
-Use a trailing slash for the public entrypoint:
-
-- `http://<server-ip>:5454/immaculaterr/`
-- `https://<server-ip>:5464/immaculaterr/`
-
-In the app, open `Profile` to confirm the active `App base path` value.
-
-Example nginx configuration:
-
-```nginx
-location = /immaculaterr {
-  return 301 /immaculaterr/;
-}
-
-location /immaculaterr/ {
-  proxy_pass http://127.0.0.1:5454;
-  proxy_http_version 1.1;
-  proxy_set_header Host $host;
-  proxy_set_header X-Forwarded-Host $host;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Port $server_port;
-}
-```
-
-This keeps both the SPA and `/immaculaterr/api/...` working without a separate image build.
 
 ## Task Manager
 

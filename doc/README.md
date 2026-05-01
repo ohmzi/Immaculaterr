@@ -129,7 +129,9 @@ The `.env` file above sets the app container timezone to `America/New_York`. Cha
 Optional: host under an app base path
 ---
 
-Set `APP_BASE_PATH` on the app container and keep `TRUST_PROXY=1` when a reverse proxy or tunnel sits in front of Immaculaterr.
+`APP_BASE_PATH` is only the public path prefix for Immaculaterr. Do not put a full URL, domain, protocol, or port in this value.
+
+Leave `APP_BASE_PATH` unset if the app is served at the site root. Set it and keep `TRUST_PROXY=1` only when a reverse proxy or tunnel serves Immaculaterr from a subpath.
 
 Replace `/immaculaterr` below with any subpath you want, such as `/recommendations` or `/media-helper`.
 
@@ -147,7 +149,7 @@ After that, browse to:
 
 Make sure your proxy preserves and forwards that same prefix to Immaculaterr. This works with nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar setups.
 
-In the app, open `Profile` to confirm the active `App base path` value.
+In the app, use `Setup` for the hosting walkthrough, then open `Profile` to confirm the active `App base path` value. Root deployments should show `/`. Subpath deployments should show the exact configured prefix.
 
 Example nginx reverse proxy:
 
