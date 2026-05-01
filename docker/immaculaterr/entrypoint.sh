@@ -2,10 +2,73 @@
 set -eu
 
 APP_DATA_DIR="${APP_DATA_DIR:-/data}"
+APP_BASE_PATH="${APP_BASE_PATH:-}"
 DB_PRE_MIGRATE_BACKUP="${DB_PRE_MIGRATE_BACKUP:-true}"
 DB_PRE_MIGRATE_BACKUP_STRICT="${DB_PRE_MIGRATE_BACKUP_STRICT:-false}"
 DB_PRE_MIGRATE_BACKUP_KEEP="${DB_PRE_MIGRATE_BACKUP_KEEP:-10}"
 DB_PRE_MIGRATE_BACKUP_DIR="${DB_PRE_MIGRATE_BACKUP_DIR:-$APP_DATA_DIR/backups/pre-migrate}"
+
+trim() {
+  # shellcheck disable=SC2001
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+normalize_app_base_path() {
+  raw="$(trim "$1")"
+  if [ -z "$raw" ] || [ "$raw" = "/" ]; then
+    printf ''
+    return 0
+  fi
+
+  case "$raw" in
+    /*) ;;
+    *)
+      echo "ERROR: APP_BASE_PATH must be empty or start with '/'." >&2
+      return 1
+      ;;
+  esac
+
+  case "$raw" in
+    *\?*|*#*)
+      echo "ERROR: APP_BASE_PATH must not include query or hash fragments." >&2
+      return 1
+      ;;
+  esac
+
+  normalized="$raw"
+  while [ "${normalized%/}" != "$normalized" ]; do
+    normalized="${normalized%/}"
+  done
+
+  if [ -z "$normalized" ] || [ "$normalized" = "/" ]; then
+    printf ''
+    return 0
+  fi
+
+  printf '%s' "$normalized"
+}
+
+escape_sed_replacement() {
+  printf '%s' "$1" | sed 's/[&|]/\\&/g'
+}
+
+patch_web_base_href() {
+  web_index_file="/app/apps/web/dist/index.html"
+  if [ ! -f "$web_index_file" ]; then
+    return 0
+  fi
+
+  base_href='/'
+  if [ -n "$APP_BASE_PATH" ]; then
+    base_href="${APP_BASE_PATH}/"
+  fi
+  escaped_base_href="$(escape_sed_replacement "$base_href")"
+  tmp_file="${web_index_file}.tmp"
+
+  sed "s|<base href=\"[^\"]*\" />|<base href=\"${escaped_base_href}\" />|" "$web_index_file" > "$tmp_file"
+  mv "$tmp_file" "$web_index_file"
+  echo "Configured web base href: $base_href"
+}
 
 resolve_db_file() {
   db_file="$APP_DATA_DIR/tcp.sqlite"
@@ -72,6 +135,10 @@ create_pre_migrate_backup() {
     rm -f "$f" "${f}-wal" "${f}-shm" 2>/dev/null || true
   done
 }
+
+APP_BASE_PATH="$(normalize_app_base_path "$APP_BASE_PATH")"
+export APP_BASE_PATH
+patch_web_base_href
 
 # Best-effort hardening for the mounted data directory.
 mkdir -p "$APP_DATA_DIR" 2>/dev/null || true

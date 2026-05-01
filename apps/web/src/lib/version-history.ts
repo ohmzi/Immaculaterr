@@ -37,6 +37,41 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.8-beta-6',
+    popupHighlights: [
+      'Prefix-hosted deployments now work under /recommendations without a separate web build.',
+      'The app derives its public path from the rendered document base, so router links, API calls, and fallback navigations stay inside the configured prefix.',
+      'Docker and setup docs now include APP_BASE_PATH=/recommendations guidance plus an nginx reverse-proxy example.',
+      'There are no Prisma schema, migration, or data changes in this beta.',
+    ],
+    sections: [
+      {
+        title: 'Prefix-hosted app + API support',
+        bullets: [
+          'Added APP_BASE_PATH support so the SPA, static assets, and public API can be served under /recommendations while the internal Nest API routes stay on /api.',
+          'Requests to /recommendations/api/... are now rewritten onto the existing /api/... handlers, so prefixed reverse-proxy traffic no longer falls through to the SPA shell.',
+          'When a public prefix is configured, the app redirects bare / to /recommendations/ and exposes the active public path in Profile plus GET /api/meta.',
+        ],
+      },
+      {
+        title: 'Frontend path handling',
+        bullets: [
+          'Production assets now use a runtime-friendly relative base, and the React app derives its effective basename from the rendered document base instead of hardcoding root.',
+          'API helpers, standalone/PWA navigations, safe-navigate fallbacks, version-history links, and logout/reset redirects now stay inside the configured public prefix.',
+          'Profile now shows a read-only Public path field so deployments are easier to verify at a glance.',
+        ],
+      },
+      {
+        title: 'Docker and deployment guidance',
+        bullets: [
+          'Container startup now patches the built web shell base href from APP_BASE_PATH, so one image can serve either root or /recommendations deployments.',
+          'Compose templates and setup docs now pass APP_BASE_PATH through directly and keep TRUST_PROXY=1 called out for reverse-proxy deployments.',
+          'No Prisma schema, migration, generated-client, or stored-data changes are included in this beta.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.8-beta-5',
     popupHighlights: [
       'Confirm Monitored now requires Plex-verified playable media and runs Sonarr cascade in episode, season, then series order.',

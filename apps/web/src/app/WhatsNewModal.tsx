@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
+import { Link } from 'react-router-dom';
 
 import {
   splitVersionHistoryLabel,
@@ -86,12 +87,12 @@ export function WhatsNewModal(props: {
 
             <div className="border-t border-white/10 bg-[#090a0d]/75 px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-6">
               <div className="flex items-center justify-between gap-4">
-                <a
-                  href="/version-history"
+                <Link
+                  to="/version-history"
                   className="text-xs text-white/55 transition-colors hover:text-white/85 sm:text-sm"
                 >
                   View Full Version History
-                </a>
+                </Link>
 
                 <button
                   type="button"

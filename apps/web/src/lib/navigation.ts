@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useNavigate, type NavigateOptions, type To } from 'react-router-dom';
+import { toPublicHref } from '@/lib/public-path';
 
 const ROUTER_PATH_DATA_KEY = 'routerPath';
 
@@ -47,7 +48,7 @@ export function useSafeNavigate() {
         try {
           const routerPath = getRouterPath();
           if (routerPath && routerPath !== destPath) {
-            window.location.assign(href || destPath);
+            window.location.assign(toPublicHref(href || destPath));
           }
         } catch {
           // ignore

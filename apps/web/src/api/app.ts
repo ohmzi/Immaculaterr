@@ -6,6 +6,7 @@ export type AppMetaResponse = {
   version: string;
   buildSha: string | null;
   buildTime: string | null;
+  publicBasePath: string;
 };
 
 export function getAppMeta() {

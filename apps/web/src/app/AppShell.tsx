@@ -35,6 +35,7 @@ import {
   normalizeVersion,
 } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
+import { withPublicBasePath } from '@/lib/public-path';
 
 const readOnboardingCompleted = (settings: unknown): boolean => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false;
@@ -279,7 +280,7 @@ export const AppShell = () => {
     onSuccess: async () => {
       queryClient.clear();
       await clearClientUserData();
-      window.location.href = '/';
+      window.location.href = withPublicBasePath('/');
     },
   });
 

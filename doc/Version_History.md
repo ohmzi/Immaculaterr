@@ -2,6 +2,22 @@
 
 This file tracks notable changes by version.
 
+## 1.7.8-beta-6
+
+- What's new in 1.7.8 beta 6:
+- Prefix-hosted app + API support:
+  - Added `APP_BASE_PATH` support so the SPA, static assets, and public API can be served under `/recommendations` while the internal Nest API routes stay on `/api`.
+  - Requests to `/recommendations/api/...` now rewrite onto the existing `/api/...` handlers, so prefixed reverse-proxy traffic no longer falls through to the SPA shell.
+  - When a public prefix is configured, the app redirects bare `/` to `/recommendations/` and exposes the active public path in Profile plus `GET /api/meta`.
+- Frontend path handling:
+  - Production assets now use a runtime-friendly relative base, and the React app derives its effective basename from the rendered document base instead of hardcoding root.
+  - API helpers, standalone/PWA navigations, safe-navigate fallbacks, version-history links, and logout/reset redirects now stay inside the configured public prefix.
+  - Profile now shows a read-only `Public path` field so deployments are easier to verify at a glance.
+- Docker and deployment guidance:
+  - Container startup now patches the built web shell base href from `APP_BASE_PATH`, so one image can serve either root or `/recommendations` deployments.
+  - Compose templates and setup docs now pass `APP_BASE_PATH` through directly and keep `TRUST_PROXY=1` called out for reverse-proxy deployments.
+  - There are no Prisma schema, migration, generated-client, or stored-data changes in this beta.
+
 ## 1.7.8-beta-5
 
 - What's new in 1.7.8 beta 5:

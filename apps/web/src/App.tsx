@@ -19,6 +19,7 @@ import { SetupUnraidPage } from '@/pages/SetupUnraidPage';
 import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
 import { DebuggerPage } from '@/pages/DebuggerPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { getPublicBasePath } from '@/lib/public-path';
 
 // skipcq: SCT-A000 - Legacy localStorage cleanup key, not a credential.
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
@@ -43,6 +44,8 @@ const LegacyJobsRedirect = () => {
 };
 
 const App = () => {
+  const publicBasePath = getPublicBasePath();
+
   useEffect(() => {
     // One-time cleanup: stop using legacy localStorage onboarding/secrets.
     // Note: we only remove the legacy key; we never store secrets in browser storage.
@@ -54,7 +57,7 @@ const App = () => {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={publicBasePath || undefined}>
       <Routes>
         <Route path="/" element={<Outlet />}>
           {/* All pages require authentication and wizard completion */}

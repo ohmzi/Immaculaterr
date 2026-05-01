@@ -21,4 +21,7 @@ export class AppMetaResponseDto {
 
   @ApiProperty({ example: '2026-01-09T15:54:13.000Z', nullable: true })
   buildTime!: string | null;
+
+  @ApiProperty({ example: '/recommendations' })
+  publicBasePath!: string;
 }

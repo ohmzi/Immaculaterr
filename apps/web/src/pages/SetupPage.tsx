@@ -61,6 +61,11 @@ const OPTIONAL_HTTPS_SIDECAR_COMMAND = [
   './install-local-ca.sh',
 ].join('\n');
 
+const PUBLIC_PATH_HOSTING_ENV_SNIPPET = [
+  'APP_BASE_PATH=/recommendations',
+  'TRUST_PROXY=1',
+].join('\n');
+
 async function copyToClipboard(text: string) {
   if (navigator?.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -343,6 +348,48 @@ export const SetupPage = () => {
                   that need it.
                 </li>
               </ul>
+            </>
+          ),
+        },
+        {
+          id: 'update-paths-public-path-hosting',
+          question: 'Public path hosting under /recommendations',
+          answer: (
+            <>
+              <p>
+                Use this when you want Immaculaterr to live under a reverse-proxy subpath like{' '}
+                <code className="font-mono">/recommendations</code>.
+              </p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  Add these values to the Docker env file or compose environment for the app
+                  container.
+                </li>
+                <li>Recreate the Immaculaterr container.</li>
+                <li>
+                  Open the app on{' '}
+                  <code className="font-mono">http://&lt;server-ip&gt;:5454/recommendations/</code>{' '}
+                  or <code className="font-mono">https://&lt;server-ip&gt;:5464/recommendations/</code>.
+                </li>
+                <li>
+                  Confirm the result in{' '}
+                  <Link to="/profile#profile-public-path-panel" className="font-semibold text-white/85 underline underline-offset-2 hover:text-white">
+                    Profile - Public path
+                  </Link>
+                  .
+                </li>
+              </ol>
+              {renderCommandBlock(
+                'update-paths-public-path-hosting',
+                PUBLIC_PATH_HOSTING_ENV_SNIPPET,
+              )}
+              <p>
+                Need the full explanation? Open{' '}
+                <Link to="/faq#getting-started-public-path" className="font-semibold text-white/85 underline underline-offset-2 hover:text-white">
+                  FAQ - How do I change the Public path?
+                </Link>
+                .
+              </p>
             </>
           ),
         },

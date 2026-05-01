@@ -1,3 +1,5 @@
+import { withPublicBasePath } from '@/lib/public-path';
+
 export const API_PREFIX = '/api';
 export const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 export const PLEX_OAUTH_POLL_HEADERS = {
@@ -5,7 +7,7 @@ export const PLEX_OAUTH_POLL_HEADERS = {
 } as const;
 
 export function apiPath(path: `/${string}`): string {
-  return `${API_PREFIX}${path}`;
+  return `${withPublicBasePath(API_PREFIX)}${path}`;
 }
 
 export function toQuerySuffix(searchParams: URLSearchParams): string {

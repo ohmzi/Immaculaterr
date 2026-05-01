@@ -18,6 +18,10 @@ import { useSafeNavigate } from '@/lib/navigation';
 import { createDebuggerUrl } from '@/lib/debugger';
 import { formatDisplayVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
+import {
+  toPublicHref,
+  withPublicBasePath,
+} from '@/lib/public-path';
 
 interface MobileNavigationProps {
   onLogout: () => void;
@@ -84,7 +88,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
       Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
     if (isStandalone) {
-      window.location.assign(dest);
+      window.location.assign(toPublicHref(dest));
       return;
     }
 
@@ -106,7 +110,6 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     Boolean(updatesQuery.data?.updateAvailable) && Boolean(updatesQuery.data?.latestVersion);
   const updateLabel = formatDisplayVersion(updatesQuery.data?.latestVersion ?? null);
   const currentLabel = formatDisplayVersion(updatesQuery.data?.currentVersion ?? null);
-
   useEffect(() => {
     const updatePositions = () => {
       const positions = buttonRefs.current.map((ref) => {
@@ -145,7 +148,7 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     try {
       await resetDev();
       await clearClientUserData();
-      window.location.href = '/';
+      window.location.href = withPublicBasePath('/');
     } catch {
       setResetError('Network error while resetting account.');
     } finally {

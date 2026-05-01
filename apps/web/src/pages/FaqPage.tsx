@@ -224,6 +224,50 @@ export const FaqPage = () => {
             </>
           ),
         },
+        {
+          id: 'getting-started-public-path',
+          question: 'How do I change the Public path?',
+          answer: (
+            <>
+              <p>
+                You cannot change the Public path from inside Immaculaterr. That value is read-only
+                and reflects how the app is currently being served by Docker and your reverse proxy.
+              </p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  Set <code className="font-mono">APP_BASE_PATH=/recommendations</code> in your
+                  Docker environment.
+                </li>
+                <li>
+                  Keep <code className="font-mono">TRUST_PROXY=1</code> enabled.
+                </li>
+                <li>
+                  Make sure your proxy forwards <code className="font-mono">/recommendations/</code>{' '}
+                  to Immaculaterr.
+                </li>
+                <li>Recreate or restart the Immaculaterr container.</li>
+                <li>
+                  Open the app on <code className="font-mono">/recommendations/</code> and confirm
+                  the result in{' '}
+                  <Link to="/profile#profile-public-path-panel" className={faqLinkClass}>
+                    Profile - Public path
+                  </Link>
+                  .
+                </li>
+              </ol>
+              <p>
+                Use{' '}
+                <Link
+                  to="/setup#update-paths-public-path-hosting"
+                  className={faqLinkClass}
+                >
+                  Setup - Public path hosting
+                </Link>{' '}
+                for the deployment steps.
+              </p>
+            </>
+          ),
+        },
       ],
     },
     {
