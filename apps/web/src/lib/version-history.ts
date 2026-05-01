@@ -41,7 +41,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
     popupHighlights: [
       'App base path hosting now works across the app, API, and Docker setup.',
       'Confirm Monitored is stricter and now checks Plex-playable media before Radarr or Sonarr items are treated as present.',
-      'Rotten Tomatoes Upcoming now handles separate Movies and TV settings with cleaner one-run options.',
+      'Rotten Tomatoes Upcoming Run Now uses saved card settings and blocks when both branches are off.',
       'Netflix import is safer on older SQLite databases, with no Prisma or stored-data changes in this beta.',
     ],
     sections: [
@@ -65,7 +65,8 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         title: 'Rotten Tomatoes Upcoming Movies + TV Shows',
         bullets: [
           'The task now supports separate Movies and TV Shows settings, including independent Top counts.',
-          'Manual Run now lets you choose media type, Top count, and Route via Seerr without changing saved settings.',
+          'Run Now uses the saved Movies, TV Shows, Route via Seerr, and Top count settings instead of one-run overrides.',
+          'New installs now default both Rotten Tomatoes branches off, and Run Now stays blocked until at least one branch is enabled.',
           'Discovery, routing, and reconciliation are now clearer for both movies and TV, with better Rewind reporting.',
         ],
       },

@@ -15,7 +15,8 @@ This file tracks notable changes by version.
   - Netflix import now handles older SQLite databases that are missing `releaseDate` or `firstAirDate` columns.
 - Rotten Tomatoes Upcoming Movies + TV Shows:
   - The task now supports separate Movies and TV Shows settings, including independent Top counts.
-  - Manual Run now lets you choose media type, Top count, and `Route via Seerr` without changing saved settings.
+  - Run Now uses the saved Movies, TV Shows, `Route via Seerr`, and Top count settings instead of one-run overrides.
+  - New installs now default both Rotten Tomatoes branches off, and Run Now stays blocked until at least one branch is enabled.
   - Discovery, routing, and reconciliation are now clearer for both movies and TV, with better Rewind reporting.
 
 ## 1.7.7

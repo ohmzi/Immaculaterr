@@ -50,9 +50,53 @@ RUN if [ ! -x /app/apps/api/node_modules/.bin/prisma ] && [ ! -x /app/node_modul
 COPY apps/api apps/api
 COPY apps/web apps/web
 RUN npm run build \
-  && npm prune --omit=dev --workspaces --include-workspace-root \
-  && mkdir -p apps/api/node_modules \
   && npm cache clean --force
+
+
+FROM node:24-bookworm-slim AS prod-deps
+
+WORKDIR /app
+
+# Mitigate GHSA-qffp-2rhf-9h96 and CVE-2026-27904 from npm's bundled dependencies.
+RUN npm i -g --no-audit --no-fund tar@7.5.10 minimatch@10.2.4 \
+  && rm -rf /usr/local/lib/node_modules/npm/node_modules/tar \
+  && rm -rf /usr/local/lib/node_modules/npm/node_modules/minimatch \
+  && cp -a /usr/local/lib/node_modules/tar /usr/local/lib/node_modules/npm/node_modules/tar \
+  && cp -a /usr/local/lib/node_modules/minimatch /usr/local/lib/node_modules/npm/node_modules/minimatch \
+  && npm cache clean --force
+
+# Prisma uses the `openssl` CLI to detect the host OpenSSL version at generate
+# time and selects the matching query-engine binary. Without it, Prisma defaults
+# to openssl-1.1.x which is wrong for bookworm (libssl3 / OpenSSL 3.0.x) and
+# produces a runtime engine mismatch on ARM64.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/api/prisma apps/api/prisma
+ARG NPM_CI_RETRIES=3
+RUN set -eu; \
+  attempt=1; \
+  while :; do \
+    npm ci --omit=dev && break; \
+    if [ "$attempt" -ge "$NPM_CI_RETRIES" ]; then \
+      echo "npm ci --omit=dev failed after ${attempt} attempt(s)" >&2; \
+      exit 1; \
+    fi; \
+    echo "npm ci --omit=dev failed (attempt ${attempt}/${NPM_CI_RETRIES}); retrying..." >&2; \
+    npm cache clean --force || true; \
+    attempt=$((attempt + 1)); \
+    sleep $((attempt * 5)); \
+  done
+
+RUN if [ ! -x /app/apps/api/node_modules/.bin/prisma ] && [ ! -x /app/node_modules/.bin/prisma ]; then \
+      npm i --no-save prisma@6.19.1; \
+    fi \
+    && npm -w apps/api run db:generate \
+    && mkdir -p apps/api/node_modules \
+    && npm cache clean --force
 
 
 FROM node:24-bookworm-slim AS runner
@@ -96,12 +140,12 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
 
-# Reuse deps and Prisma artifacts from builder. This avoids a second registry
-# install in runner (which can be flaky on arm64 CI) and keeps runtime
-# dependency set aligned with the lockfile used by builder.
-COPY --from=builder /app/node_modules /app/node_modules
-COPY --from=builder /app/apps/api/node_modules /app/apps/api/node_modules
-COPY --from=builder /app/apps/api/prisma /app/apps/api/prisma
+# Reuse production deps and Prisma artifacts from prod-deps. This avoids a
+# registry install in runner (which can be flaky on arm64 CI) while keeping the
+# runtime dependency set aligned with the lockfile.
+COPY --from=prod-deps /app/node_modules /app/node_modules
+COPY --from=prod-deps /app/apps/api/node_modules /app/apps/api/node_modules
+COPY --from=prod-deps /app/apps/api/prisma /app/apps/api/prisma
 
 # Copy built artifacts
 COPY --from=builder /app/apps/api/dist /app/apps/api/dist

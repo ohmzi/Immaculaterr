@@ -51,7 +51,7 @@ Pick a feature area first, then jump into the full section below.
 
 > ### [Rotten Tomatoes Upcoming Movies](#rotten-tomatoes-upcoming-movies)
 >
-> Fixed-source Rotten Tomatoes movies + TV discovery with a saved TV Top count and shared Seerr routing.
+> Fixed-source Rotten Tomatoes movies + TV discovery with saved branch toggles, per-branch Top counts, and shared Seerr routing.
 > [How does Rotten Tomatoes Upcoming Movies work?](#how-does-rotten-tomatoes-upcoming-movies-work) · [What sources does it check?](#what-sources-does-it-check) · [What does the Route via Seerr toggle do?](#what-does-the-route-via-seerr-toggle-do) · [What results should I expect after a run?](#what-results-should-i-expect-after-a-run)
 
 > ### [Immaculate Taste Collection](#immaculate-taste-collection)
@@ -469,8 +469,8 @@ Run flow:
 
 1. Movie pages still use the existing safe Radarr lookup flow before titles are added to Radarr or requested in Seerr, and movie discovery stops once the saved Movie Top count is reached. The default is Top 20.
 2. TV pages are scraped from fixed Rotten Tomatoes browse URLs, filtered to shows with both critic and audience scores of at least 60, then deduplicated.
-3. TV discovery stops once the saved Top count is reached. The default is Top 10, and manual runs can choose a one-run Top count without changing the saved card values.
-4. Manual Run now lets you choose Movies or TV Shows, a one-run Route via Seerr toggle, and a one-run Top count. Those dialog choices do not change the saved card settings.
+3. TV discovery stops once the saved TV Top count is reached. The default is Top 10.
+4. Manual Run now uses the saved card settings for Movies, TV Shows, Route via Seerr, and both Top counts. If Movies and TV Shows are both off, Run Now is blocked until at least one branch is enabled.
 
 ### What sources does it check?
 
@@ -491,12 +491,12 @@ Run flow:
 
 ### What results should I expect after a run?
 
-- The saved Movie Top count defaults to 20 and the saved TV Top count defaults to 10. They control how many deduplicated candidates are considered for each branch across the fixed Rotten Tomatoes sources.
-- Manual runs default to Top 10 in the dialog, but you can change that one-run count anywhere between 1 and 100 without changing the saved card limits.
+- The saved Movie Top count defaults to 20 and the saved TV Top count defaults to 10. On a new setup, Movies and TV Shows both start off until you enable at least one branch.
+- Manual Run does not ask for one-run overrides. It immediately uses the saved card toggles, Route via Seerr setting, and the saved Movie and TV Top counts.
 - Movies or shows that already exist in Radarr, Sonarr, or Seerr are counted as existing instead of surfacing as hard failures.
 - Existing Sonarr shows can have episode, season, and series monitoring updated so Plex copies stay unmonitored while missing episodes stay monitored.
 - Rewind now shows separate movie and TV steps plus TV-specific stats for source pages, score filtering, unresolved IDs, requests or adds, skips, and reconciliation counts.
-- If both Movies and TV Shows are turned off on the card, scheduled and auto-runs do nothing until at least one branch is enabled again.
+- If both Movies and TV Shows are turned off on the card, Run Now is blocked and scheduled and auto-runs do nothing until at least one branch is enabled again.
 
 ## Immaculate Taste Collection
 

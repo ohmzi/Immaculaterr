@@ -865,13 +865,12 @@ export const FaqPage = () => {
                   both critic and audience scores of at least 60, then deduplicated.
                 </li>
                 <li>
-                  TV discovery stops once the saved Top count is reached. The default is Top 10, and
-                  manual runs can choose a one-run Top count without changing the saved card values.
+                  TV discovery stops once the saved TV Top count is reached. The default is Top 10.
                 </li>
                 <li>
-                  Manual Run now lets you choose Movies or TV Shows, a one-run Route via Seerr
-                  toggle, and a one-run Top count. Those dialog choices do not change the saved
-                  card settings.
+                  Manual Run now uses the saved card settings for Movies, TV Shows, Route via
+                  Seerr, and both Top counts. If Movies and TV Shows are both off, Run Now is
+                  blocked until at least one branch is enabled.
                 </li>
               </ol>
             </>
@@ -940,12 +939,12 @@ export const FaqPage = () => {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 The saved Movie Top count defaults to 20 and the saved TV Top count defaults to 10.
-                They control how many deduplicated candidates are considered for each branch across
-                the fixed Rotten Tomatoes sources.
+                On a new setup, Movies and TV Shows both start off until you enable at least one
+                branch.
               </li>
               <li>
-                Manual runs default to Top 10 in the dialog, but you can change that one-run count
-                anywhere between 1 and 100 without changing the saved card limits.
+                Manual Run does not ask for one-run overrides. It immediately uses the saved card
+                toggles, Route via Seerr setting, and the saved Movie and TV Top counts.
               </li>
               <li>
                 Movies or shows that already exist in Radarr, Sonarr, or Seerr are counted as existing
@@ -960,8 +959,8 @@ export const FaqPage = () => {
                 score filtering, unresolved IDs, requests or adds, skips, and reconciliation counts.
               </li>
               <li>
-                If both Movies and TV Shows are turned off on the card, scheduled and auto-runs do
-                nothing until at least one branch is enabled again.
+                If both Movies and TV Shows are turned off on the card, Run Now is blocked and
+                scheduled and auto-runs do nothing until at least one branch is enabled again.
               </li>
             </ul>
           ),
@@ -2996,7 +2995,7 @@ export const FaqPage = () => {
     'task-manager-tmdb-upcoming-movies':
       'What this task does, how each run works, and how to edit filters.',
     'task-manager-rotten-tomatoes-upcoming-movies':
-      'Fixed-source Rotten Tomatoes movies + TV discovery with a saved TV Top count and shared Seerr routing.',
+      'Fixed-source Rotten Tomatoes movies + TV discovery with saved branch toggles, per-branch Top counts, and shared Seerr routing.',
     'task-manager-immaculate-taste-collection':
       'Watch-triggered Immaculate Taste updates and missing-item routing.',
     'task-manager-immaculate-taste-refresher':

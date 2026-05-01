@@ -403,30 +403,73 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
     expect(index.titleYearKeys.has('touch me|2025')).toBe(true);
   });
 
-  it('normalizes missing Rotten Tomatoes settings to movie-on, show-off, top-20 movies, top-10 TV, Seerr-off', async () => {
+  it('normalizes missing Rotten Tomatoes settings to both branches off, top-20 movies, top-10 TV, Seerr-off', async () => {
     const { job, settings } = createJob();
     const ctx = createContext({ dryRun: true });
-    const fetchMock = jest.spyOn(globalThis, 'fetch');
 
     settings.getInternalSettings.mockResolvedValue({
       settings: {},
       secrets: {},
     });
     settings.readServiceSecret.mockReturnValue('');
-    fetchMock.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve(''),
-    } as Response);
 
     const result = await job.run(ctx);
     const summary = result.summary as Record<string, unknown>;
     const raw = summary.raw as Record<string, unknown>;
 
-    expect(raw.effectiveIncludeMovies).toBe(true);
+    expect(raw.effectiveIncludeMovies).toBe(false);
     expect(raw.effectiveIncludeShows).toBe(false);
     expect(raw.effectiveMovieLimit).toBe(20);
     expect(raw.effectiveShowLimit).toBe(10);
     expect(raw.routeViaSeerr).toBe(false);
+  });
+
+  it('returns a safe no-work outcome when a no-input run has both saved branches disabled', async () => {
+    const { job, settings } = createJob();
+    const ctx = createContext({ dryRun: false });
+    const fetchMock = jest.spyOn(globalThis, 'fetch');
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          rottenTomatoesUpcomingMovies: {
+            includeMovies: false,
+            includeShows: false,
+            movieLimit: 20,
+            showLimit: 10,
+          },
+        },
+      },
+      secrets: {},
+    });
+    settings.readServiceSecret.mockReturnValue('');
+
+    const result = await job.run(ctx);
+    const summary = result.summary as Record<string, unknown>;
+    const raw = summary.raw as Record<string, unknown>;
+    const issues = summary.issues as Array<Record<string, unknown>>;
+    const tasks = summary.tasks as Array<Record<string, unknown>>;
+
+    expect(raw.effectiveIncludeMovies).toBe(false);
+    expect(raw.effectiveIncludeShows).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'warn',
+          message:
+            'Movies and TV Shows are both disabled for Rotten Tomatoes Upcoming, so this run had nothing to do.',
+        }),
+      ]),
+    );
+    expect(tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'scrape_movies', status: 'skipped' }),
+        expect.objectContaining({ id: 'route_movies', status: 'skipped' }),
+        expect.objectContaining({ id: 'scrape_shows', status: 'skipped' }),
+        expect.objectContaining({ id: 'route_shows', status: 'skipped' }),
+      ]),
+    );
   });
 
   it('clamps the saved movie and TV limits to the supported range', async () => {

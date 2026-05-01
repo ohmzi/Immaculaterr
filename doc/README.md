@@ -47,7 +47,7 @@ Major Features Include
 - **Discovery and maintenance jobs**:
   - `Fresh Out Of The Oven` builds recent-release movie and TV rows for titles a user has not watched yet.
   - `TMDB Upcoming Movies` finds upcoming movies with filter sets and routes matches to Radarr or Seerr.
-  - `Rotten Tomatoes Upcoming Movies + TV Shows` scrapes fixed Rotten Tomatoes movie and TV pages, uses separate saved Movie Top 20 and TV Top 10 counts, and routes through Radarr or Sonarr directly or through Seerr for both media types.
+  - `Rotten Tomatoes Upcoming Movies + TV Shows` scrapes fixed Rotten Tomatoes movie and TV pages, uses saved Movies and TV toggles with separate Movie Top 20 and TV Top 10 counts, and lets Run Now use those saved settings directly.
   - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads, including season-aware Sonarr monitoring cleanup.
 - **History imports**:
   - Netflix CSV import creates dedicated Netflix import collections and feeds the main recommendation system.
