@@ -212,9 +212,11 @@ The examples above set the app container timezone to `America/New_York`. Change 
 For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 ##
 
-## Optional: host under `/recommendations`
+## Optional: host under a subpath such as `/recommendations`
 
-Set `APP_BASE_PATH=/recommendations` on the app container and keep `TRUST_PROXY=1` when a reverse proxy sits in front of Immaculaterr.
+`APP_BASE_PATH` is only the public path prefix for Immaculaterr. Do not put a full URL, domain, protocol, or port in this value.
+
+If the app is served at the site root, leave `APP_BASE_PATH` unset. Set `APP_BASE_PATH=/recommendations` and keep `TRUST_PROXY=1` only when a reverse proxy or tunnel serves Immaculaterr from that subpath.
 
 Example `.env` or compose overrides:
 
@@ -228,7 +230,7 @@ After that, open:
 - `http://<server-ip>:5454/recommendations/`
 - `https://<server-ip>:5464/recommendations/`
 
-In the app, open `Profile` to confirm the active `Public path` value.
+In the app, use `Setup` for the in-app hosting walkthrough, then open `Profile` to confirm the active `App base path` value. Root deployments should show `/`. Subpath deployments should show the exact configured prefix.
 
 Example nginx reverse proxy:
 

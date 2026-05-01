@@ -31,3 +31,6 @@ export const APP_CARD_ICON_GLOW_CLASS =
 export const APP_HEADER_STATUS_PILL_BASE_CLASS =
   'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap shrink-0';
 
+// Compact cross-link chip used for page-to-page shortcuts.
+export const APP_SHORTCUT_CHIP_CLASS =
+  'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';

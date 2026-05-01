@@ -26,6 +26,7 @@ import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
+  APP_SHORTCUT_CHIP_CLASS,
 } from '@/lib/ui-classes';
 import {
   COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION,
@@ -220,62 +221,6 @@ export const FaqPage = () => {
                   Setup - Optional HTTPS sidecar
                 </Link>
                 .
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'getting-started-public-path',
-          question: 'How do I host Immaculaterr under an app base path behind a reverse proxy?',
-          answer: (
-            <>
-              <p>
-                Set <code className="font-mono">APP_BASE_PATH</code> to the exact public prefix you
-                want, then make your proxy or tunnel forward that same prefix to Immaculaterr. This
-                works with Nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar
-                setups.
-              </p>
-              <p>
-                Replace <code className="font-mono">/immaculaterr</code> below with any subpath you
-                want, such as <code className="font-mono">/recommendations</code> or{' '}
-                <code className="font-mono">/media-helper</code>.
-              </p>
-              <ol className="list-decimal pl-5 space-y-1">
-                <li>
-                  Set <code className="font-mono">APP_BASE_PATH=/immaculaterr</code> in your Docker
-                  environment.
-                </li>
-                <li>
-                  Keep <code className="font-mono">TRUST_PROXY=1</code> enabled.
-                </li>
-                <li>
-                  Make sure your proxy preserves and forwards{' '}
-                  <code className="font-mono">/immaculaterr/</code> to Immaculaterr instead of
-                  stripping that prefix.
-                </li>
-                <li>Recreate or restart the Immaculaterr container.</li>
-                <li>
-                  Open the app on <code className="font-mono">/immaculaterr/</code> and confirm the
-                  result in{' '}
-                  <Link to="/profile#profile-public-path-panel" className={faqLinkClass}>
-                    Profile - App base path
-                  </Link>
-                  .
-                </li>
-              </ol>
-              <p>
-                Once set, the same app base path is used across the SPA, API requests, asset URLs,
-                redirects, and logout flows.
-              </p>
-              <p>
-                Use{' '}
-                <Link
-                  to="/setup#update-paths-public-path-hosting"
-                  className={faqLinkClass}
-                >
-                  Setup - App base path hosting
-                </Link>{' '}
-                for the deployment steps.
               </p>
             </>
           ),
@@ -3176,8 +3121,6 @@ export const FaqPage = () => {
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
   const answerBodyClass =
     'mt-4 space-y-3 text-sm leading-relaxed text-white/70 [&_code]:rounded-md [&_code]:border [&_code]:border-white/10 [&_code]:bg-black/25 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-white/90 [&_ol]:space-y-1.5 [&_ul]:space-y-1.5';
-  const featureLinkButtonClass =
-    'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';
   const topGlowFadeStyle = {
     WebkitMaskImage: 'linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0))',
     maskImage: 'linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0))',
@@ -3423,7 +3366,7 @@ export const FaqPage = () => {
                             {featureLink ? (
                               <Link
                                 to={featureLink.to}
-                                className={featureLinkButtonClass}
+                                className={APP_SHORTCUT_CHIP_CLASS}
                                 title={featureLink.title}
                                 aria-label={`Open ${section.title} feature`}
                               >
