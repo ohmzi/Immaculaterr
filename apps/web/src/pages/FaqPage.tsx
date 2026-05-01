@@ -785,11 +785,11 @@ export const FaqPage = () => {
     },
     {
       id: 'task-manager-rotten-tomatoes-upcoming-movies',
-      title: 'Rotten Tomatoes Upcoming Movies',
+      title: 'Rotten Tomatoes Upcoming Movies + TV Shows',
       items: [
         {
           id: 'task-manager-rotten-tomatoes-upcoming-how-it-works',
-          question: 'How does Rotten Tomatoes Upcoming Movies work?',
+          question: 'How does Rotten Tomatoes Upcoming Movies + TV Shows work?',
           answer: (
             <>
               <p>
@@ -801,7 +801,8 @@ export const FaqPage = () => {
               <ol className="list-decimal pl-5 space-y-1">
                 <li>
                   Movie pages still use the existing safe Radarr lookup flow before titles are added
-                  to Radarr or requested in Seerr.
+                  to Radarr or requested in Seerr, and movie discovery stops once the saved Movie Top
+                  count is reached. The default is Top 20.
                 </li>
                 <li>
                   TV pages are scraped from fixed Rotten Tomatoes browse URLs, filtered to shows with
@@ -809,11 +810,12 @@ export const FaqPage = () => {
                 </li>
                 <li>
                   TV discovery stops once the saved Top count is reached. The default is Top 10, and
-                  manual TV runs reuse that saved count instead of asking for a one-off value.
+                  manual runs can choose a one-run Top count without changing the saved card values.
                 </li>
                 <li>
-                  Manual Run now lets you choose Movies or TV Shows for that single run without
-                  changing the saved card settings.
+                  Manual Run now lets you choose Movies or TV Shows, a one-run Route via Seerr
+                  toggle, and a one-run Top count. Those dialog choices do not change the saved
+                  card settings.
                 </li>
               </ol>
             </>
@@ -881,8 +883,13 @@ export const FaqPage = () => {
           answer: (
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                The TV Top count defaults to 10 and controls how many score-qualified, deduplicated TV
-                candidates are considered across all fixed TV sources.
+                The saved Movie Top count defaults to 20 and the saved TV Top count defaults to 10.
+                They control how many deduplicated candidates are considered for each branch across
+                the fixed Rotten Tomatoes sources.
+              </li>
+              <li>
+                Manual runs default to Top 10 in the dialog, but you can change that one-run count
+                anywhere between 1 and 100 without changing the saved card limits.
               </li>
               <li>
                 Movies or shows that already exist in Radarr, Sonarr, or Seerr are counted as existing

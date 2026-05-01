@@ -403,7 +403,7 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
     expect(index.titleYearKeys.has('touch me|2025')).toBe(true);
   });
 
-  it('normalizes missing Rotten Tomatoes settings to movie-on, show-off, top-10, Seerr-off', async () => {
+  it('normalizes missing Rotten Tomatoes settings to movie-on, show-off, top-20 movies, top-10 TV, Seerr-off', async () => {
     const { job, settings } = createJob();
     const ctx = createContext({ dryRun: true });
     const fetchMock = jest.spyOn(globalThis, 'fetch');
@@ -424,11 +424,12 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
 
     expect(raw.effectiveIncludeMovies).toBe(true);
     expect(raw.effectiveIncludeShows).toBe(false);
+    expect(raw.effectiveMovieLimit).toBe(20);
     expect(raw.effectiveShowLimit).toBe(10);
     expect(raw.routeViaSeerr).toBe(false);
   });
 
-  it('clamps the saved TV show limit to the supported range', async () => {
+  it('clamps the saved movie and TV limits to the supported range', async () => {
     const { job, settings } = createJob();
     const ctx = createContext({ dryRun: true });
     const fetchMock = jest.spyOn(globalThis, 'fetch');
@@ -437,6 +438,7 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
       settings: {
         jobs: {
           rottenTomatoesUpcomingMovies: {
+            movieLimit: 999,
             showLimit: 999,
           },
         },
@@ -453,6 +455,7 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
     const summary = result.summary as Record<string, unknown>;
     const raw = summary.raw as Record<string, unknown>;
 
+    expect(raw.effectiveMovieLimit).toBe(100);
     expect(raw.effectiveShowLimit).toBe(100);
   });
 
@@ -580,6 +583,116 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
     await job.run(ctx);
 
     expect(tvFetchCount).toBe(1);
+  });
+
+  it('stops fetching movie sources once the manual movie Top count is reached', async () => {
+    const { job, settings } = createJob();
+    const ctx = createContext({
+      dryRun: true,
+      input: { category: 'movies', topCount: 1 },
+    });
+    let movieFetchCount = 0;
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          rottenTomatoesUpcomingMovies: {
+            movieLimit: 20,
+          },
+        },
+      },
+      secrets: {},
+    });
+    settings.readServiceSecret.mockReturnValue('');
+    jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = toFetchUrl(input);
+      if (url.includes('/browse/movies_')) {
+        movieFetchCount += 1;
+        return Promise.resolve({
+          ok: true,
+          text: () =>
+            Promise.resolve(
+              createMovieSourceHtml([
+                {
+                  title: 'Touch Me',
+                  href: '/m/touch_me_2025',
+                  startDate: 'Streaming Apr 7, 2025',
+                },
+              ]),
+            ),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve(''),
+      } as Response);
+    });
+
+    const result = await job.run(ctx);
+    const summary = result.summary as Record<string, unknown>;
+    const raw = summary.raw as Record<string, unknown>;
+    const movies = raw.movies as Record<string, unknown>;
+    const sampleCandidates = movies.sampleCandidates as Array<
+      Record<string, unknown>
+    >;
+
+    expect(movieFetchCount).toBe(1);
+    expect(raw.effectiveMovieLimit).toBe(1);
+    expect(sampleCandidates).toHaveLength(1);
+    expect(sampleCandidates[0]?.title).toBe('Touch Me');
+  });
+
+  it('uses the manual Top count for TV runs instead of the saved TV limit', async () => {
+    const { job, settings } = createJob();
+    const ctx = createContext({
+      dryRun: true,
+      input: { category: 'shows', topCount: 1 },
+    });
+    let tvFetchCount = 0;
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          rottenTomatoesUpcomingMovies: {
+            showLimit: 5,
+          },
+        },
+      },
+      secrets: {},
+    });
+    settings.readServiceSecret.mockReturnValue('');
+    jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = toFetchUrl(input);
+      if (url.includes('/browse/tv_series_browse')) {
+        tvFetchCount += 1;
+        return Promise.resolve({
+          ok: true,
+          text: () =>
+            Promise.resolve(
+              createShowSourceHtml([
+                {
+                  title: 'The Studio',
+                  href: '/tv/the_studio/s01',
+                  startDate: 'Premiered Mar 26, 2025',
+                  criticsScore: 94,
+                  audienceScore: 71,
+                },
+              ]),
+            ),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve(''),
+      } as Response);
+    });
+
+    const result = await job.run(ctx);
+    const summary = result.summary as Record<string, unknown>;
+    const raw = summary.raw as Record<string, unknown>;
+
+    expect(tvFetchCount).toBe(1);
+    expect(raw.effectiveShowLimit).toBe(1);
   });
 
   it('routes matched TV shows to Sonarr directly when Seerr mode is off', async () => {
@@ -725,6 +838,84 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
     expect(sonarr.addSeries).not.toHaveBeenCalled();
     expect(destinationStats.requested).toBe(1);
     expect(destinationStats.failed).toBe(0);
+  });
+
+  it('uses the manual Seerr override for a single TV run', async () => {
+    const { job, settings, sonarr, seerr, tmdb } = createJob();
+    const ctx = createContext({
+      dryRun: false,
+      input: { category: 'shows', routeViaSeerr: true, topCount: 1 },
+    });
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          rottenTomatoesUpcomingMovies: {
+            routeViaSeerr: false,
+            showLimit: 5,
+          },
+        },
+        sonarr: {
+          enabled: true,
+          baseUrl: 'http://sonarr.local:8989',
+          defaultRootFolderPath: '/shows',
+          defaultQualityProfileId: 4,
+        },
+        seerr: {
+          enabled: true,
+          baseUrl: 'http://seerr.local:5055',
+        },
+      },
+      secrets: {
+        sonarr: { apiKey: 'sonarr-key' },
+        seerr: { apiKey: 'seerr-key' },
+        tmdb: { apiKey: 'tmdb-key' },
+      },
+    });
+    settings.readServiceSecret.mockImplementation((service) => {
+      if (service === 'sonarr') return 'sonarr-key';
+      if (service === 'seerr') return 'seerr-key';
+      if (service === 'tmdb') return 'tmdb-key';
+      return '';
+    });
+    mockFetchWithMovieAndShowPages({
+      showHtml: createShowSourceHtml([
+        {
+          title: 'The Studio',
+          href: '/tv/the_studio/s01',
+          startDate: 'Premiered Mar 26, 2025',
+          criticsScore: 94,
+          audienceScore: 71,
+        },
+      ]),
+    });
+    sonarr.listSeries.mockResolvedValue([]);
+    seerr.requestTvAllSeasons.mockResolvedValue({
+      status: 'requested',
+      requestId: 42,
+      error: null,
+    });
+    tmdb.searchTv.mockResolvedValue([
+      { id: 1001, name: 'The Studio', first_air_date: '2025-03-26' },
+    ]);
+    tmdb.getTvExternalIds.mockResolvedValue({ tvdb_id: 2001 });
+
+    const result = await job.run(ctx);
+    const summary = result.summary as Record<string, unknown>;
+    const raw = summary.raw as Record<string, unknown>;
+    const shows = raw.shows as Record<string, unknown>;
+    const destinationStats = shows.destinationStats as Record<string, unknown>;
+
+    expect(raw.routeViaSeerr).toBe(true);
+    expect(raw.effectiveShowLimit).toBe(1);
+    expect(seerr.requestTvAllSeasons).toHaveBeenCalledWith({
+      baseUrl: 'http://seerr.local:5055',
+      apiKey: 'seerr-key',
+      tmdbId: 1001,
+      tvdbId: 2001,
+    });
+    expect(sonarr.addSeries).not.toHaveBeenCalled();
+    expect(destinationStats.requested).toBe(1);
   });
 
   it('runs the movie branch before the TV branch when both are enabled', async () => {

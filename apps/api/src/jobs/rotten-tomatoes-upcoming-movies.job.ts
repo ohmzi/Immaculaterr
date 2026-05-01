@@ -28,6 +28,7 @@ type RottenTomatoesUpcomingSettings = {
   routeViaSeerr: boolean;
   includeMovies: boolean;
   includeShows: boolean;
+  movieLimit: number;
   showLimit: number;
 };
 
@@ -164,7 +165,7 @@ type ShowBranchCaches = {
 };
 
 const ROTTEN_TOMATOES_UPCOMING_JOB_HEADLINE =
-  'Rotten Tomatoes Upcoming Movies + TV';
+  'Rotten Tomatoes Upcoming Movies + TV Shows';
 const ROTTEN_TOMATOES_MOVIE_SOURCE_URLS = [
   'https://www.rottentomatoes.com/browse/movies_in_theaters/sort:newest',
   'https://www.rottentomatoes.com/browse/movies_at_home/affiliates:fandango-at-home~sort:newest',
@@ -195,6 +196,7 @@ const ROTTEN_TOMATOES_SHOW_SOURCE_URLS = [
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REPORT_TITLE_ITEMS = 100;
 const CLOSE_YEAR_MATCH_DELTA = 1;
+const DEFAULT_MOVIE_LIMIT = 20;
 const DEFAULT_SHOW_LIMIT = 10;
 const MIN_SHOW_LIMIT = 1;
 const MAX_SHOW_LIMIT = 100;
@@ -726,6 +728,12 @@ function normalizeRottenTomatoesUpcomingSettings(
     includeShows:
       pickBool(settings, 'jobs.rottenTomatoesUpcomingMovies.includeShows') ??
       false,
+    movieLimit: clampInt(
+      pickNumber(settings, 'jobs.rottenTomatoesUpcomingMovies.movieLimit'),
+      MIN_SHOW_LIMIT,
+      MAX_SHOW_LIMIT,
+      DEFAULT_MOVIE_LIMIT,
+    ),
     showLimit: clampInt(
       pickNumber(settings, 'jobs.rottenTomatoesUpcomingMovies.showLimit'),
       MIN_SHOW_LIMIT,
@@ -775,6 +783,8 @@ export class RottenTomatoesUpcomingMoviesJob {
     const normalizedSettings =
       normalizeRottenTomatoesUpcomingSettings(settings);
     const manualCategory = this.readManualCategory(ctx.input ?? null);
+    const manualRouteViaSeerr = this.readManualRouteViaSeerr(ctx.input ?? null);
+    const manualTopCount = this.readManualTopCount(ctx.input ?? null);
     if (
       ctx.input &&
       Object.prototype.hasOwnProperty.call(ctx.input, 'category') &&
@@ -800,6 +810,16 @@ export class RottenTomatoesUpcomingMoviesJob {
         : manualCategory === 'movies'
           ? false
           : normalizedSettings.includeShows;
+    const effectiveRouteViaSeerr =
+      manualRouteViaSeerr ?? normalizedSettings.routeViaSeerr;
+    const effectiveMovieLimit =
+      manualCategory === 'movies' && manualTopCount !== null
+        ? manualTopCount
+        : normalizedSettings.movieLimit;
+    const effectiveShowLimit =
+      manualCategory === 'shows' && manualTopCount !== null
+        ? manualTopCount
+        : normalizedSettings.showLimit;
 
     const reportIssues: JobReportV1['issues'] = [];
     if (!effectiveIncludeMovies && !effectiveIncludeShows) {
@@ -816,7 +836,8 @@ export class RottenTomatoesUpcomingMoviesJob {
           ctx,
           settings,
           secrets,
-          routeViaSeerr: normalizedSettings.routeViaSeerr,
+          routeViaSeerr: effectiveRouteViaSeerr,
+          movieLimit: effectiveMovieLimit,
           setProgress,
           reportIssues,
         })
@@ -835,8 +856,8 @@ export class RottenTomatoesUpcomingMoviesJob {
           ctx,
           settings,
           secrets,
-          routeViaSeerr: normalizedSettings.routeViaSeerr,
-          showLimit: normalizedSettings.showLimit,
+          routeViaSeerr: effectiveRouteViaSeerr,
+          showLimit: effectiveShowLimit,
           setProgress,
           reportIssues,
         })
@@ -906,8 +927,9 @@ export class RottenTomatoesUpcomingMoviesJob {
       manualCategory,
       effectiveIncludeMovies,
       effectiveIncludeShows,
-      effectiveShowLimit: normalizedSettings.showLimit,
-      routeViaSeerr: normalizedSettings.routeViaSeerr,
+      effectiveMovieLimit,
+      effectiveShowLimit,
+      routeViaSeerr: effectiveRouteViaSeerr,
       movieBranch,
       showBranch,
       reportIssues,
@@ -921,13 +943,18 @@ export class RottenTomatoesUpcomingMoviesJob {
           manualCategory,
           effectiveIncludeMovies,
           effectiveIncludeShows,
-          effectiveShowLimit: normalizedSettings.showLimit,
+          effectiveMovieLimit,
+          effectiveShowLimit,
+          routeViaSeerr: effectiveRouteViaSeerr,
         },
       );
       await ctx.info('rottenTomatoesUpcomingMovies: failed', {
         manualCategory,
         effectiveIncludeMovies,
         effectiveIncludeShows,
+        effectiveMovieLimit,
+        effectiveShowLimit,
+        routeViaSeerr: effectiveRouteViaSeerr,
       });
       return {
         summary: report as unknown as JsonObject,
@@ -938,7 +965,9 @@ export class RottenTomatoesUpcomingMoviesJob {
       manualCategory,
       effectiveIncludeMovies,
       effectiveIncludeShows,
-      effectiveShowLimit: normalizedSettings.showLimit,
+      effectiveMovieLimit,
+      effectiveShowLimit,
+      routeViaSeerr: effectiveRouteViaSeerr,
       movieCandidates: movieBranch.dedupedMovies.length,
       showCandidates: showBranch.dedupedShows.length,
     });
@@ -946,6 +975,9 @@ export class RottenTomatoesUpcomingMoviesJob {
       manualCategory,
       effectiveIncludeMovies,
       effectiveIncludeShows,
+      effectiveMovieLimit,
+      effectiveShowLimit,
+      routeViaSeerr: effectiveRouteViaSeerr,
       movieDestinationStats: movieBranch.destinationStats,
       showDestinationStats: showBranch.destinationStats,
       showReconciliation: showBranch.reconciliation,
@@ -965,11 +997,36 @@ export class RottenTomatoesUpcomingMoviesJob {
     return null;
   }
 
+  private readManualRouteViaSeerr(input: JsonObject | null): boolean | null {
+    const raw = input?.['routeViaSeerr'];
+    return typeof raw === 'boolean' ? raw : null;
+  }
+
+  private readManualTopCount(input: JsonObject | null): number | null {
+    const raw = input?.['topCount'];
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return clampInt(raw, MIN_SHOW_LIMIT, MAX_SHOW_LIMIT, DEFAULT_SHOW_LIMIT);
+    }
+    if (typeof raw === 'string' && raw.trim()) {
+      const parsed = Number.parseFloat(raw.trim());
+      if (Number.isFinite(parsed)) {
+        return clampInt(
+          parsed,
+          MIN_SHOW_LIMIT,
+          MAX_SHOW_LIMIT,
+          DEFAULT_SHOW_LIMIT,
+        );
+      }
+    }
+    return null;
+  }
+
   private async runMovieBranch(params: {
     ctx: JobContext;
     settings: Record<string, unknown>;
     secrets: Record<string, unknown>;
     routeViaSeerr: boolean;
+    movieLimit: number;
     setProgress: (
       step: string,
       message: string,
@@ -977,14 +1034,22 @@ export class RottenTomatoesUpcomingMoviesJob {
     ) => Promise<void>;
     reportIssues: JobReportV1['issues'];
   }): Promise<MovieBranchResult> {
-    const { ctx, settings, secrets, routeViaSeerr, setProgress, reportIssues } =
-      params;
+    const {
+      ctx,
+      settings,
+      secrets,
+      routeViaSeerr,
+      movieLimit,
+      setProgress,
+      reportIssues,
+    } = params;
 
     await setProgress(
       'scrape_movies',
       'Scraping Rotten Tomatoes movie sources…',
       {
         totalSources: ROTTEN_TOMATOES_MOVIE_SOURCE_URLS.length,
+        movieLimit,
       },
     );
 
@@ -1008,6 +1073,9 @@ export class RottenTomatoesUpcomingMoviesJob {
           failed: false,
           error: null,
         });
+        if (dedupeScrapedMovies(scrapedMovies).length >= movieLimit) {
+          break;
+        }
       } catch (err) {
         const error = errToMessage(err);
         sourceFailureCount += 1;
@@ -1035,7 +1103,10 @@ export class RottenTomatoesUpcomingMoviesJob {
       }
     }
 
-    const dedupedMovies = dedupeScrapedMovies(scrapedMovies);
+    const dedupedMovies = dedupeScrapedMovies(scrapedMovies).slice(
+      0,
+      movieLimit,
+    );
     if (
       sourceFailureCount === ROTTEN_TOMATOES_MOVIE_SOURCE_URLS.length ||
       dedupedMovies.length === 0
@@ -1088,6 +1159,7 @@ export class RottenTomatoesUpcomingMoviesJob {
       {
         candidates: dedupedMovies.length,
         routeViaSeerr,
+        movieLimit,
       },
     );
 
@@ -2449,6 +2521,7 @@ export class RottenTomatoesUpcomingMoviesJob {
     manualCategory: ManualCategory | null;
     effectiveIncludeMovies: boolean;
     effectiveIncludeShows: boolean;
+    effectiveMovieLimit: number;
     effectiveShowLimit: number;
     routeViaSeerr: boolean;
     movieBranch: MovieBranchResult;
@@ -2537,6 +2610,7 @@ export class RottenTomatoesUpcomingMoviesJob {
               changed: params.movieBranch.dedupedMovies.length,
               end: params.movieBranch.dedupedMovies.length,
               unit: 'movies',
+              note: `Limit: ${params.effectiveMovieLimit}`,
             }),
             metricRow({
               label: 'Attempted',
@@ -2729,6 +2803,10 @@ export class RottenTomatoesUpcomingMoviesJob {
               value: params.effectiveIncludeShows,
             },
             {
+              label: 'Movie limit',
+              value: params.effectiveMovieLimit,
+            },
+            {
               label: 'TV limit',
               value: params.effectiveShowLimit,
             },
@@ -2914,6 +2992,7 @@ export class RottenTomatoesUpcomingMoviesJob {
         manualCategory: params.manualCategory,
         effectiveIncludeMovies: params.effectiveIncludeMovies,
         effectiveIncludeShows: params.effectiveIncludeShows,
+        effectiveMovieLimit: params.effectiveMovieLimit,
         effectiveShowLimit: params.effectiveShowLimit,
         routeViaSeerr: params.routeViaSeerr,
         movies: {

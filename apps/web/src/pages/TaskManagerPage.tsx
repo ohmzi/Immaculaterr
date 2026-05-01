@@ -99,6 +99,7 @@ type RottenTomatoesUpcomingSettingsDraft = {
   routeViaSeerr: boolean;
   includeMovies: boolean;
   includeShows: boolean;
+  movieLimit: number;
   showLimit: number;
 };
 
@@ -131,6 +132,7 @@ const TMDB_UPCOMING_DEFAULT_SCORE_MIN = 6;
 const TMDB_UPCOMING_DEFAULT_SCORE_MAX = 10;
 const TMDB_UPCOMING_TOP_LANGUAGE_CODES = ['en', 'zh', 'hi', 'es', 'fr'];
 const TMDB_CALENDAR_WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const ROTTEN_TOMATOES_DEFAULT_MOVIE_LIMIT = 20;
 const ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT = 10;
 const ROTTEN_TOMATOES_MIN_SHOW_LIMIT = 1;
 const ROTTEN_TOMATOES_MAX_SHOW_LIMIT = 100;
@@ -177,7 +179,7 @@ const JOB_CONFIG: Record<
     icon: <Clapperboard className="w-8 h-8" />,
     color: 'text-rose-300',
     description:
-      'Scrapes fixed Rotten Tomatoes movie and TV pages, routes safe movie matches to Radarr or Seerr, and sends TV picks to Sonarr or Seerr using the saved Top count.',
+      'Scrapes fixed Rotten Tomatoes movie and TV pages, respects separate saved movie and TV Top counts, and routes picks to Radarr, Sonarr, or Seerr.',
   },
   mediaAddedCleanup: {
     icon: <CheckCircle2 className="w-8 h-8" />,
@@ -674,6 +676,12 @@ function normalizeRottenTomatoesUpcomingSettings(
     includeShows:
       readBool(settings, 'jobs.rottenTomatoesUpcomingMovies.includeShows') ??
       false,
+    movieLimit: clampNumber(
+      Number(readPath(settings, 'jobs.rottenTomatoesUpcomingMovies.movieLimit')),
+      ROTTEN_TOMATOES_MIN_SHOW_LIMIT,
+      ROTTEN_TOMATOES_MAX_SHOW_LIMIT,
+      ROTTEN_TOMATOES_DEFAULT_MOVIE_LIMIT,
+    ),
     showLimit: clampNumber(
       Number(readPath(settings, 'jobs.rottenTomatoesUpcomingMovies.showLimit')),
       ROTTEN_TOMATOES_MIN_SHOW_LIMIT,
@@ -758,6 +766,11 @@ export function TaskManagerPage() {
     useState(false);
   const [rottenTomatoesRunDialogOpen, setRottenTomatoesRunDialogOpen] =
     useState(false);
+  const [rottenTomatoesRunRouteViaSeerr, setRottenTomatoesRunRouteViaSeerr] =
+    useState(false);
+  const [rottenTomatoesRunTopCount, setRottenTomatoesRunTopCount] = useState(
+    ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT,
+  );
 
   // Netflix import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -837,6 +850,7 @@ export function TaskManagerPage() {
     routeViaSeerr: false,
     includeMovies: true,
     includeShows: false,
+    movieLimit: ROTTEN_TOMATOES_DEFAULT_MOVIE_LIMIT,
     showLimit: ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT,
   });
   const [tmdbGenreSearchByFilter, setTmdbGenreSearchByFilter] = useState<
@@ -2192,10 +2206,19 @@ export function TaskManagerPage() {
       closeRottenTomatoesRunDialog();
       runJobNow({
         jobId: 'rottenTomatoesUpcomingMovies',
-        input: { category },
+        input: {
+          category,
+          routeViaSeerr: rottenTomatoesRunRouteViaSeerr,
+          topCount: rottenTomatoesRunTopCount,
+        },
       });
     },
-    [closeRottenTomatoesRunDialog, runJobNow],
+    [
+      closeRottenTomatoesRunDialog,
+      rottenTomatoesRunRouteViaSeerr,
+      rottenTomatoesRunTopCount,
+      runJobNow,
+    ],
   );
   const handleToggleImmaculateRefresherDetails = useCallback(() => {
     setImmaculateRefresherDetailsOpen((value) => !value);
@@ -2381,6 +2404,10 @@ export function TaskManagerPage() {
       }
 
       if (jobId === 'rottenTomatoesUpcomingMovies') {
+        setRottenTomatoesRunRouteViaSeerr(
+          rottenTomatoesUpcomingSettingsDraftRef.current.routeViaSeerr,
+        );
+        setRottenTomatoesRunTopCount(ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT);
         setRottenTomatoesRunDialogOpen(true);
         return;
       }
@@ -2863,12 +2890,44 @@ export function TaskManagerPage() {
       updateRottenTomatoesUpcomingSettings,
     ],
   );
+  const handleToggleRottenTomatoesRunRouteViaSeerr = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const next = !rottenTomatoesRunRouteViaSeerr;
+      if (next && !canEnableSeerrTaskToggles) {
+        openIntegrationSetupDialog('seerr');
+        return;
+      }
+      setRottenTomatoesRunRouteViaSeerr(next);
+    },
+    [
+      canEnableSeerrTaskToggles,
+      openIntegrationSetupDialog,
+      rottenTomatoesRunRouteViaSeerr,
+    ],
+  );
   const handleToggleRottenTomatoesUpcomingIncludeMovies = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
       updateRottenTomatoesUpcomingSettings((prev) => ({
         ...prev,
         includeMovies: !prev.includeMovies,
+      }));
+    },
+    [updateRottenTomatoesUpcomingSettings],
+  );
+  const handleRottenTomatoesUpcomingMovieLimitChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const value = clampNumber(
+        Number(event.currentTarget.value),
+        ROTTEN_TOMATOES_MIN_SHOW_LIMIT,
+        ROTTEN_TOMATOES_MAX_SHOW_LIMIT,
+        ROTTEN_TOMATOES_DEFAULT_MOVIE_LIMIT,
+      );
+      updateRottenTomatoesUpcomingSettings((prev) => ({
+        ...prev,
+        movieLimit: value,
       }));
     },
     [updateRottenTomatoesUpcomingSettings],
@@ -2882,6 +2941,19 @@ export function TaskManagerPage() {
       }));
     },
     [updateRottenTomatoesUpcomingSettings],
+  );
+  const handleRottenTomatoesRunTopCountChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+      const value = clampNumber(
+        Number(event.currentTarget.value),
+        ROTTEN_TOMATOES_MIN_SHOW_LIMIT,
+        ROTTEN_TOMATOES_MAX_SHOW_LIMIT,
+        ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT,
+      );
+      setRottenTomatoesRunTopCount(value);
+    },
+    [],
   );
   const handleRottenTomatoesUpcomingShowLimitChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -5808,51 +5880,80 @@ export function TaskManagerPage() {
                                         Includes
                                       </div>
                                       <div className="mt-3 flex flex-col gap-3">
-                                        <div className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#0F0B15]/35 px-4 py-3">
-                                          <div className="min-w-0">
+                                        <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[#0F0B15]/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                          <div className="min-w-0 flex-1">
                                             <div className="text-sm font-semibold text-white">
                                               Movies
                                             </div>
                                             <div className="mt-1 text-xs leading-relaxed text-white/55">
-                                              Keep the existing Rotten Tomatoes movie flow and route
-                                              safe matches to Radarr or Seerr.
+                                              Scrape fixed Rotten Tomatoes movie pages, keep safe
+                                              matches only, and stop once the saved Top count is
+                                              reached.
                                             </div>
                                           </div>
-                                          <button
-                                            type="button"
-                                            role="switch"
-                                            aria-checked={
-                                              rottenTomatoesUpcomingSettingsDraft.includeMovies
-                                            }
-                                            onClick={
-                                              handleToggleRottenTomatoesUpcomingIncludeMovies
-                                            }
-                                            onPointerDown={handleStopPropagationPointer}
-                                            disabled={
-                                              settingsQuery.isLoading ||
-                                              rottenTomatoesUpcomingSettingsMutation.isPending
-                                            }
-                                            className={cn(
-                                              'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                                              rottenTomatoesUpcomingSettingsDraft.includeMovies
-                                                ? 'bg-rose-400'
-                                                : 'bg-[#2a2438] border-2 border-white/10',
-                                            )}
-                                            aria-label="Toggle Rotten Tomatoes upcoming movies"
-                                          >
-                                            <span
-                                              className={cn(
-                                                'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                          <div className="flex items-center justify-between gap-3 sm:justify-end">
+                                            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/65">
+                                              <span className="font-semibold uppercase tracking-wider text-white/50">
+                                                Top
+                                              </span>
+                                              <input
+                                                type="number"
+                                                min={ROTTEN_TOMATOES_MIN_SHOW_LIMIT}
+                                                max={ROTTEN_TOMATOES_MAX_SHOW_LIMIT}
+                                                inputMode="numeric"
+                                                value={
+                                                  rottenTomatoesUpcomingSettingsDraft.movieLimit
+                                                }
+                                                onChange={
+                                                  handleRottenTomatoesUpcomingMovieLimitChange
+                                                }
+                                                onClick={handleStopPropagation}
+                                                onPointerDown={handleStopPropagationPointer}
+                                                disabled={
+                                                  settingsQuery.isLoading ||
+                                                  rottenTomatoesUpcomingSettingsMutation.isPending ||
+                                                  !rottenTomatoesUpcomingSettingsDraft.includeMovies
+                                                }
+                                                className="h-8 w-16 rounded-md border border-white/10 bg-[#0F0B15]/60 px-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-300/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                                aria-label="Rotten Tomatoes movie count"
+                                              />
+                                            </label>
+                                            <button
+                                              type="button"
+                                              role="switch"
+                                              aria-checked={
                                                 rottenTomatoesUpcomingSettingsDraft.includeMovies
-                                                  ? 'translate-x-6'
-                                                  : 'translate-x-1',
+                                              }
+                                              onClick={
+                                                handleToggleRottenTomatoesUpcomingIncludeMovies
+                                              }
+                                              onPointerDown={handleStopPropagationPointer}
+                                              disabled={
+                                                settingsQuery.isLoading ||
+                                                rottenTomatoesUpcomingSettingsMutation.isPending
+                                              }
+                                              className={cn(
+                                                'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                                                rottenTomatoesUpcomingSettingsDraft.includeMovies
+                                                  ? 'bg-rose-400'
+                                                  : 'bg-[#2a2438] border-2 border-white/10',
                                               )}
+                                              aria-label="Toggle Rotten Tomatoes upcoming movies"
                                             >
-                                              {rottenTomatoesUpcomingSettingsMutation.isPending && (
-                                                <Loader2 className="h-3 w-3 animate-spin text-black/70" />
-                                              )}
-                                            </span>
-                                          </button>
+                                              <span
+                                                className={cn(
+                                                  'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                                                  rottenTomatoesUpcomingSettingsDraft.includeMovies
+                                                    ? 'translate-x-6'
+                                                    : 'translate-x-1',
+                                                )}
+                                              >
+                                                {rottenTomatoesUpcomingSettingsMutation.isPending && (
+                                                  <Loader2 className="h-3 w-3 animate-spin text-black/70" />
+                                                )}
+                                              </span>
+                                            </button>
+                                          </div>
                                         </div>
 
                                         <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[#0F0B15]/35 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -6727,12 +6828,11 @@ export function TaskManagerPage() {
                     Run now
                   </div>
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
-                    Rotten Tomatoes Upcoming Movies
+                    Rotten Tomatoes Upcoming Movies + TV Shows
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
-                    Choose which branch to run right now. TV Shows will use the saved Top{' '}
-                    {rottenTomatoesUpcomingSettingsDraft.showLimit} setting from the expanded
-                    card.
+                    Choose the branch, one-run routing, and one-run Top count for this manual
+                    run. These dialog choices do not change the saved card settings.
                   </p>
                 </div>
                 <button
@@ -6745,7 +6845,65 @@ export function TaskManagerPage() {
                 </button>
               </div>
 
-              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="mt-6 space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-white">
+                        Route via Seerr
+                      </div>
+                      <div className="mt-1 text-xs leading-relaxed text-white/60">
+                        Turn this on for this run only to send matched movies and TV shows
+                        through Seerr instead of direct ARR adds.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={rottenTomatoesRunRouteViaSeerr}
+                      onClick={handleToggleRottenTomatoesRunRouteViaSeerr}
+                      className={cn(
+                        'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
+                        rottenTomatoesRunRouteViaSeerr
+                          ? 'bg-rose-400'
+                          : 'bg-[#2a2438] border-2 border-white/10',
+                      )}
+                      aria-label="Toggle one-run Seerr routing"
+                    >
+                      <span
+                        className={cn(
+                          'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
+                          rottenTomatoesRunRouteViaSeerr
+                            ? 'translate-x-6'
+                            : 'translate-x-1',
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-white/50">
+                        Top count
+                      </div>
+                      <div className="mt-1 text-xs text-white/60">
+                        Default is Top 10 for manual runs.
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      min={ROTTEN_TOMATOES_MIN_SHOW_LIMIT}
+                      max={ROTTEN_TOMATOES_MAX_SHOW_LIMIT}
+                      inputMode="numeric"
+                      value={rottenTomatoesRunTopCount}
+                      onChange={handleRottenTomatoesRunTopCountChange}
+                      className="h-10 w-20 rounded-md border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-300/40"
+                      aria-label="Rotten Tomatoes manual top count"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => handleRunRottenTomatoesCategory('movies')}
@@ -6762,13 +6920,13 @@ export function TaskManagerPage() {
                     <div>
                       <div className="text-base font-bold text-white">Movies</div>
                       <div className="text-xs uppercase tracking-[0.18em] text-rose-200/70">
-                        Radarr or Seerr
+                        Top {rottenTomatoesRunTopCount}
                       </div>
                     </div>
                   </div>
                   <p className="mt-4 text-sm leading-relaxed text-white/65">
                     Scrape the fixed Rotten Tomatoes movie pages and use the existing safe Radarr
-                    lookup flow before routing matches.
+                    lookup flow before routing matches with the one-run settings above.
                   </p>
                 </button>
 
@@ -6788,15 +6946,16 @@ export function TaskManagerPage() {
                     <div>
                       <div className="text-base font-bold text-white">TV Shows</div>
                       <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/70">
-                        Top {rottenTomatoesUpcomingSettingsDraft.showLimit}
+                        Top {rottenTomatoesRunTopCount}
                       </div>
                     </div>
                   </div>
                   <p className="mt-4 text-sm leading-relaxed text-white/65">
-                    Scrape score-qualified Rotten Tomatoes TV pages, stop at the saved Top limit,
-                    then send new shows to Sonarr or Seerr.
+                    Scrape score-qualified Rotten Tomatoes TV pages, stop at the one-run Top
+                    limit, then route new shows with the one-run settings above.
                   </p>
                 </button>
+                </div>
               </div>
 
               <div className="mt-6 flex justify-end">

@@ -39,28 +39,11 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.8-beta-5',
     popupHighlights: [
-      'Rotten Tomatoes Upcoming Movies now supports TV shows with a saved Top 10 control you can raise or lower.',
-      'Manual Run now lets you choose the Rotten Tomatoes movie or TV branch for one-off runs without changing saved settings.',
-      'Route via Seerr now applies to both Rotten Tomatoes movies and TV shows, and saved auto-runs always process movies before TV.',
-    ],
-    sections: [
-      {
-        title: 'Rotten Tomatoes Upcoming Movies + TV',
-        bullets: [
-          'The Rotten Tomatoes Task Manager card now saves Movies, TV Shows, and a TV Top count. TV defaults to Top 10, stays visible on the expanded card, and controls how many score-qualified, deduplicated TV candidates are considered across the fixed TV sources.',
-          'Manual Run now opens a Movies or TV Shows chooser for this task. Manual TV runs reuse the saved Top count, while saved scheduled and auto-runs use the card settings and always run movies first, then TV.',
-          'Route via Seerr now applies to both media types: movies still require safe Radarr lookup first, and new TV shows go to Seerr instead of falling back to direct Sonarr adds when Seerr mode is enabled.',
-          'Existing Sonarr shows can still be reconciled against Plex so present episodes stay unmonitored, missing episodes remain monitored, and Rewind now shows separate movie and TV stages plus TV-specific routing and reconciliation stats.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.7.8-beta-4',
-    popupHighlights: [
       'Confirm Monitored now requires Plex-verified playable media and runs Sonarr cascade in episode, season, then series order.',
       'Netflix import no longer fails when legacy databases are missing the releaseDate column.',
-      "Rotten Tomatoes scraper: upcoming-movie discovery works again with Rotten Tomatoes' current movie-card markup.",
+      'Rotten Tomatoes Upcoming Movies + TV Shows now saves separate Movie Top 20 and TV Top 10 counts on the task card.',
+      'Manual Run for Rotten Tomatoes now includes one-run Movies or TV selection, Route via Seerr, and a Top count without changing saved settings.',
+      'Rotten Tomatoes movie discovery now respects the saved or one-run Movie Top count, while saved auto-runs still process movies before TV.',
     ],
     sections: [
       {
@@ -79,11 +62,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         ],
       },
       {
-        title: 'Rotten Tomatoes upcoming movies reliability',
+        title: 'Rotten Tomatoes Upcoming Movies + TV Shows',
         bullets: [
-          "Fixed Rotten Tomatoes upcoming-movie discovery so current browse pages using the newer rt-text movie-card markup are parsed again.",
-          'The scraper now accepts the tagged field wrapper instead of assuming legacy span-only title and start-date markup.',
-          'This restores normal discovery for the Rotten Tomatoes Upcoming Movies job when source pages load successfully.',
+          "Rotten Tomatoes upcoming movie discovery now works with the current browse-page markup using the newer rt-text field wrappers instead of assuming legacy span-only cards.",
+          'The task is now presented as Rotten Tomatoes Upcoming Movies + TV Shows, and the expanded card now saves Movies, TV Shows, Movie Top, and TV Top values. Movies default to Top 20, TV defaults to Top 10, and both ranges can be set from 1 to 100.',
+          'Manual Run now opens a Movies or TV Shows chooser with a one-run Route via Seerr toggle and a one-run Top count. The dialog starts from the saved Seerr setting plus Top 10 every time and does not change the saved card settings.',
+          'Movie discovery now stops once the deduplicated movie pool reaches the effective Movie Top count, matching the existing TV-stop behavior. Saved scheduled and auto-runs still use the card settings and always run movies first, then TV.',
+          'Route via Seerr now applies to both media types: movies still require safe Radarr lookup first, and new TV shows go to Seerr instead of falling back to direct Sonarr adds when Seerr mode is enabled.',
+          'Existing Sonarr shows can still be reconciled against Plex so present episodes stay unmonitored, missing episodes remain monitored, and Rewind now shows separate movie and TV stages plus TV-specific routing and reconciliation stats.',
         ],
       },
     ],

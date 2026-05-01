@@ -425,10 +425,10 @@ This task can run movie discovery, TV discovery, or both. Saved scheduled and au
 
 Run flow:
 
-1. Movie pages still use the existing safe Radarr lookup flow before titles are added to Radarr or requested in Seerr.
+1. Movie pages still use the existing safe Radarr lookup flow before titles are added to Radarr or requested in Seerr, and movie discovery stops once the saved Movie Top count is reached. The default is Top 20.
 2. TV pages are scraped from fixed Rotten Tomatoes browse URLs, filtered to shows with both critic and audience scores of at least 60, then deduplicated.
-3. TV discovery stops once the saved Top count is reached. The default is Top 10, and manual TV runs reuse that saved count instead of asking for a one-off value.
-4. Manual Run now lets you choose Movies or TV Shows for that single run without changing the saved card settings.
+3. TV discovery stops once the saved Top count is reached. The default is Top 10, and manual runs can choose a one-run Top count without changing the saved card values.
+4. Manual Run now lets you choose Movies or TV Shows, a one-run Route via Seerr toggle, and a one-run Top count. Those dialog choices do not change the saved card settings.
 
 ### What sources does it check?
 
@@ -449,7 +449,8 @@ Run flow:
 
 ### What results should I expect after a run?
 
-- The TV Top count defaults to 10 and controls how many score-qualified, deduplicated TV candidates are considered across all fixed TV sources.
+- The saved Movie Top count defaults to 20 and the saved TV Top count defaults to 10. They control how many deduplicated candidates are considered for each branch across the fixed Rotten Tomatoes sources.
+- Manual runs default to Top 10 in the dialog, but you can change that one-run count anywhere between 1 and 100 without changing the saved card limits.
 - Movies or shows that already exist in Radarr, Sonarr, or Seerr are counted as existing instead of surfacing as hard failures.
 - Existing Sonarr shows can have episode, season, and series monitoring updated so Plex copies stay unmonitored while missing episodes stay monitored.
 - Rewind now shows separate movie and TV steps plus TV-specific stats for source pages, score filtering, unresolved IDs, requests or adds, skips, and reconciliation counts.
