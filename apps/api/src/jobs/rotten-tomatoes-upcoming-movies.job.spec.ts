@@ -87,13 +87,16 @@ function createJob() {
 
 function createSourceHtml(
   entries: Array<{ title: string; href: string; startDate: string }>,
+  options?: { textTag?: 'span' | 'rt-text' },
 ): string {
+  const textTag = options?.textTag ?? 'span';
+
   return entries
     .map(
       (entry) => `
         <a data-qa="discovery-media-list-item-caption" href="${entry.href}">
-          <span data-qa="discovery-media-list-item-title">${entry.title}</span>
-          <span data-qa="discovery-media-list-item-start-date">${entry.startDate}</span>
+          <${textTag} data-qa="discovery-media-list-item-title">${entry.title}</${textTag}>
+          <${textTag} data-qa="discovery-media-list-item-start-date">${entry.startDate}</${textTag}>
         </a>
       `,
     )
@@ -109,13 +112,16 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
     const parsed = parseRottenTomatoesMoviesFromHtml({
       sourceUrl:
         'https://www.rottentomatoes.com/browse/movies_in_theaters/sort:newest',
-      html: createSourceHtml([
-        {
-          title: 'The Example',
-          href: '/m/the_example_2026',
-          startDate: 'Streaming Apr 7, 2025',
-        },
-      ]),
+      html: createSourceHtml(
+        [
+          {
+            title: 'The Example',
+            href: '/m/the_example_2026',
+            startDate: 'Streaming Apr 7, 2025',
+          },
+        ],
+        { textTag: 'rt-text' },
+      ),
     });
 
     expect(parsed.discoveredEntries).toBe(1);
@@ -125,6 +131,30 @@ describe('RottenTomatoesUpcomingMoviesJob', () => {
         title: 'The Example',
         year: '2026',
         href: '/m/the_example_2026',
+      }),
+    ]);
+  });
+
+  it('keeps parsing legacy span-based Rotten Tomatoes cards', () => {
+    const parsed = parseRottenTomatoesMoviesFromHtml({
+      sourceUrl:
+        'https://www.rottentomatoes.com/browse/movies_in_theaters/sort:newest',
+      html: createSourceHtml([
+        {
+          title: 'Legacy Example',
+          href: '/m/legacy_example_2025',
+          startDate: 'Streaming Apr 7, 2025',
+        },
+      ]),
+    });
+
+    expect(parsed.discoveredEntries).toBe(1);
+    expect(parsed.skippedNoYear).toBe(0);
+    expect(parsed.movies).toEqual([
+      expect.objectContaining({
+        title: 'Legacy Example',
+        year: '2025',
+        href: '/m/legacy_example_2025',
       }),
     ]);
   });

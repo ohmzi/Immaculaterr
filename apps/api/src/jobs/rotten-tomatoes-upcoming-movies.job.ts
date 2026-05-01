@@ -146,6 +146,20 @@ function stripTags(value: string): string {
     .trim();
 }
 
+function extractDataQaText(cardHtml: string, dataQa: string): string {
+  const safeDataQa = dataQa.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = cardHtml.match(
+    new RegExp(
+      `<([a-z0-9-]+)\\b[^>]*data-qa="${safeDataQa}"[^>]*>([\\s\\S]*?)<\\/\\1>`,
+      'i',
+    ),
+  );
+
+  return normalizeTitleForMatching(
+    stripTags(decodeHtmlEntities(match?.[2] ?? '')),
+  );
+}
+
 function parsePositiveInt(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
     return Math.trunc(value);
@@ -209,20 +223,16 @@ export function parseRottenTomatoesMoviesFromHtml(params: {
   for (const match of html.matchAll(cardRegex)) {
     const href = decodeHtmlEntities(match[1] ?? '').trim();
     const cardHtml = match[2] ?? '';
-    const titleMatch = cardHtml.match(
-      /data-qa="discovery-media-list-item-title"[^>]*>([\s\S]*?)<\/span>/i,
-    );
-    const title = normalizeTitleForMatching(
-      stripTags(decodeHtmlEntities(titleMatch?.[1] ?? '')),
+    const title = extractDataQaText(
+      cardHtml,
+      'discovery-media-list-item-title',
     );
     if (!title) continue;
 
     discoveredEntries += 1;
-    const startDateMatch = cardHtml.match(
-      /data-qa="discovery-media-list-item-start-date"[^>]*>([\s\S]*?)<\/span>/i,
-    );
-    const startDate = normalizeTitleForMatching(
-      stripTags(decodeHtmlEntities(startDateMatch?.[1] ?? '')),
+    const startDate = extractDataQaText(
+      cardHtml,
+      'discovery-media-list-item-start-date',
     );
     const year = extractYearFromText(href, startDate);
     if (!year) {
