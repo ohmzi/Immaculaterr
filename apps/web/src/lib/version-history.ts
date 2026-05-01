@@ -41,6 +41,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
     popupHighlights: [
       'App base path hosting now works across the app, API, and Docker setup.',
       'Confirm Monitored is stricter and now checks Plex-playable media before Radarr or Sonarr items are treated as present.',
+      'Task Manager now sizes scheduled jobs from live Rewind history and warns when Sunday auto-runs are stacked too tightly.',
       'Rotten Tomatoes Upcoming Run Now uses saved card settings and blocks when both branches are off.',
       'Netflix import is safer on older SQLite databases, with no Prisma or stored-data changes in this beta.',
     ],
@@ -68,6 +69,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Run Now uses the saved Movies, TV Shows, Route via Seerr, and Top count settings instead of one-run overrides.',
           'New installs now default both Rotten Tomatoes branches off, and Run Now stays blocked until at least one branch is enabled.',
           'Discovery, routing, and reconciliation are now clearer for both movies and TV, with better Rewind reporting.',
+        ],
+      },
+      {
+        title: 'Auto-run scheduling and Task Manager',
+        bullets: [
+          'The Sunday auto-run defaults are now staggered so Search Monitored starts at 5:00 AM, Rotten Tomatoes at 7:15 AM, and TMDB Upcoming Movies at 7:45 AM.',
+          'Task Manager now sizes scheduled jobs from successful Rewind history instead of stale one-size-fits-all estimates.',
+          'Schedule editing now warns when two enabled jobs share the same cron or when the gap after another scheduled job is too tight, and it shows the next preferred safe slot.',
         ],
       },
     ],

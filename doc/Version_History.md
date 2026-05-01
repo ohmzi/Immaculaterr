@@ -18,6 +18,10 @@ This file tracks notable changes by version.
   - Run Now uses the saved Movies, TV Shows, `Route via Seerr`, and Top count settings instead of one-run overrides.
   - New installs now default both Rotten Tomatoes branches off, and Run Now stays blocked until at least one branch is enabled.
   - Discovery, routing, and reconciliation are now clearer for both movies and TV, with better Rewind reporting.
+- Auto-run scheduling and Task Manager:
+  - The Sunday auto-run defaults are now staggered so `Search Monitored` starts at `Sunday 5:00 AM`, `Rotten Tomatoes Upcoming Movies + TV Shows` at `Sunday 7:15 AM`, and `TMDB Upcoming Movies` at `Sunday 7:45 AM`.
+  - Task Manager now sizes scheduled jobs from successful Rewind history instead of stale one-size-fits-all estimates.
+  - Schedule editing now warns when two enabled jobs share the same cron or when the gap after another scheduled job is too tight, and it shows the next preferred safe slot.
 
 ## 1.7.7
 
