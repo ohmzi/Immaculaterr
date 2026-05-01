@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormE
 import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
-import { ArrowUpRight, ShieldCheck, UserRoundCog } from 'lucide-react';
+import { Info, ShieldCheck, UserRoundCog } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -489,18 +489,16 @@ export function ProfilePage() {
 
           <div className="mt-6">
             <div id="profile-public-path-panel" className={`${cardClass} ${anchorClass}`}>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-white">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="h-5 w-5 text-[#facc15]" />
-                  <h2 className="text-xl font-semibold">App base path</h2>
-                </div>
+              <div className="mb-4 flex flex-wrap items-center gap-2 text-white">
+                <ShieldCheck className="h-5 w-5 text-[#facc15]" />
+                <h2 className="text-xl font-semibold">App base path</h2>
                 <Link
                   to="/setup#update-paths-public-path-hosting"
                   className={APP_SHORTCUT_CHIP_CLASS}
                   title="Open app base path setup"
                   aria-label="Open app base path setup"
                 >
-                  <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+                  <Info className="h-3.5 w-3.5 shrink-0" />
                   <span>Setup</span>
                 </Link>
               </div>
