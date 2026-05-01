@@ -26,6 +26,16 @@ type FinalizeRunningRun = (params: {
 
 type FinalizeRunningRunParams = Parameters<FinalizeRunningRun>[0];
 
+type EstimateHistoryGroups = Map<
+  string,
+  Array<{
+    estimateKey: string;
+    status: JobRunTrigger | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+    durationMs: number;
+    usesLegacyTiming: boolean;
+  }>
+>;
+
 function callFinalizeRunningRun(
   service: JobsService,
   params: FinalizeRunningRunParams,
@@ -60,6 +70,42 @@ function callCreateJobContext(
     }
   ).createJobContext;
   return createJobContext.call(service, params);
+}
+
+function callBuildEstimateHistoryGroups(
+  service: JobsService,
+  runs: Array<Record<string, unknown>>,
+) {
+  const buildEstimateHistoryGroups = (
+    service as unknown as {
+      buildEstimateHistoryGroups: (
+        runs: Array<Record<string, unknown>>,
+      ) => EstimateHistoryGroups;
+    }
+  ).buildEstimateHistoryGroups;
+  return buildEstimateHistoryGroups.call(service, runs);
+}
+
+function callResolveRunEstimate(
+  service: JobsService,
+  run: {
+    jobId: string;
+    dryRun: boolean;
+    trigger: JobRunTrigger;
+    input: Record<string, unknown> | null;
+    summary: Record<string, unknown> | null;
+  },
+  groups: EstimateHistoryGroups,
+) {
+  const resolveRunEstimate = (
+    service as unknown as {
+      resolveRunEstimate: (
+        run: typeof run,
+        groups: EstimateHistoryGroups,
+      ) => { estimatedRuntimeMs: number; estimateSource: string };
+    }
+  ).resolveRunEstimate;
+  return resolveRunEstimate.call(service, run, groups);
 }
 
 function getPersistedSummary(
@@ -171,6 +217,33 @@ function makeSuccessReport(skipped = false) {
   };
 }
 
+function makeRuntimeHistoryRun(params: {
+  jobId: string;
+  status?: 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  startedAt: string;
+  finishedAt: string;
+}) {
+  return {
+    id: `${params.jobId}-${params.startedAt}`,
+    jobId: params.jobId,
+    userId: 'admin-user',
+    trigger: 'schedule' as const,
+    dryRun: false,
+    status: params.status ?? 'SUCCESS',
+    startedAt: new Date(params.startedAt),
+    queuedAt: new Date(params.startedAt),
+    executionStartedAt: new Date(params.startedAt),
+    finishedAt: new Date(params.finishedAt),
+    input: null,
+    summary: null,
+    errorMessage: null,
+    queueFingerprint: null,
+    claimedAt: null,
+    heartbeatAt: null,
+    workerId: null,
+  };
+}
+
 function readConflictReason(error: unknown): string | null {
   if (!(error instanceof ConflictException)) return null;
   const response = error.getResponse();
@@ -223,7 +296,11 @@ function makeService() {
     $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => {
       return await callback(tx);
     }),
+    jobSchedule: {
+      findMany: jest.fn(),
+    },
     jobRun: {
+      findMany: jest.fn(),
       update: jest.fn(),
     },
     jobLogLine: {
@@ -243,6 +320,8 @@ function makeService() {
   tx.jobLogLine.create.mockResolvedValue({});
   tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
   tx.autoRunMediaHistory.upsert.mockResolvedValue({ id: 'history-1' });
+  prisma.jobSchedule.findMany.mockResolvedValue([]);
+  prisma.jobRun.findMany.mockResolvedValue([]);
   prisma.jobRun.update.mockResolvedValue({});
   prisma.jobLogLine.create.mockResolvedValue({});
   jest
@@ -525,6 +604,102 @@ describe('JobsService durable auto-run media dedupe', () => {
       step: 'phase1_classification',
       current: 4,
       total: 10,
+    });
+  });
+
+  it('returns live runtime insights for schedulable jobs from successful history', async () => {
+    const { service, prisma } = makeService();
+    prisma.jobSchedule.findMany.mockResolvedValue([
+      {
+        jobId: 'arrMonitoredSearch',
+        cron: '0 5 * * 0',
+        enabled: true,
+        timezone: null,
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    prisma.jobRun.findMany.mockImplementation(
+      ({ where }: { where?: { jobId?: string } }) => {
+        if (where?.jobId === 'arrMonitoredSearch') {
+          return [
+            makeRuntimeHistoryRun({
+              jobId: 'arrMonitoredSearch',
+              startedAt: '2026-04-27T05:00:00.000Z',
+              finishedAt: '2026-04-27T05:10:00.000Z',
+            }),
+            makeRuntimeHistoryRun({
+              jobId: 'arrMonitoredSearch',
+              startedAt: '2026-04-20T05:00:00.000Z',
+              finishedAt: '2026-04-20T05:20:00.000Z',
+            }),
+            makeRuntimeHistoryRun({
+              jobId: 'arrMonitoredSearch',
+              startedAt: '2026-04-13T05:00:00.000Z',
+              finishedAt: '2026-04-13T06:00:00.000Z',
+            }),
+          ];
+        }
+        return [];
+      },
+    );
+
+    const jobs = await service.listJobsWithSchedules();
+    const searchJob = jobs.find((job) => job.id === 'arrMonitoredSearch');
+    const cleanupJob = jobs.find((job) => job.id === 'mediaAddedCleanup');
+
+    expect(searchJob?.runtimeInsights).toMatchObject({
+      estimatedRuntimeMs: 60 * 60_000,
+      estimateSource: 'max_success',
+      successfulRunCount: 3,
+      maxSuccessfulRuntimeMs: 60 * 60_000,
+      medianSuccessfulRuntimeMs: 20 * 60_000,
+      minimumScheduleSpacingMs: 61 * 60_000,
+      preferredScheduleSpacingMs: 121 * 60_000,
+    });
+    expect(searchJob?.schedule?.cron).toBe('0 5 * * 0');
+    expect(cleanupJob?.runtimeInsights).toBeNull();
+  });
+
+  it('uses the max successful runtime for scheduled queue ETA sizing', () => {
+    const { service } = makeService();
+    const history = [
+      makeRuntimeHistoryRun({
+        jobId: 'arrMonitoredSearch',
+        startedAt: '2026-04-27T05:00:00.000Z',
+        finishedAt: '2026-04-27T05:10:00.000Z',
+      }),
+      makeRuntimeHistoryRun({
+        jobId: 'arrMonitoredSearch',
+        startedAt: '2026-04-20T05:00:00.000Z',
+        finishedAt: '2026-04-20T05:20:00.000Z',
+      }),
+      makeRuntimeHistoryRun({
+        jobId: 'arrMonitoredSearch',
+        startedAt: '2026-04-13T05:00:00.000Z',
+        finishedAt: '2026-04-13T06:00:00.000Z',
+      }),
+    ];
+
+    const groups = callBuildEstimateHistoryGroups(
+      service,
+      history as Array<Record<string, unknown>>,
+    );
+    const estimate = callResolveRunEstimate(
+      service,
+      {
+        jobId: 'arrMonitoredSearch',
+        dryRun: false,
+        trigger: 'schedule',
+        input: null,
+        summary: null,
+      },
+      groups,
+    );
+
+    expect(estimate).toMatchObject({
+      estimatedRuntimeMs: 60 * 60_000,
+      estimateSource: 'max_success',
     });
   });
 });

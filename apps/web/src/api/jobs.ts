@@ -11,6 +11,16 @@ export type JobSchedule = {
   updatedAt: string;
 };
 
+export type JobRuntimeInsights = {
+  estimatedRuntimeMs: number;
+  estimateSource: QueueEstimateSource;
+  successfulRunCount: number;
+  maxSuccessfulRuntimeMs: number | null;
+  medianSuccessfulRuntimeMs: number | null;
+  minimumScheduleSpacingMs: number;
+  preferredScheduleSpacingMs: number;
+};
+
 export type JobDefinition = {
   id: string;
   name: string;
@@ -20,6 +30,7 @@ export type JobDefinition = {
   visibleInRewind: boolean;
   rewindDisplayName: string;
   defaultEstimatedRuntimeMs: number;
+  runtimeInsights: JobRuntimeInsights | null;
   schedule: JobSchedule | null;
 };
 
@@ -50,6 +61,7 @@ export type JobRun = {
 };
 
 export type QueueEstimateSource =
+  | 'max_success'
   | 'median_success'
   | 'median_terminal'
   | 'log_backfill'

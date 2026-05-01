@@ -49,6 +49,7 @@ const TERMINAL_JOB_RUN_STATUSES: JobRunStatus[] = [
   'CANCELLED',
 ];
 const ESTIMATE_HISTORY_LIMIT = 500;
+const SCHEDULE_RUNTIME_HISTORY_LIMIT = 120;
 
 const RUN_SAFE_SELECT = {
   id: true,
@@ -74,14 +75,26 @@ const RUN_QUEUE_SELECT = {
   workerId: true,
 } satisfies Prisma.JobRunSelect;
 
+const RUNTIME_HISTORY_SELECT = {
+  jobId: true,
+  startedAt: true,
+  queuedAt: true,
+  executionStartedAt: true,
+  finishedAt: true,
+} satisfies Prisma.JobRunSelect;
+
 type SafeRunRecord = Prisma.JobRunGetPayload<{
   select: typeof RUN_SAFE_SELECT;
 }>;
 type QueueRunRecord = Prisma.JobRunGetPayload<{
   select: typeof RUN_QUEUE_SELECT;
 }>;
+type RuntimeHistoryRecord = Prisma.JobRunGetPayload<{
+  select: typeof RUNTIME_HISTORY_SELECT;
+}>;
 
 type QueueEstimateSource =
+  | 'max_success'
   | 'median_success'
   | 'median_terminal'
   | 'log_backfill'
@@ -105,6 +118,16 @@ type QueueEstimate = {
   estimatedRuntimeMs: number;
   estimateSource: QueueEstimateSource;
   etaConfidence: EtaConfidence;
+};
+
+type JobRuntimeInsights = {
+  estimatedRuntimeMs: number;
+  estimateSource: QueueEstimateSource;
+  successfulRunCount: number;
+  maxSuccessfulRuntimeMs: number | null;
+  medianSuccessfulRuntimeMs: number | null;
+  minimumScheduleSpacingMs: number;
+  preferredScheduleSpacingMs: number;
 };
 
 type SerializedRun = {
@@ -383,7 +406,7 @@ function sanitizeSummaryForClient(summary: unknown): unknown {
 }
 
 function estimateConfidence(source: QueueEstimateSource): EtaConfidence {
-  if (source === 'median_success') return 'high';
+  if (source === 'max_success' || source === 'median_success') return 'high';
   if (source === 'median_terminal') return 'medium';
   return 'fallback';
 }
@@ -442,13 +465,22 @@ export class JobsService implements OnModuleInit {
   }
 
   async listJobsWithSchedules() {
-    const schedules = await this.prisma.jobSchedule.findMany();
+    const definitions = this.listDefinitions();
+    const schedulableJobIds = definitions
+      .filter((job) => !JobsService.UNSCHEDULABLE_JOB_IDS.has(job.id))
+      .map((job) => job.id);
+
+    const [schedules, runtimeInsightsByJobId] = await Promise.all([
+      this.prisma.jobSchedule.findMany(),
+      this.buildRuntimeInsightsByJobId(schedulableJobIds),
+    ]);
     const scheduleMap = new Map(
       schedules.map((schedule) => [schedule.jobId, schedule]),
     );
 
-    return this.listDefinitions().map((job) => ({
+    return definitions.map((job) => ({
       ...job,
+      runtimeInsights: runtimeInsightsByJobId.get(job.id) ?? null,
       schedule: (() => {
         if (JobsService.UNSCHEDULABLE_JOB_IDS.has(job.id)) return null;
         const schedule = scheduleMap.get(job.id) ?? null;
@@ -1821,6 +1853,18 @@ export class JobsService implements OnModuleInit {
       .map((entry) => entry.durationMs);
 
     const successMedian = median(successful);
+    const successMax = successful.length ? Math.max(...successful) : null;
+    if (
+      definition?.dedupePolicy === 'schedule_singleton' &&
+      successMax !== null
+    ) {
+      return {
+        estimatedRuntimeMs: successMax,
+        estimateSource: 'max_success',
+        etaConfidence: estimateConfidence('max_success'),
+      };
+    }
+
     if (successMedian !== null) {
       return {
         estimatedRuntimeMs: successMedian,
@@ -2070,5 +2114,63 @@ export class JobsService implements OnModuleInit {
       return;
     }
     this.logger.log(message);
+  }
+
+  private async buildRuntimeInsightsByJobId(jobIds: string[]) {
+    const entries = await Promise.all(
+      jobIds.map(
+        async (jobId) =>
+          [jobId, await this.buildRuntimeInsightsForJob(jobId)] as const,
+      ),
+    );
+    return new Map(entries);
+  }
+
+  private async buildRuntimeInsightsForJob(
+    jobId: string,
+  ): Promise<JobRuntimeInsights | null> {
+    const definition = findJobDefinition(jobId);
+    if (!definition) return null;
+
+    const successfulRuns = await this.prisma.jobRun.findMany({
+      where: {
+        jobId,
+        status: 'SUCCESS',
+        dryRun: false,
+        finishedAt: { not: null },
+      },
+      orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
+      take: SCHEDULE_RUNTIME_HISTORY_LIMIT,
+      select: RUNTIME_HISTORY_SELECT,
+    });
+
+    return this.buildRuntimeInsightsFromHistory(definition, successfulRuns);
+  }
+
+  private buildRuntimeInsightsFromHistory(
+    definition: NonNullable<ReturnType<typeof findJobDefinition>>,
+    runs: RuntimeHistoryRecord[],
+  ): JobRuntimeInsights {
+    const successfulDurations = runs
+      .map((run) => resolveRuntimeMs(run))
+      .filter((durationMs): durationMs is number => durationMs !== null);
+    const medianSuccessfulRuntimeMs = median(successfulDurations);
+    const maxSuccessfulRuntimeMs = successfulDurations.length
+      ? Math.max(...successfulDurations)
+      : null;
+    const estimatedRuntimeMs =
+      maxSuccessfulRuntimeMs ?? definition.defaultEstimatedRuntimeMs;
+
+    return {
+      estimatedRuntimeMs,
+      estimateSource:
+        maxSuccessfulRuntimeMs !== null ? 'max_success' : 'job_default',
+      successfulRunCount: successfulDurations.length,
+      maxSuccessfulRuntimeMs,
+      medianSuccessfulRuntimeMs,
+      minimumScheduleSpacingMs: estimatedRuntimeMs + QUEUE_COOLDOWN_MS,
+      preferredScheduleSpacingMs:
+        estimatedRuntimeMs + QUEUE_COOLDOWN_MS + estimatedRuntimeMs,
+    };
   }
 }

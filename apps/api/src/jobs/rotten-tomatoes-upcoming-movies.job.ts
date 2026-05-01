@@ -724,7 +724,7 @@ function normalizeRottenTomatoesUpcomingSettings(
       false,
     includeMovies:
       pickBool(settings, 'jobs.rottenTomatoesUpcomingMovies.includeMovies') ??
-      true,
+      false,
     includeShows:
       pickBool(settings, 'jobs.rottenTomatoesUpcomingMovies.includeShows') ??
       false,

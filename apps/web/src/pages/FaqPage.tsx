@@ -26,6 +26,7 @@ import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
+  APP_SHORTCUT_CHIP_CLASS,
 } from '@/lib/ui-classes';
 import {
   COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION,
@@ -220,62 +221,6 @@ export const FaqPage = () => {
                   Setup - Optional HTTPS sidecar
                 </Link>
                 .
-              </p>
-            </>
-          ),
-        },
-        {
-          id: 'getting-started-public-path',
-          question: 'How do I host Immaculaterr under an app base path behind a reverse proxy?',
-          answer: (
-            <>
-              <p>
-                Set <code className="font-mono">APP_BASE_PATH</code> to the exact public prefix you
-                want, then make your proxy or tunnel forward that same prefix to Immaculaterr. This
-                works with Nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar
-                setups.
-              </p>
-              <p>
-                Replace <code className="font-mono">/immaculaterr</code> below with any subpath you
-                want, such as <code className="font-mono">/recommendations</code> or{' '}
-                <code className="font-mono">/media-helper</code>.
-              </p>
-              <ol className="list-decimal pl-5 space-y-1">
-                <li>
-                  Set <code className="font-mono">APP_BASE_PATH=/immaculaterr</code> in your Docker
-                  environment.
-                </li>
-                <li>
-                  Keep <code className="font-mono">TRUST_PROXY=1</code> enabled.
-                </li>
-                <li>
-                  Make sure your proxy preserves and forwards{' '}
-                  <code className="font-mono">/immaculaterr/</code> to Immaculaterr instead of
-                  stripping that prefix.
-                </li>
-                <li>Recreate or restart the Immaculaterr container.</li>
-                <li>
-                  Open the app on <code className="font-mono">/immaculaterr/</code> and confirm the
-                  result in{' '}
-                  <Link to="/profile#profile-public-path-panel" className={faqLinkClass}>
-                    Profile - App base path
-                  </Link>
-                  .
-                </li>
-              </ol>
-              <p>
-                Once set, the same app base path is used across the SPA, API requests, asset URLs,
-                redirects, and logout flows.
-              </p>
-              <p>
-                Use{' '}
-                <Link
-                  to="/setup#update-paths-public-path-hosting"
-                  className={faqLinkClass}
-                >
-                  Setup - App base path hosting
-                </Link>{' '}
-                for the deployment steps.
               </p>
             </>
           ),
@@ -865,13 +810,12 @@ export const FaqPage = () => {
                   both critic and audience scores of at least 60, then deduplicated.
                 </li>
                 <li>
-                  TV discovery stops once the saved Top count is reached. The default is Top 10, and
-                  manual runs can choose a one-run Top count without changing the saved card values.
+                  TV discovery stops once the saved TV Top count is reached. The default is Top 10.
                 </li>
                 <li>
-                  Manual Run now lets you choose Movies or TV Shows, a one-run Route via Seerr
-                  toggle, and a one-run Top count. Those dialog choices do not change the saved
-                  card settings.
+                  Manual Run now uses the saved card settings for Movies, TV Shows, Route via
+                  Seerr, and both Top counts. If Movies and TV Shows are both off, Run Now is
+                  blocked until at least one branch is enabled.
                 </li>
               </ol>
             </>
@@ -940,12 +884,12 @@ export const FaqPage = () => {
             <ul className="list-disc pl-5 space-y-1">
               <li>
                 The saved Movie Top count defaults to 20 and the saved TV Top count defaults to 10.
-                They control how many deduplicated candidates are considered for each branch across
-                the fixed Rotten Tomatoes sources.
+                On a new setup, Movies and TV Shows both start off until you enable at least one
+                branch.
               </li>
               <li>
-                Manual runs default to Top 10 in the dialog, but you can change that one-run count
-                anywhere between 1 and 100 without changing the saved card limits.
+                Manual Run does not ask for one-run overrides. It immediately uses the saved card
+                toggles, Route via Seerr setting, and the saved Movie and TV Top counts.
               </li>
               <li>
                 Movies or shows that already exist in Radarr, Sonarr, or Seerr are counted as existing
@@ -960,8 +904,8 @@ export const FaqPage = () => {
                 score filtering, unresolved IDs, requests or adds, skips, and reconciliation counts.
               </li>
               <li>
-                If both Movies and TV Shows are turned off on the card, scheduled and auto-runs do
-                nothing until at least one branch is enabled again.
+                If both Movies and TV Shows are turned off on the card, Run Now is blocked and
+                scheduled and auto-runs do nothing until at least one branch is enabled again.
               </li>
             </ul>
           ),
@@ -2996,7 +2940,7 @@ export const FaqPage = () => {
     'task-manager-tmdb-upcoming-movies':
       'What this task does, how each run works, and how to edit filters.',
     'task-manager-rotten-tomatoes-upcoming-movies':
-      'Fixed-source Rotten Tomatoes movies + TV discovery with a saved TV Top count and shared Seerr routing.',
+      'Fixed-source Rotten Tomatoes movies + TV discovery with saved branch toggles, per-branch Top counts, and shared Seerr routing.',
     'task-manager-immaculate-taste-collection':
       'Watch-triggered Immaculate Taste updates and missing-item routing.',
     'task-manager-immaculate-taste-refresher':
@@ -3177,8 +3121,6 @@ export const FaqPage = () => {
     'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
   const answerBodyClass =
     'mt-4 space-y-3 text-sm leading-relaxed text-white/70 [&_code]:rounded-md [&_code]:border [&_code]:border-white/10 [&_code]:bg-black/25 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-white/90 [&_ol]:space-y-1.5 [&_ul]:space-y-1.5';
-  const featureLinkButtonClass =
-    'inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-[#fde68a] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs';
   const topGlowFadeStyle = {
     WebkitMaskImage: 'linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0))',
     maskImage: 'linear-gradient(to bottom, rgba(0, 0, 0, 1), rgba(0, 0, 0, 0))',
@@ -3424,7 +3366,7 @@ export const FaqPage = () => {
                             {featureLink ? (
                               <Link
                                 to={featureLink.to}
-                                className={featureLinkButtonClass}
+                                className={APP_SHORTCUT_CHIP_CLASS}
                                 title={featureLink.title}
                                 aria-label={`Open ${section.title} feature`}
                               >

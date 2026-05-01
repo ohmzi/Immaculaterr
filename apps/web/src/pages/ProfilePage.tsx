@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
-import { ShieldCheck, UserRoundCog } from 'lucide-react';
+import { Info, ShieldCheck, UserRoundCog } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
@@ -23,6 +23,7 @@ import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
+  APP_SHORTCUT_CHIP_CLASS,
 } from '@/lib/ui-classes';
 import { getPublicBasePath, withPublicBasePath } from '@/lib/public-path';
 
@@ -32,6 +33,7 @@ export function ProfilePage() {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
+  const location = useLocation();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
@@ -253,12 +255,37 @@ export function ProfilePage() {
 
   const cardClass =
     'min-w-0 rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
+  const anchorClass = 'scroll-mt-28 md:scroll-mt-32';
   const inputClass =
     'min-w-0 w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-white placeholder-white/40 outline-none transition focus:border-transparent focus:ring-2 focus:ring-white/20';
   const publicBasePath = getPublicBasePath();
   const publicPathLabel = publicBasePath || '/';
-  const profileShortcutClass =
-    'inline-flex min-h-[44px] items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white';
+  const centerElementInViewport = useCallback((id: string, behavior: ScrollBehavior) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const headingAnchorOffset = Math.min(56, Math.max(0, rect.height / 3));
+    const anchorY = rect.top + headingAnchorOffset;
+    const targetTop = window.scrollY + anchorY - window.innerHeight / 2;
+    window.scrollTo({ top: Math.max(0, targetTop), behavior });
+  }, []);
+
+  useEffect(() => {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    if (!hash) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      centerElementInViewport(hash, 'smooth');
+    });
+    const settleId = window.setTimeout(() => centerElementInViewport(hash, 'smooth'), 320);
+    const finalId = window.setTimeout(() => centerElementInViewport(hash, 'auto'), 900);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(settleId);
+      window.clearTimeout(finalId);
+    };
+  }, [centerElementInViewport, location.hash]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -461,10 +488,19 @@ export function ProfilePage() {
           </div>
 
           <div className="mt-6">
-            <div id="profile-public-path-panel" className={cardClass}>
-              <div className="mb-4 flex items-center gap-2 text-white">
+            <div id="profile-public-path-panel" className={`${cardClass} ${anchorClass}`}>
+              <div className="mb-4 flex flex-wrap items-center gap-2 text-white">
                 <ShieldCheck className="h-5 w-5 text-[#facc15]" />
                 <h2 className="text-xl font-semibold">App base path</h2>
+                <Link
+                  to="/setup#update-paths-public-path-hosting"
+                  className={APP_SHORTCUT_CHIP_CLASS}
+                  title="Open app base path setup"
+                  aria-label="Open app base path setup"
+                >
+                  <Info className="h-3.5 w-3.5 shrink-0" />
+                  <span>Setup</span>
+                </Link>
               </div>
               <p className="mb-4 text-sm text-white/70">
                 This is the active browser path prefix for this Immaculaterr instance.
@@ -486,20 +522,11 @@ export function ProfilePage() {
                   className={`${inputClass} font-mono text-sm text-white/80`}
                 />
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <Link
-                  to="/faq#getting-started-public-path"
-                  className={profileShortcutClass}
-                >
-                  How to configure this path
-                </Link>
-                <Link
-                  to="/setup#update-paths-public-path-hosting"
-                  className={profileShortcutClass}
-                >
-                  Open proxy setup steps
-                </Link>
-              </div>
+              <p className="mt-4 text-sm text-white/65">
+                Configure <code className="font-mono text-white/80">APP_BASE_PATH</code> and your
+                reverse-proxy or tunnel subpath behavior in Setup, then come back here to verify
+                the active value.
+              </p>
             </div>
           </div>
         </div>

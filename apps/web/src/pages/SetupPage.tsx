@@ -1,5 +1,5 @@
 import { motion, useAnimation } from 'motion/react';
-import { Check, Copy, Wrench } from 'lucide-react';
+import { ArrowUpRight, Check, Copy, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -7,6 +7,7 @@ import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
+  APP_SHORTCUT_CHIP_CLASS,
 } from '@/lib/ui-classes';
 
 const HTTP_ONLY_UPDATE_COMMAND = [
@@ -94,6 +95,11 @@ export const SetupPage = () => {
     id: string;
     question: string;
     answer: React.ReactNode;
+    shortcut?: {
+      to: string;
+      label: string;
+      title: string;
+    };
   };
   type SetupSection = {
     id: string;
@@ -212,7 +218,7 @@ export const SetupPage = () => {
     {
       id: 'update-paths',
       title: 'Update helper',
-      catalogLine: 'Open update commands and post-update checks.',
+      catalogLine: 'Open update commands, app base path hosting steps, and post-update checks.',
       items: [
         {
           id: 'update-paths-run-order',
@@ -353,52 +359,67 @@ export const SetupPage = () => {
         },
         {
           id: 'update-paths-public-path-hosting',
-          question: 'App base path hosting behind a reverse proxy',
+          question: 'App base path hosting behind a reverse proxy or tunnel',
+          shortcut: {
+            to: '/profile#profile-public-path-panel',
+            label: 'Profile',
+            title: 'Open the active app base path in Profile',
+          },
           answer: (
             <>
               <p>
-                Use this when you want Immaculaterr to live under a subpath such as{' '}
-                <code className="font-mono">/immaculaterr</code>. Replace that example with any app
-                base path you want.
+                <code className="font-mono">APP_BASE_PATH</code> is only the public path prefix for
+                the app. Do not put a full URL, domain, protocol, or port in this value.
+              </p>
+              <p>
+                Leave it unset if Immaculaterr is served at the site root such as{' '}
+                <code className="font-mono">https://example.com/</code> or{' '}
+                <code className="font-mono">http://&lt;server-ip&gt;:5454/</code>. Set it to a
+                leading-slash prefix such as <code className="font-mono">/immaculaterr</code> only
+                when your reverse proxy or tunnel serves the app from that subpath.
               </p>
               <ol className="list-decimal pl-5 space-y-1">
                 <li>
-                  Add these values to the Docker env file or compose environment for the app
-                  container.
+                  Decide whether the public URL is root or subpath based. For root deployments, leave{' '}
+                  <code className="font-mono">APP_BASE_PATH</code> unset. For subpath deployments,
+                  choose the exact prefix you want users to visit, such as{' '}
+                  <code className="font-mono">/immaculaterr</code>.
+                </li>
+                <li>
+                  Keep <code className="font-mono">TRUST_PROXY=1</code> enabled. Add{' '}
+                  <code className="font-mono">APP_BASE_PATH</code> to the app container only for
+                  subpath deployments.
                 </li>
                 <li>
                   Make sure your proxy or tunnel preserves the same prefix instead of stripping it.
-                  This applies to Nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and
-                  similar setups.
-                </li>
-                <li>Recreate the Immaculaterr container.</li>
-                <li>
-                  Open the app on{' '}
-                  <code className="font-mono">http://&lt;server-ip&gt;:5454/immaculaterr/</code> or{' '}
-                  <code className="font-mono">https://&lt;server-ip&gt;:5464/immaculaterr/</code>.
+                  Nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Funnel, and similar setups all
+                  need to forward the same path prefix that you set in{' '}
+                  <code className="font-mono">APP_BASE_PATH</code>.
                 </li>
                 <li>
-                  Confirm the result in{' '}
+                  Recreate or restart the Immaculaterr container after updating the environment.
+                </li>
+                <li>
+                  Open the final public URL and then confirm the active value in{' '}
                   <Link to="/profile#profile-public-path-panel" className="font-semibold text-white/85 underline underline-offset-2 hover:text-white">
                     Profile - App base path
                   </Link>
-                  .
+                  . Root deployments should show <code className="font-mono">/</code>. Subpath
+                  deployments should show the exact configured prefix.
                 </li>
               </ol>
               <p>
-                The configured app base path is then used throughout the web app, API calls, and
-                Docker-served asset URLs.
+                Use the snippet below only for subpath deployments. If the app stays at root, leave{' '}
+                <code className="font-mono">APP_BASE_PATH</code> unset and keep{' '}
+                <code className="font-mono">TRUST_PROXY=1</code>.
               </p>
               {renderCommandBlock(
                 'update-paths-public-path-hosting',
                 PUBLIC_PATH_HOSTING_ENV_SNIPPET,
               )}
               <p>
-                Need the full explanation? Open{' '}
-                <Link to="/faq#getting-started-public-path" className="font-semibold text-white/85 underline underline-offset-2 hover:text-white">
-                  FAQ - How do I host Immaculaterr under an app base path?
-                </Link>
-                .
+                Once set, the configured app base path is used across the SPA, API calls, asset
+                URLs, redirects, and logout flows.
               </p>
             </>
           ),
@@ -529,8 +550,9 @@ export const SetupPage = () => {
               </div>
 
               <p className="text-sky-100/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
-                Use this page as the update checklist whenever the app says a newer release is
-                available.
+                Use this page for updates, platform-specific setup, and the canonical{' '}
+                <code className="font-mono text-sky-100/90">APP_BASE_PATH</code> guidance for
+                reverse-proxy or tunnel hosting.
               </p>
             </motion.div>
           </div>
@@ -538,7 +560,7 @@ export const SetupPage = () => {
           <div className={cardClass}>
             <div className="text-white font-semibold text-xl">Catalog</div>
             <div className="mt-2 text-sm text-white/70 leading-relaxed">
-              Jump straight to the section you need.
+              Jump straight to the update, hosting, or platform-specific setup guidance you need.
             </div>
 
             <div className="mt-5 space-y-2 rounded-2xl border border-white/10 bg-white/5 p-3">
@@ -570,7 +592,20 @@ export const SetupPage = () => {
                 <div className="mt-5 space-y-6">
                   {section.items.map((item) => (
                     <div key={item.id} id={item.id} className={anchorClass}>
-                      <div className="text-white font-semibold text-lg">{item.question}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-white font-semibold text-lg">{item.question}</div>
+                        {item.shortcut ? (
+                          <Link
+                            to={item.shortcut.to}
+                            className={APP_SHORTCUT_CHIP_CLASS}
+                            title={item.shortcut.title}
+                            aria-label={item.shortcut.title}
+                          >
+                            <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+                            <span>{item.shortcut.label}</span>
+                          </Link>
+                        ) : null}
+                      </div>
                       <div className="mt-2 text-sm text-white/70 leading-relaxed space-y-2">
                         {item.answer}
                       </div>

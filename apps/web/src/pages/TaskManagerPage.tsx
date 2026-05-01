@@ -37,7 +37,14 @@ import {
   History,
 } from 'lucide-react';
 
-import { listJobs, runJob, updateJobSchedule, listRuns } from '@/api/jobs';
+import {
+  listJobs,
+  runJob,
+  updateJobSchedule,
+  listRuns,
+  type JobDefinition,
+  type JobRuntimeInsights,
+} from '@/api/jobs';
 import { NetflixImportUpload } from '@/components/NetflixImportUpload';
 import { getTmdbMovieFilters, testSavedIntegration } from '@/api/integrations';
 import { getPublicSettings, putSettings } from '@/api/settings';
@@ -92,8 +99,6 @@ type TmdbUpcomingSettingsDraft = {
   windowEnd: string;
   filters: TmdbUpcomingFilterDraft[];
 };
-
-type RottenTomatoesManualCategory = 'movies' | 'shows';
 
 type RottenTomatoesUpcomingSettingsDraft = {
   routeViaSeerr: boolean;
@@ -454,12 +459,97 @@ function formatTimeDisplay(timeStr: string) {
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function calculateNextRuns(draft: ScheduleDraft, count = 5): Date[] {
+type ScheduleIssueSeverity = 'error' | 'warning';
+
+type ScheduleIssue = {
+  severity: ScheduleIssueSeverity;
+  title: string;
+  detail: string;
+};
+
+type ScheduleAdvice = {
+  precedingJobName: string;
+  scheduledAt: Date;
+  suggestedAt: Date;
+  gapMs: number;
+  requiredMinimumSpacingMs: number;
+  requiredPreferredSpacingMs: number;
+  hasMinimumConflict: boolean;
+  hasPreferredConflict: boolean;
+};
+
+type ScheduleSafetyInsights = {
+  issuesByJobId: Record<string, ScheduleIssue[]>;
+  adviceByJobId: Record<string, ScheduleAdvice | null>;
+};
+
+type ResolvedScheduledJob = {
+  jobId: string;
+  name: string;
+  cron: string;
+  draft: ScheduleDraft;
+  runtimeInsights: JobRuntimeInsights | null;
+  upcomingRuns: Date[];
+};
+
+function formatDurationCompact(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    if (seconds === 0) {
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+}
+
+function formatScheduleDateTime(value: Date): string {
+  return value.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function ceilToMinute(value: Date): Date {
+  const roundedMs = Math.ceil(value.getTime() / 60_000) * 60_000;
+  return new Date(roundedMs);
+}
+
+function pushScheduleIssue(
+  issuesByJobId: Record<string, ScheduleIssue[]>,
+  jobId: string,
+  issue: ScheduleIssue,
+) {
+  const existing = issuesByJobId[jobId] ?? [];
+  if (
+    existing.some(
+      (candidate) =>
+        candidate.severity === issue.severity &&
+        candidate.title === issue.title &&
+        candidate.detail === issue.detail,
+    )
+  ) {
+    return;
+  }
+  issuesByJobId[jobId] = [...existing, issue];
+}
+
+function calculateNextRuns(
+  draft: ScheduleDraft,
+  count = 5,
+  now = new Date(),
+): Date[] {
   const t = parseTimeHHMM(draft.time);
   if (!t) return [];
 
   const runs: Date[] = [];
-  const now = new Date();
   const current = new Date(now);
 
   // Start from tomorrow if current time has passed
@@ -493,6 +583,156 @@ function calculateNextRuns(draft: ScheduleDraft, count = 5): Date[] {
   }
 
   return runs;
+}
+
+function buildScheduleSafetyInsights(params: {
+  jobs: JobDefinition[];
+  drafts: Record<string, ScheduleDraft>;
+  now?: Date;
+}): ScheduleSafetyInsights {
+  const issuesByJobId: Record<string, ScheduleIssue[]> = {};
+  const adviceByJobId: Record<string, ScheduleAdvice | null> = {};
+  const now = params.now ?? new Date();
+
+  const scheduledJobs: ResolvedScheduledJob[] = params.jobs.flatMap((job) => {
+    const baseCron = job.schedule?.cron ?? job.defaultScheduleCron ?? '';
+    const baseEnabled = job.schedule?.enabled ?? false;
+    const draft =
+      params.drafts[job.id] ??
+      defaultDraftFromCron({
+        cron: baseCron,
+        enabled: baseEnabled,
+      });
+
+    adviceByJobId[job.id] = null;
+    issuesByJobId[job.id] = [];
+
+    if (!draft.enabled || draft.advancedCron) return [];
+    const cron = buildCronFromDraft(draft);
+    if (!cron) return [];
+
+    return [
+      {
+        jobId: job.id,
+        name: job.name,
+        cron,
+        draft,
+        runtimeInsights: job.runtimeInsights,
+        upcomingRuns: calculateNextRuns(draft, 12, now),
+      },
+    ];
+  });
+
+  const jobsById = new Map(scheduledJobs.map((job) => [job.jobId, job] as const));
+  const cronGroups = new Map<string, string[]>();
+  for (const job of scheduledJobs) {
+    const existing = cronGroups.get(job.cron) ?? [];
+    existing.push(job.jobId);
+    cronGroups.set(job.cron, existing);
+  }
+
+  for (const [cron, jobIds] of cronGroups) {
+    if (jobIds.length < 2) continue;
+    const otherNamesByJobId = new Map(
+      jobIds.map((jobId) => [
+        jobId,
+        jobIds
+          .filter((candidateId) => candidateId !== jobId)
+          .map((candidateId) => jobsById.get(candidateId)?.name ?? candidateId)
+          .join(', '),
+      ]),
+    );
+    for (const jobId of jobIds) {
+      pushScheduleIssue(issuesByJobId, jobId, {
+        severity: 'error',
+        title: 'Same trigger time',
+        detail: `Matches the exact same cron as ${otherNamesByJobId.get(jobId)} (${cron}). Stagger these jobs so they do not queue together.`,
+      });
+    }
+  }
+
+  const runSequence = scheduledJobs
+    .flatMap((job) =>
+      job.upcomingRuns.map((scheduledAt) => ({
+        jobId: job.jobId,
+        jobName: job.name,
+        scheduledAt,
+        runtimeInsights: job.runtimeInsights,
+      })),
+    )
+    .sort((left, right) => {
+      const timeDiff = left.scheduledAt.getTime() - right.scheduledAt.getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return left.jobId.localeCompare(right.jobId);
+    });
+
+  for (let index = 0; index < runSequence.length; index += 1) {
+    const run = runSequence[index];
+    if (!run) continue;
+
+    let previousDifferentJob:
+      | (typeof runSequence)[number]
+      | undefined;
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const candidate = runSequence[cursor];
+      if (candidate && candidate.jobId !== run.jobId) {
+        previousDifferentJob = candidate;
+        break;
+      }
+    }
+    if (!previousDifferentJob?.runtimeInsights) continue;
+
+    const gapMs =
+      run.scheduledAt.getTime() - previousDifferentJob.scheduledAt.getTime();
+    const requiredMinimumSpacingMs =
+      previousDifferentJob.runtimeInsights.minimumScheduleSpacingMs;
+    const requiredPreferredSpacingMs =
+      previousDifferentJob.runtimeInsights.preferredScheduleSpacingMs;
+    const suggestedAt = ceilToMinute(
+      new Date(
+        previousDifferentJob.scheduledAt.getTime() +
+          requiredPreferredSpacingMs,
+      ),
+    );
+    const hasMinimumConflict = gapMs < requiredMinimumSpacingMs;
+    const hasPreferredConflict = gapMs < requiredPreferredSpacingMs;
+
+    const currentAdvice = adviceByJobId[run.jobId];
+    if (
+      !currentAdvice ||
+      run.scheduledAt.getTime() < currentAdvice.scheduledAt.getTime()
+    ) {
+      adviceByJobId[run.jobId] = {
+        precedingJobName: previousDifferentJob.jobName,
+        scheduledAt: run.scheduledAt,
+        suggestedAt,
+        gapMs,
+        requiredMinimumSpacingMs,
+        requiredPreferredSpacingMs,
+        hasMinimumConflict,
+        hasPreferredConflict,
+      };
+    }
+
+    if (hasMinimumConflict) {
+      pushScheduleIssue(issuesByJobId, run.jobId, {
+        severity: 'error',
+        title: 'Gap is below minimum safe spacing',
+        detail: `After ${previousDifferentJob.jobName}, this slot leaves ${formatDurationCompact(gapMs)} but needs at least ${formatDurationCompact(requiredMinimumSpacingMs)} including the 1-minute queue cooldown.`,
+      });
+      continue;
+    }
+
+    if (hasPreferredConflict) {
+      pushScheduleIssue(issuesByJobId, run.jobId, {
+        severity: 'warning',
+        title: 'Gap is below preferred buffer',
+        detail: `After ${previousDifferentJob.jobName}, this slot is technically safe but tighter than the recommended ${formatDurationCompact(requiredPreferredSpacingMs)} headroom.`,
+      });
+    }
+  }
+
+  return { issuesByJobId, adviceByJobId };
 }
 
 function createTmdbUpcomingFilterId(): string {
@@ -672,7 +912,7 @@ function normalizeRottenTomatoesUpcomingSettings(
       false,
     includeMovies:
       readBool(settings, 'jobs.rottenTomatoesUpcomingMovies.includeMovies') ??
-      true,
+      false,
     includeShows:
       readBool(settings, 'jobs.rottenTomatoesUpcomingMovies.includeShows') ??
       false,
@@ -764,13 +1004,8 @@ export function TaskManagerPage() {
   const resetMovieSeedDialogOnCloseRef = useRef(false);
   const [unmonitorConfirmDialogOpen, setUnmonitorConfirmDialogOpen] =
     useState(false);
-  const [rottenTomatoesRunDialogOpen, setRottenTomatoesRunDialogOpen] =
+  const [rottenTomatoesRunBlockedDialogOpen, setRottenTomatoesRunBlockedDialogOpen] =
     useState(false);
-  const [rottenTomatoesRunRouteViaSeerr, setRottenTomatoesRunRouteViaSeerr] =
-    useState(false);
-  const [rottenTomatoesRunTopCount, setRottenTomatoesRunTopCount] = useState(
-    ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT,
-  );
 
   // Netflix import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -848,7 +1083,7 @@ export function TaskManagerPage() {
     setRottenTomatoesUpcomingSettingsDraft,
   ] = useState<RottenTomatoesUpcomingSettingsDraft>({
     routeViaSeerr: false,
-    includeMovies: true,
+    includeMovies: false,
     includeShows: false,
     movieLimit: ROTTEN_TOMATOES_DEFAULT_MOVIE_LIMIT,
     showLimit: ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT,
@@ -1622,6 +1857,14 @@ export function TaskManagerPage() {
     },
     [jobsQuery.data?.jobs],
   );
+  const scheduleSafety = useMemo(
+    () =>
+      buildScheduleSafetyInsights({
+        jobs: visibleJobs,
+        drafts,
+      }),
+    [drafts, visibleJobs],
+  );
   useEffect(() => {
     const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
     if (!hash.startsWith('job-')) return;
@@ -2055,8 +2298,8 @@ export function TaskManagerPage() {
   const closeUnmonitorConfirmDialog = useCallback(() => {
     setUnmonitorConfirmDialogOpen(false);
   }, []);
-  const closeRottenTomatoesRunDialog = useCallback(() => {
-    setRottenTomatoesRunDialogOpen(false);
+  const closeRottenTomatoesRunBlockedDialog = useCallback(() => {
+    setRottenTomatoesRunBlockedDialogOpen(false);
   }, []);
   const resetMovieSeedDialogState = useCallback(() => {
     setMovieSeedMediaType('movie');
@@ -2198,25 +2441,6 @@ export function TaskManagerPage() {
       isRadarrEnabled,
       isSonarrEnabled,
       openIntegrationSetupDialog,
-      runJobNow,
-    ],
-  );
-  const handleRunRottenTomatoesCategory = useCallback(
-    (category: RottenTomatoesManualCategory) => {
-      closeRottenTomatoesRunDialog();
-      runJobNow({
-        jobId: 'rottenTomatoesUpcomingMovies',
-        input: {
-          category,
-          routeViaSeerr: rottenTomatoesRunRouteViaSeerr,
-          topCount: rottenTomatoesRunTopCount,
-        },
-      });
-    },
-    [
-      closeRottenTomatoesRunDialog,
-      rottenTomatoesRunRouteViaSeerr,
-      rottenTomatoesRunTopCount,
       runJobNow,
     ],
   );
@@ -2404,11 +2628,13 @@ export function TaskManagerPage() {
       }
 
       if (jobId === 'rottenTomatoesUpcomingMovies') {
-        setRottenTomatoesRunRouteViaSeerr(
-          rottenTomatoesUpcomingSettingsDraftRef.current.routeViaSeerr,
-        );
-        setRottenTomatoesRunTopCount(ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT);
-        setRottenTomatoesRunDialogOpen(true);
+        const currentSettings = rottenTomatoesUpcomingSettingsDraftRef.current;
+        if (!currentSettings.includeMovies && !currentSettings.includeShows) {
+          setRottenTomatoesRunBlockedDialogOpen(true);
+          return;
+        }
+
+        runJobNow({ jobId: 'rottenTomatoesUpcomingMovies' });
         return;
       }
 
@@ -2890,22 +3116,6 @@ export function TaskManagerPage() {
       updateRottenTomatoesUpcomingSettings,
     ],
   );
-  const handleToggleRottenTomatoesRunRouteViaSeerr = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      const next = !rottenTomatoesRunRouteViaSeerr;
-      if (next && !canEnableSeerrTaskToggles) {
-        openIntegrationSetupDialog('seerr');
-        return;
-      }
-      setRottenTomatoesRunRouteViaSeerr(next);
-    },
-    [
-      canEnableSeerrTaskToggles,
-      openIntegrationSetupDialog,
-      rottenTomatoesRunRouteViaSeerr,
-    ],
-  );
   const handleToggleRottenTomatoesUpcomingIncludeMovies = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -2941,19 +3151,6 @@ export function TaskManagerPage() {
       }));
     },
     [updateRottenTomatoesUpcomingSettings],
-  );
-  const handleRottenTomatoesRunTopCountChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      event.stopPropagation();
-      const value = clampNumber(
-        Number(event.currentTarget.value),
-        ROTTEN_TOMATOES_MIN_SHOW_LIMIT,
-        ROTTEN_TOMATOES_MAX_SHOW_LIMIT,
-        ROTTEN_TOMATOES_DEFAULT_SHOW_LIMIT,
-      );
-      setRottenTomatoesRunTopCount(value);
-    },
-    [],
   );
   const handleRottenTomatoesUpcomingShowLimitChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -3689,8 +3886,8 @@ export function TaskManagerPage() {
   const handleScheduleArrMonitoredSearchInstead = useCallback(() => {
     setImmaculateStartSearchDialogOpen(false);
     const arrJob = visibleJobs.find((job) => job.id === 'arrMonitoredSearch') ?? null;
-    const baseCron = arrJob?.schedule?.cron ?? arrJob?.defaultScheduleCron ?? '0 4 * * 0';
-    const defaultCron = baseCron || '0 4 * * 0';
+    const baseCron = arrJob?.schedule?.cron ?? arrJob?.defaultScheduleCron ?? '0 5 * * 0';
+    const defaultCron = baseCron || '0 5 * * 0';
 
     setExpandedCards((prev) => ({ ...prev, arrMonitoredSearch: true }));
     setDrafts((prev) => ({
@@ -3816,6 +4013,9 @@ export function TaskManagerPage() {
 
               const scheduleEnabled = job.schedule?.enabled ?? false;
               const nextRunAt = job.schedule?.nextRunAt ?? null;
+              const runtimeInsights = job.runtimeInsights;
+              const scheduleIssues = scheduleSafety.issuesByJobId[job.id] ?? [];
+              const scheduleAdvice = scheduleSafety.adviceByJobId[job.id] ?? null;
 
               const scheduleError =
                 scheduleMutation.isError && scheduleMutation.variables?.jobId === job.id
@@ -6084,9 +6284,9 @@ export function TaskManagerPage() {
                                         <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200">
                                           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                                           <span>
-                                            Movies and TV Shows are both off, so scheduled and auto
-                                            runs will not send anything until at least one branch is
-                                            enabled again.
+                                            Movies and TV Shows are both off, so Run Now is blocked
+                                            and scheduled and auto runs will not send anything until
+                                            at least one branch is enabled again.
                                           </span>
                                         </div>
                                       )}
@@ -6622,6 +6822,121 @@ export function TaskManagerPage() {
                               </div>
                             </div>
 
+                            {runtimeInsights && (
+                              <div className="rounded-2xl border border-white/10 bg-[#120f19]/80 p-4">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                  <div>
+                                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                                      Runtime Sizing
+                                    </div>
+                                    <div className="mt-1 text-sm text-white/70">
+                                      {runtimeInsights.successfulRunCount > 0
+                                        ? `Using ${runtimeInsights.successfulRunCount} successful Rewind run${
+                                            runtimeInsights.successfulRunCount === 1 ? '' : 's'
+                                          } for schedule spacing.`
+                                        : 'No successful Rewind history yet, so this card is using its built-in fallback estimate.'}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs text-white/50">
+                                    {runtimeInsights.estimateSource === 'max_success'
+                                      ? 'Sizing uses the longest recent successful run.'
+                                      : 'Sizing uses the fallback estimate until successful history exists.'}
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                  <div className="rounded-xl border border-white/8 bg-white/5 px-3 py-3">
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                      Sizing Runtime
+                                    </div>
+                                    <div className="mt-1 text-base font-semibold text-white">
+                                      {formatDurationCompact(runtimeInsights.estimatedRuntimeMs)}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-xl border border-white/8 bg-white/5 px-3 py-3">
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                      Minimum Spacing
+                                    </div>
+                                    <div className="mt-1 text-base font-semibold text-white">
+                                      {formatDurationCompact(
+                                        runtimeInsights.minimumScheduleSpacingMs,
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-xl border border-white/8 bg-white/5 px-3 py-3">
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                      Preferred Buffer
+                                    </div>
+                                    <div className="mt-1 text-base font-semibold text-white">
+                                      {formatDurationCompact(
+                                        runtimeInsights.preferredScheduleSpacingMs,
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {runtimeInsights.medianSuccessfulRuntimeMs !== null && (
+                                  <div className="mt-3 text-xs text-white/55">
+                                    Typical successful run: {' '}
+                                    {formatDurationCompact(
+                                      runtimeInsights.medianSuccessfulRuntimeMs,
+                                    )}
+                                    . Longest successful run: {' '}
+                                    {formatDurationCompact(
+                                      runtimeInsights.maxSuccessfulRuntimeMs ??
+                                        runtimeInsights.estimatedRuntimeMs,
+                                    )}
+                                    .
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {scheduleAdvice && draft.enabled && (
+                              <div
+                                className={cn(
+                                  'rounded-2xl border p-3 text-sm',
+                                  scheduleAdvice.hasPreferredConflict
+                                    ? 'border-amber-400/30 bg-amber-500/10 text-amber-100'
+                                    : 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100',
+                                )}
+                              >
+                                <div className="font-semibold">
+                                  {scheduleAdvice.hasPreferredConflict
+                                    ? 'Suggested next safe slot'
+                                    : 'Preferred buffer cleared'}
+                                </div>
+                                <div className="mt-1 text-xs leading-5 opacity-90">
+                                  After {scheduleAdvice.precedingJobName}, the preferred buffer
+                                  opens at {formatScheduleDateTime(scheduleAdvice.suggestedAt)}.
+                                  {scheduleAdvice.hasPreferredConflict
+                                    ? ` This draft only leaves ${formatDurationCompact(
+                                        scheduleAdvice.gapMs,
+                                      )}.`
+                                    : ` This draft leaves ${formatDurationCompact(
+                                        scheduleAdvice.gapMs,
+                                      )}.`}
+                                </div>
+                              </div>
+                            )}
+
+                            {scheduleIssues.map((issue) => (
+                              <div
+                                key={`${job.id}-${issue.title}-${issue.detail}`}
+                                className={cn(
+                                  'rounded-2xl border p-3 text-sm',
+                                  issue.severity === 'error'
+                                    ? 'border-red-500/25 bg-red-500/10 text-red-200'
+                                    : 'border-amber-400/25 bg-amber-500/10 text-amber-100',
+                                )}
+                              >
+                                <div className="font-semibold">{issue.title}</div>
+                                <div className="mt-1 text-xs leading-5 opacity-90">
+                                  {issue.detail}
+                                </div>
+                              </div>
+                            ))}
+
                             {scheduleError && (
                               <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
                                 {scheduleError}
@@ -6804,13 +7119,13 @@ export function TaskManagerPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {rottenTomatoesRunDialogOpen && (
+        {rottenTomatoesRunBlockedDialogOpen && (
           <motion.div
             className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={closeRottenTomatoesRunDialog}
+            onClick={closeRottenTomatoesRunBlockedDialog}
           >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
@@ -6825,19 +7140,19 @@ export function TaskManagerPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="text-xs font-bold uppercase tracking-wider text-white/50">
-                    Run now
+                    Run now unavailable
                   </div>
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
                     Rotten Tomatoes Upcoming Movies + TV Shows
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-white/70">
-                    Choose the branch, one-run routing, and one-run Top count for this manual
-                    run. These dialog choices do not change the saved card settings.
+                    This task cannot run until at least one branch is enabled in the saved card
+                    settings.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={closeRottenTomatoesRunDialog}
+                  onClick={closeRottenTomatoesRunBlockedDialog}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/80 transition hover:bg-white/10 active:scale-[0.98]"
                   aria-label="Close"
                 >
@@ -6845,126 +7160,31 @@ export function TaskManagerPage() {
                 </button>
               </div>
 
-              <div className="mt-6 space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-white">
-                        Route via Seerr
-                      </div>
-                      <div className="mt-1 text-xs leading-relaxed text-white/60">
-                        Turn this on for this run only to send matched movies and TV shows
-                        through Seerr instead of direct ARR adds.
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={rottenTomatoesRunRouteViaSeerr}
-                      onClick={handleToggleRottenTomatoesRunRouteViaSeerr}
-                      className={cn(
-                        'relative inline-flex h-7 w-12 shrink-0 items-center overflow-hidden rounded-full transition-colors active:scale-95',
-                        rottenTomatoesRunRouteViaSeerr
-                          ? 'bg-rose-400'
-                          : 'bg-[#2a2438] border-2 border-white/10',
-                      )}
-                      aria-label="Toggle one-run Seerr routing"
-                    >
-                      <span
-                        className={cn(
-                          'inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white transition-transform',
-                          rottenTomatoesRunRouteViaSeerr
-                            ? 'translate-x-6'
-                            : 'translate-x-1',
-                        )}
-                      />
-                    </button>
+              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/10">
+                    <Info className="h-5 w-5 text-rose-200" />
                   </div>
-
-                  <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wider text-white/50">
-                        Top count
-                      </div>
-                      <div className="mt-1 text-xs text-white/60">
-                        Default is Top 10 for manual runs.
-                      </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-white">
+                      Enable Movies or TV Shows first
                     </div>
-                    <input
-                      type="number"
-                      min={ROTTEN_TOMATOES_MIN_SHOW_LIMIT}
-                      max={ROTTEN_TOMATOES_MAX_SHOW_LIMIT}
-                      inputMode="numeric"
-                      value={rottenTomatoesRunTopCount}
-                      onChange={handleRottenTomatoesRunTopCountChange}
-                      className="h-10 w-20 rounded-md border border-white/10 bg-[#0F0B15]/60 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-300/40"
-                      aria-label="Rotten Tomatoes manual top count"
-                    />
+                    <p className="mt-1 text-sm leading-relaxed text-white/65">
+                      Turn on at least one saved branch in the expanded card settings, then Run Now
+                      will use those saved Movies, TV Shows, Route via Seerr, and Top count values
+                      automatically.
+                    </p>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => handleRunRottenTomatoesCategory('movies')}
-                  className="group rounded-[28px] border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-white/20 hover:bg-white/[0.08] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={
-                    runMutation.isPending ||
-                    terminalState.rottenTomatoesUpcomingMovies?.status === 'running'
-                  }
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/10">
-                      <Clapperboard className="h-6 w-6 text-rose-200" />
-                    </div>
-                    <div>
-                      <div className="text-base font-bold text-white">Movies</div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-rose-200/70">
-                        Top {rottenTomatoesRunTopCount}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-sm leading-relaxed text-white/65">
-                    Scrape the fixed Rotten Tomatoes movie pages and use the existing safe Radarr
-                    lookup flow before routing matches with the one-run settings above.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleRunRottenTomatoesCategory('shows')}
-                  className="group rounded-[28px] border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-white/20 hover:bg-white/[0.08] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={
-                    runMutation.isPending ||
-                    terminalState.rottenTomatoesUpcomingMovies?.status === 'running'
-                  }
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10">
-                      <Clapperboard className="h-6 w-6 text-cyan-200" />
-                    </div>
-                    <div>
-                      <div className="text-base font-bold text-white">TV Shows</div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/70">
-                        Top {rottenTomatoesRunTopCount}
-                      </div>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-sm leading-relaxed text-white/65">
-                    Scrape score-qualified Rotten Tomatoes TV pages, stop at the one-run Top
-                    limit, then route new shows with the one-run settings above.
-                  </p>
-                </button>
                 </div>
               </div>
 
               <div className="mt-6 flex justify-end">
                 <button
                   type="button"
-                  onClick={closeRottenTomatoesRunDialog}
+                  onClick={closeRottenTomatoesRunBlockedDialog}
                   className="h-12 rounded-full border border-white/15 bg-white/5 px-6 text-white/80 transition hover:bg-white/10 active:scale-[0.98]"
                 >
-                  Cancel
+                  OK
                 </button>
               </div>
             </motion.div>
