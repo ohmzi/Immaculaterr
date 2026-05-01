@@ -4,37 +4,19 @@ This file tracks notable changes by version.
 
 ## 1.7.8-beta-6
 
-- What's new in 1.7.8 beta 6:
-- Prefix-hosted app + API support:
-  - Added `APP_BASE_PATH` support so the SPA, static assets, and public API can be served under `/recommendations` while the internal Nest API routes stay on `/api`.
-  - Requests to `/recommendations/api/...` now rewrite onto the existing `/api/...` handlers, so prefixed reverse-proxy traffic no longer falls through to the SPA shell.
-  - When a public prefix is configured, the app redirects bare `/` to `/recommendations/` and exposes the active public path in Profile plus `GET /api/meta`.
-- Frontend path handling:
-  - Production assets now use a runtime-friendly relative base, and the React app derives its effective basename from the rendered document base instead of hardcoding root.
-  - API helpers, standalone/PWA navigations, safe-navigate fallbacks, version-history links, and logout/reset redirects now stay inside the configured public prefix.
-  - Profile now shows a read-only `Public path` field so deployments are easier to verify at a glance.
-- Docker and deployment guidance:
-  - Container startup now patches the built web shell base href from `APP_BASE_PATH`, so one image can serve either root or `/recommendations` deployments.
-  - Compose templates and setup docs now pass `APP_BASE_PATH` through directly and keep `TRUST_PROXY=1` called out for reverse-proxy deployments.
-  - There are no Prisma schema, migration, generated-client, or stored-data changes in this beta.
-
-## 1.7.8-beta-5
-
-- What's new in 1.7.8 beta 5:
-- Confirm Monitored Sonarr cascade:
-  - Confirm Monitored now requires Plex-verified playable media before Radarr movies or Sonarr episodes are treated as present.
-  - Sonarr cascade still happens, but in ordered passes: all episodes first, then seasons, then series.
-  - If every tracked positive-numbered season ends unmonitored, the series itself is unmonitored too.
-- Netflix import reliability (issue #199):
-  - Preserved `releaseDate` and `firstAirDate` when rebuilding `ImmaculateTasteMovieLibrary` and `ImmaculateTasteShowLibrary` so imports stop failing with "column does not exist".
-  - Added an idempotent ensure step that backfills `releaseDate` and `firstAirDate` on older SQLite databases regardless of migration history state.
+- This entry combines the beta 5 and beta 6 changes.
+- Hosting and routing:
+  - Added `APP_BASE_PATH` support so Immaculaterr can run under `/recommendations` without a separate web build.
+  - Prefixed API requests now rewrite cleanly to `/api/...`, and Profile shows the active `Public path` alongside `GET /api/meta`.
+  - Web assets, router links, API helpers, and logout/reset flows now stay inside the configured public path.
+- Confirm Monitored and imports:
+  - Confirm Monitored now requires Plex-verified playable media before Radarr movies or Sonarr episodes count as present.
+  - Sonarr confirmation now runs in order: episodes first, then seasons, then series.
+  - Netflix import now handles older SQLite databases that are missing `releaseDate` or `firstAirDate` columns.
 - Rotten Tomatoes Upcoming Movies + TV Shows:
-  - Rotten Tomatoes upcoming movie discovery now works with the current browse-page markup using the newer `rt-text` field wrappers instead of assuming legacy span-only cards.
-  - The task is now presented as `Rotten Tomatoes Upcoming Movies + TV Shows`, and the expanded card now saves Movies, TV Shows, Movie Top, and TV Top values. Movies default to Top 20, TV defaults to Top 10, and both ranges can be set from 1 to 100.
-  - Manual Run now opens a Movies or TV Shows chooser with a one-run `Route via Seerr` toggle and a one-run Top count. The dialog starts from the saved Seerr setting plus Top 10 every time and does not change the saved card settings.
-  - Movie discovery now stops once the deduplicated movie pool reaches the effective Movie Top count, matching the existing TV-stop behavior. Saved scheduled and auto-runs still use the card settings and always run movies first, then TV.
-  - Route via Seerr now applies to both media types: movies still require safe Radarr lookup first, and new TV shows go to Seerr instead of falling back to direct Sonarr adds when Seerr mode is enabled.
-  - Existing Sonarr shows can still be reconciled against Plex so present episodes stay unmonitored, missing episodes remain monitored, and Rewind now shows separate movie and TV stages plus TV-specific routing and reconciliation stats.
+  - The task now supports separate Movies and TV Shows settings, including independent Top counts.
+  - Manual Run now lets you choose media type, Top count, and `Route via Seerr` without changing saved settings.
+  - Discovery, routing, and reconciliation are now clearer for both movies and TV, with better Rewind reporting.
 
 ## 1.7.7
 
