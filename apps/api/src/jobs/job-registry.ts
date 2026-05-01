@@ -255,7 +255,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     name: 'Search Monitored',
     description:
       'Scheduled missing-search for monitored items: Radarr MissingMoviesSearch, then Sonarr MissingEpisodeSearch (Sonarr starts 1 hour later when both are enabled).',
-    defaultScheduleCron: '0 4 * * 0',
+    defaultScheduleCron: '0 5 * * 0',
     defaultEstimatedRuntimeMs: 18 * 60_000,
     dedupePolicy: 'schedule_singleton',
     estimateKeyBuilder: buildDefaultEstimateKey,
@@ -265,7 +265,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     name: 'TMDB Upcoming Movies',
     description:
       'Discovers upcoming movies from TMDB filter sets, merges and ranks candidates, and routes the top results to Radarr or Seerr.',
-    defaultScheduleCron: '0 5 * * 0',
+    defaultScheduleCron: '45 7 * * 0',
     defaultEstimatedRuntimeMs: 14 * 60_000,
     dedupePolicy: 'schedule_singleton',
     estimateKeyBuilder: buildDefaultEstimateKey,
@@ -275,7 +275,7 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     name: 'Rotten Tomatoes Upcoming Movies + TV Shows',
     description:
       'Scrapes fixed Rotten Tomatoes movie and TV pages, uses separate saved movie and TV Top counts, and routes picks to Radarr, Sonarr, or Seerr.',
-    defaultScheduleCron: '0 5 * * 0',
+    defaultScheduleCron: '15 7 * * 0',
     defaultEstimatedRuntimeMs: 14 * 60_000,
     dedupePolicy: 'schedule_singleton',
     estimateKeyBuilder: buildDefaultEstimateKey,

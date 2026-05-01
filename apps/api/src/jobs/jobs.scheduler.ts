@@ -203,6 +203,19 @@ export class JobsScheduler implements OnModuleInit {
       { jobId: 'monitorConfirm', from: '0 3 * * *', to: '0 1 * * *' },
       // Based on Latest Watched Refresher default moved from 1am -> 2am
       { jobId: 'recentlyWatchedRefresher', from: '0 1 * * *', to: '0 2 * * *' },
+      // Search Monitored Sunday default moved from 4am -> 5am
+      { jobId: 'arrMonitoredSearch', from: '0 4 * * 0', to: '0 5 * * 0' },
+      // Weekly discovery jobs now stagger on Sunday mornings instead of sharing 5am
+      {
+        jobId: 'rottenTomatoesUpcomingMovies',
+        from: '0 5 * * 0',
+        to: '15 7 * * 0',
+      },
+      {
+        jobId: 'tmdbUpcomingMovies',
+        from: '0 5 * * 0',
+        to: '45 7 * * 0',
+      },
     ];
 
     const migrationUpdates = await Promise.all(
