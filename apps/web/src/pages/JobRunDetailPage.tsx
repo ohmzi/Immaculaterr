@@ -292,18 +292,19 @@ function getProgressPlan(jobId: string): ProgressPlan | null {
 
   if (id === 'rottenTomatoesUpcomingMovies') {
     return {
-      total: 4,
+      total: 5,
       getStage: ({ stepId }) => {
         if (!stepId) return null;
         if (stepId === 'load_settings') return 1;
-        if (stepId === 'scrape_sources') return 2;
-        if (stepId === 'prepare_radarr') return 3;
+        if (stepId === 'scrape_movies') return 2;
+        if (stepId === 'route_movies') return 3;
+        if (stepId === 'scrape_shows') return 4;
         if (
-          stepId === 'route_movies' ||
+          stepId === 'route_shows' ||
           stepId === 'done' ||
           stepId === 'failed'
         ) {
-          return 4;
+          return 5;
         }
         return null;
       },

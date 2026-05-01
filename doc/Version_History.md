@@ -2,6 +2,15 @@
 
 This file tracks notable changes by version.
 
+## 1.7.8-beta-5
+
+- What's new in 1.7.8 beta 5:
+- Rotten Tomatoes Upcoming Movies + TV:
+  - The Rotten Tomatoes Task Manager card now saves Movies, TV Shows, and a TV Top count, with TV defaulting to Top 10 and fetching only enough fixed TV pages to reach that deduplicated, score-qualified pool.
+  - Manual Run now opens a Movies or TV Shows chooser for this task, while saved scheduled and auto-runs use the card settings and always run movies first, then TV.
+  - Route via Seerr now applies to both media types: movies still require safe Radarr lookup first, and TV shows go to Seerr instead of falling back to direct Sonarr adds for new requests.
+  - Existing Sonarr shows can still be reconciled against Plex so present episodes stay unmonitored and missing episodes remain monitored.
+
 ## 1.7.8-beta-4
 
 - What's new in 1.7.8 beta 4:

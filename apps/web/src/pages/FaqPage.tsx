@@ -793,19 +793,27 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                This task scrapes fixed Rotten Tomatoes upcoming and newest movie pages, merges the
-                results, and routes safe matches to Radarr or, when enabled, to Seerr.
+                This task can run movie discovery, TV discovery, or both. Saved scheduled and
+                auto-runs use the card toggles, and when both branches are enabled they always run
+                movies first, then TV shows.
               </p>
               <p>Run flow:</p>
               <ol className="list-decimal pl-5 space-y-1">
-                <li>Immaculaterr fetches each built-in Rotten Tomatoes source page.</li>
                 <li>
-                  Movie cards are parsed from the page HTML, then deduplicated by normalized title and
-                  year.
+                  Movie pages still use the existing safe Radarr lookup flow before titles are added
+                  to Radarr or requested in Seerr.
                 </li>
                 <li>
-                  Radarr is checked once up front, then each candidate is matched conservatively before
-                  it is added to Radarr or requested in Seerr.
+                  TV pages are scraped from fixed Rotten Tomatoes browse URLs, filtered to shows with
+                  both critic and audience scores of at least 60, then deduplicated.
+                </li>
+                <li>
+                  TV discovery stops once the saved Top count is reached. The default is Top 10, and
+                  manual TV runs reuse that saved count instead of asking for a one-off value.
+                </li>
+                <li>
+                  Manual Run now lets you choose Movies or TV Shows for that single run without
+                  changing the saved card settings.
                 </li>
               </ol>
             </>
@@ -820,6 +828,14 @@ export const FaqPage = () => {
               <li>
                 Eleven Rotten Tomatoes at-home newest pages for Fandango at Home, Apple TV+, Netflix,
                 Prime Video, Disney+, Max, Peacock, Hulu, Paramount+, AMC+, and Acorn TV.
+              </li>
+              <li>
+                TV discovery uses fixed Rotten Tomatoes TV browse pages for newest releases plus the
+                built-in streaming-provider pages.
+              </li>
+              <li>
+                TV only reads the first HTML page for each source. It does not use Load more or
+                cursor pagination.
               </li>
               <li>
                 These URLs are fixed in code for this task, so there is no custom source editor on the
@@ -837,20 +853,24 @@ export const FaqPage = () => {
           answer: (
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                When the toggle is off, matched movies are added directly to Radarr with the app’s
-                saved Radarr defaults.
+                When the toggle is off, matched movies are added directly to Radarr and new TV shows
+                are added directly to Sonarr with the app’s saved defaults.
               </li>
               <li>
-                When the toggle is on, matched movies are requested in Seerr instead of being added
-                directly to Radarr.
+                When the toggle is on, both movies and TV shows are sent to Seerr instead of being
+                added directly to Radarr or Sonarr.
               </li>
               <li>
-                Rotten Tomatoes titles are still matched conservatively through Radarr lookup first,
-                so Seerr requests only happen for safe title and year matches.
+                Movie requests still depend on conservative Radarr lookup first, so Seerr requests
+                only happen for safe movie title and year matches.
               </li>
               <li>
-                If Seerr routing is enabled but Seerr is not configured, discovery still completes and
-                the destination step is marked skipped.
+                In Seerr mode there is no direct ARR add fallback for new items. If Seerr is missing,
+                discovery still completes and the destination step is skipped.
+              </li>
+              <li>
+                Existing Sonarr shows can still be reconciled against Plex when Sonarr already has the
+                series, even if new TV requests are being routed through Seerr.
               </li>
             </ul>
           ),
@@ -861,21 +881,24 @@ export const FaqPage = () => {
           answer: (
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                Movies already present in Radarr, or already present/requested in Seerr, are counted as
-                existing instead of surfacing as hard failures.
+                The TV Top count defaults to 10 and controls how many score-qualified, deduplicated TV
+                candidates are considered across all fixed TV sources.
               </li>
               <li>
-                If Radarr is not configured, discovery still completes and the destination step is
-                marked skipped. If Seerr routing is enabled but Seerr is not configured, the routing
-                step is skipped too.
+                Movies or shows that already exist in Radarr, Sonarr, or Seerr are counted as existing
+                instead of surfacing as hard failures.
               </li>
               <li>
-                Rewind shows source-page counts plus destination outcomes for attempted, requested or
-                added, existing, failed, and skipped movies.
+                Existing Sonarr shows can have episode, season, and series monitoring updated so Plex
+                copies stay unmonitored while missing episodes stay monitored.
               </li>
               <li>
-                This task does not use TMDB filters. Seerr routing is optional, but safe matching still
-                relies on Radarr lookup.
+                Rewind now shows separate movie and TV steps plus TV-specific stats for source pages,
+                score filtering, unresolved IDs, requests or adds, skips, and reconciliation counts.
+              </li>
+              <li>
+                If both Movies and TV Shows are turned off on the card, scheduled and auto-runs do
+                nothing until at least one branch is enabled again.
               </li>
             </ul>
           ),
@@ -2910,7 +2933,7 @@ export const FaqPage = () => {
     'task-manager-tmdb-upcoming-movies':
       'What this task does, how each run works, and how to edit filters.',
     'task-manager-rotten-tomatoes-upcoming-movies':
-      'Fixed-source Rotten Tomatoes discovery that routes safe matches to Radarr or Seerr.',
+      'Fixed-source Rotten Tomatoes movies + TV discovery with a saved TV Top count and shared Seerr routing.',
     'task-manager-immaculate-taste-collection':
       'Watch-triggered Immaculate Taste updates and missing-item routing.',
     'task-manager-immaculate-taste-refresher':
