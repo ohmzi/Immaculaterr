@@ -272,9 +272,9 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   }),
   defineJob({
     id: 'rottenTomatoesUpcomingMovies',
-    name: 'Rotten Tomatoes Upcoming Movies',
+    name: 'Rotten Tomatoes Upcoming Movies + TV Shows',
     description:
-      'Scrapes fixed Rotten Tomatoes upcoming and newest movie pages, deduplicates safe matches, and routes them to Radarr or Seerr.',
+      'Scrapes fixed Rotten Tomatoes movie and TV pages, uses separate saved movie and TV Top counts, and routes picks to Radarr, Sonarr, or Seerr.',
     defaultScheduleCron: '0 5 * * 0',
     defaultEstimatedRuntimeMs: 14 * 60_000,
     dedupePolicy: 'schedule_singleton',
