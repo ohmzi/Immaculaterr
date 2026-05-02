@@ -5,12 +5,6 @@ This file tracks notable changes by version.
 ## 1.7.9
 
 - What's new in 1.7.9:
-- Release metadata:
-  - Bumped the application version to 1.7.9 across the runtime, docs, and in-app version history so release reporting stays aligned.
-
-## 1.7.8
-
-- What's new in 1.7.8:
 - Hosting and routing:
   - Added `APP_BASE_PATH` support so Immaculaterr can run under any reverse-proxy subpath without a separate web build.
   - Prefixed API requests now rewrite cleanly to `/api/...`, and Profile shows the active app base path alongside API metadata.
