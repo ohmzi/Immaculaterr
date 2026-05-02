@@ -2427,9 +2427,12 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                The server checks the latest GitHub release and compares it to the running app
-                version. The UI surfaces this in the Help menu and can toast when a newer version
-                is available.
+                The server checks the latest stable GitHub release and compares it to the running
+                app version. Stable installs use that stable release check only. Beta installs also
+                check numbered beta Git tags, so versions like{' '}
+                <code className="font-mono">1.7.8-beta</code> and{' '}
+                <code className="font-mono">1.7.8-beta-2</code> are tracked separately. The UI
+                surfaces this in the Help menu and can toast when a newer version is available.
               </p>
               <p>
                 When an update is available, use the{' '}
@@ -2446,7 +2449,10 @@ export const FaqPage = () => {
           question: 'Why does it say "Update available"? What should I do?',
           answer: (
             <>
-              <p>It means a newer release exists than what your container is currently running.</p>
+              <p>
+                It means a newer stable release or beta tag exists than what your container is
+                currently running.
+              </p>
               <ol className="list-decimal pl-5 space-y-1">
                 <li>
                   Run{' '}
@@ -2472,7 +2478,8 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                In the Help menu, tap the Version button. You can also view releases on GitHub.
+                In the Help menu, tap the Version button. Beta builds show their exact beta suffix
+                there, and you can also view releases on GitHub.
               </p>
               <p>
                 For actual upgrade commands, use the{' '}

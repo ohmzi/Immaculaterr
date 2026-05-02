@@ -71,6 +71,10 @@ const requiredSnippets = [
     snippet: 'echo "is_beta=${IS_BETA}"',
   },
   {
+    name: 'stable builds bake app image version metadata',
+    snippet: 'echo "app_image_version=${VERSION}"',
+  },
+  {
     name: 'merge publish gates latest tags to non-beta versions',
     snippet: 'if [[ "${IS_BETA}" != "true" ]]; then',
   },
@@ -79,10 +83,34 @@ const requiredSnippets = [
     snippet: '  build-and-push-beta:',
   },
   {
+    name: 'beta publish checkout fetches tags',
+    snippet: '          fetch-depth: 0',
+  },
+  {
     name: 'beta publish gated to merged PRs into develop (excluding master back-merge)',
     snippet: withWorkflowExpression(
       "github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop' && github.event.pull_request.head.ref != 'master'",
     ),
+  },
+  {
+    name: 'beta publish computes immutable image version and git tag',
+    snippet: 'Compute beta image version and tags',
+  },
+  {
+    name: 'beta publish reuses commit beta tags on rerun',
+    snippet: 'git tag --points-at "${MERGE_SHA}"',
+  },
+  {
+    name: 'beta publish scans existing numbered beta tags',
+    snippet: 'git tag --list "v${VERSION}-beta*"',
+  },
+  {
+    name: 'beta publish exports beta git tag output',
+    snippet: 'echo "beta_tag=${BETA_TAG}"',
+  },
+  {
+    name: 'beta publish exports baked beta image version output',
+    snippet: 'echo "app_image_version=${APP_IMAGE_VERSION}"',
   },
   {
     name: 'beta publish includes ghcr beta tag',
@@ -97,6 +125,18 @@ const requiredSnippets = [
     snippet: withWorkflowExpression(
       "env.DOCKERHUB_TOKEN != '' && env.DOCKERHUB_USERNAME != ''",
     ),
+  },
+  {
+    name: 'image builds receive baked app image version build arg',
+    snippet: 'APP_IMAGE_VERSION=${{ steps.vars.outputs.app_image_version }}',
+  },
+  {
+    name: 'image labels use baked app image version',
+    snippet: 'org.opencontainers.image.version=${{ steps.vars.outputs.app_image_version }}',
+  },
+  {
+    name: 'beta publish pushes git tag after image publish',
+    snippet: 'git push origin "${{ steps.vars.outputs.beta_tag }}"',
   },
   {
     name: 'release job depends on build-and-push',

@@ -101,10 +101,13 @@ RUN if [ ! -x /app/apps/api/node_modules/.bin/prisma ] && [ ! -x /app/node_modul
 
 FROM node:24-bookworm-slim AS runner
 
-# Source of truth for the app's version is `apps/api/src/version.ts`.
+# Source of truth for the base app version is `apps/api/src/version.ts`.
+# Published images also bake the exact runtime version into APP_IMAGE_VERSION so
+# beta containers can report immutable versions like 1.7.8-beta-2 at runtime.
 # (We do not inject APP_VERSION into the runtime container env; allowing APP_VERSION
 # overrides causes confusing "stuck on old version" situations in Portainer when
 # env vars are preserved across recreates.)
+ARG APP_IMAGE_VERSION=
 ARG APP_BUILD_SHA=
 ARG APP_BUILD_TIME=
 
@@ -113,6 +116,7 @@ ENV HOST=0.0.0.0
 ENV PORT=5454
 ENV APP_DATA_DIR=/data
 ENV DATABASE_URL=file:/data/tcp.sqlite
+ENV APP_IMAGE_VERSION=$APP_IMAGE_VERSION
 ENV APP_BUILD_SHA=$APP_BUILD_SHA
 ENV APP_BUILD_TIME=$APP_BUILD_TIME
 

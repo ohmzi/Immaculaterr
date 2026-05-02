@@ -58,6 +58,7 @@ jobs:
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           {
             echo "version=${VERSION}"
+            echo "app_image_version=${VERSION}"
             echo "build_time=${BUILD_TIME}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -74,12 +75,12 @@ jobs:
             org.opencontainers.image.title=Immaculaterr
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.event.pull_request.head.sha }}
-            org.opencontainers.image.version=${{ steps.vars.outputs.version }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.app_image_version }}
             org.opencontainers.image.created=${{ steps.vars.outputs.build_time }}
             org.opencontainers.image.licenses=LicenseRef-Immaculaterr-Personal-Use
             org.opencontainers.image.description=Official Immaculaterr container image for personal, noncommercial self-hosting only. Source code is not licensed for reuse.
           build-args: |
-            APP_VERSION=${{ steps.vars.outputs.version }}
+            APP_IMAGE_VERSION=${{ steps.vars.outputs.app_image_version }}
             APP_BUILD_SHA=${{ github.event.pull_request.head.sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
 
@@ -149,6 +150,7 @@ jobs:
 
           {
             echo "version=${VERSION}"
+            echo "app_image_version=${VERSION}"
             echo "is_beta=${IS_BETA}"
             echo "ghcr_image=${GHCR_IMAGE}"
             echo "dockerhub_image=${DOCKERHUB_IMAGE}"
@@ -185,12 +187,12 @@ jobs:
             org.opencontainers.image.title=Immaculaterr
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.event.pull_request.merge_commit_sha }}
-            org.opencontainers.image.version=${{ steps.vars.outputs.version }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.app_image_version }}
             org.opencontainers.image.created=${{ steps.vars.outputs.build_time }}
             org.opencontainers.image.licenses=LicenseRef-Immaculaterr-Personal-Use
             org.opencontainers.image.description=Official Immaculaterr container image for personal, noncommercial self-hosting only. Source code is not licensed for reuse.
           build-args: |
-            APP_VERSION=${{ steps.vars.outputs.version }}
+            APP_IMAGE_VERSION=${{ steps.vars.outputs.app_image_version }}
             APP_BUILD_SHA=${{ github.event.pull_request.merge_commit_sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
 
@@ -205,6 +207,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
 
       - name: Validate Docker Hub HTTP+HTTPS stack compose file
         shell: bash
@@ -233,7 +236,7 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
-      - name: Compute beta tags
+      - name: Compute beta image version and tags
         id: vars
         shell: bash
         run: |
@@ -248,9 +251,72 @@ jobs:
           DOCKERHUB_IMAGE="docker.io/ohmzii/immaculaterr"
           BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-12)"
+          MERGE_SHA="$(git rev-parse HEAD)"
+          VERSION_PATTERN="${VERSION//./\\.}"
+
+          git fetch --tags --force origin
+
+          current_beta_tag=""
+          current_beta_index=0
+          while IFS= read -r tag; do
+            [[ -n "${tag}" ]] || continue
+
+            beta_index=0
+            if [[ "${tag}" == "v${VERSION}-beta" ]]; then
+              beta_index=1
+            elif [[ "${tag}" =~ ^v${VERSION_PATTERN}-beta-([0-9]+)$ ]]; then
+              beta_index="${BASH_REMATCH[1]}"
+              if (( beta_index < 2 )); then
+                continue
+              fi
+            else
+              continue
+            fi
+
+            if (( beta_index > current_beta_index )); then
+              current_beta_index="${beta_index}"
+              current_beta_tag="${tag}"
+            fi
+          done < <(git tag --points-at "${MERGE_SHA}")
+
+          highest_beta_index=0
+          while IFS= read -r tag; do
+            [[ -n "${tag}" ]] || continue
+
+            beta_index=0
+            if [[ "${tag}" == "v${VERSION}-beta" ]]; then
+              beta_index=1
+            elif [[ "${tag}" =~ ^v${VERSION_PATTERN}-beta-([0-9]+)$ ]]; then
+              beta_index="${BASH_REMATCH[1]}"
+              if (( beta_index < 2 )); then
+                continue
+              fi
+            else
+              continue
+            fi
+
+            if (( beta_index > highest_beta_index )); then
+              highest_beta_index="${beta_index}"
+            fi
+          done < <(git tag --list "v${VERSION}-beta*")
+
+          if [[ -n "${current_beta_tag}" ]]; then
+            BETA_TAG="${current_beta_tag}"
+          else
+            next_beta_index="$((highest_beta_index + 1))"
+            if (( next_beta_index <= 1 )); then
+              BETA_TAG="v${VERSION}-beta"
+            else
+              BETA_TAG="v${VERSION}-beta-${next_beta_index}"
+            fi
+          fi
+
+          APP_IMAGE_VERSION="${BETA_TAG#v}"
 
           {
             echo "version=${VERSION}"
+            echo "app_image_version=${APP_IMAGE_VERSION}"
+            echo "beta_tag=${BETA_TAG}"
             echo "ghcr_image=${GHCR_IMAGE}"
             echo "dockerhub_image=${DOCKERHUB_IMAGE}"
             echo "build_time=${BUILD_TIME}"
@@ -284,14 +350,22 @@ jobs:
             org.opencontainers.image.title=Immaculaterr
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.event.pull_request.merge_commit_sha }}
-            org.opencontainers.image.version=${{ steps.vars.outputs.version }}-beta
+            org.opencontainers.image.version=${{ steps.vars.outputs.app_image_version }}
             org.opencontainers.image.created=${{ steps.vars.outputs.build_time }}
             org.opencontainers.image.licenses=LicenseRef-Immaculaterr-Personal-Use
             org.opencontainers.image.description=Official Immaculaterr container image for personal, noncommercial self-hosting only. Source code is not licensed for reuse.
           build-args: |
-            APP_VERSION=${{ steps.vars.outputs.version }}
+            APP_IMAGE_VERSION=${{ steps.vars.outputs.app_image_version }}
             APP_BUILD_SHA=${{ github.event.pull_request.merge_commit_sha }}
             APP_BUILD_TIME=${{ steps.vars.outputs.build_time }}
+
+      - name: Push beta git tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          git tag -f "${{ steps.vars.outputs.beta_tag }}" "${{ github.event.pull_request.merge_commit_sha }}"
+          git push origin "${{ steps.vars.outputs.beta_tag }}"
 
   create-release:
     name: Create GitHub release
