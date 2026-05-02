@@ -8,8 +8,9 @@ const VERSION_HISTORY_PATH = resolve(process.cwd(), 'doc/Version_History.md');
 const normalizeVersion = (value) =>
   String(value ?? '')
     .trim()
+    .replace(/^#+\s*/, '')
     .replace(/^[vV]/, '')
-    .replace(/-beta\b/i, '');
+    .replace(/-beta(?:-\d+)?\b/i, '');
 
 const ensureSentence = (value) => {
   const trimmed = value.trim();
@@ -40,7 +41,12 @@ const fileContent = readFileSync(VERSION_HISTORY_PATH, 'utf8');
 const lines = fileContent.split(/\r?\n/);
 
 const isVersionHeading = (line) =>
-  /^\d+\.\d+\.\d+(?:\.\d+)?(?:-beta)?$/i.test(line.trim());
+  /^#+\s*\d+\.\d+\.\d+(?:\.\d+)?(?:-beta(?:-\d+)?)?$/i.test(line.trim()) ||
+  /^\d+\.\d+\.\d+(?:\.\d+)?(?:-beta(?:-\d+)?)?$/i.test(line.trim());
+
+const isIntroHeadline = (headline) =>
+  /^what'?s new (?:since|in)\b/i.test(headline) ||
+  /^full \d+\.\d+\.\d+(?:\.\d+)? release\.?$/i.test(headline);
 
 const startIndex = lines.findIndex(
   (line) => normalizeVersion(line) === targetVersion,
@@ -69,7 +75,7 @@ for (const rawLine of sectionLines) {
   const topLevelMatch = rawLine.match(/^- (.+)$/);
   if (topLevelMatch) {
     const headline = topLevelMatch[1].trim();
-    if (/^what'?s new since\b/i.test(headline)) {
+    if (isIntroHeadline(headline)) {
       currentGroup = null;
       continue;
     }
