@@ -37,6 +37,20 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.9',
+    popupHighlights: [
+      'Maintenance release: version metadata now reports 1.7.9 consistently across the app, docs, and release tooling.',
+    ],
+    sections: [
+      {
+        title: 'Release metadata',
+        bullets: [
+          'Bumped the application version to 1.7.9 across the runtime, docs, and in-app version history so release reporting stays aligned.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.8',
     popupHighlights: [
       'App base path hosting now works across the app, API, and Docker setup.',
