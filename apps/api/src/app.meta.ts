@@ -11,16 +11,19 @@ export type AppMeta = {
 
 export function readAppMeta(): AppMeta {
   // IMPORTANT:
-  // - For packaged builds (Docker/Portainer), the version is already baked into the codebase
-  //   via DEFAULT_APP_VERSION.
+  // - For packaged builds (Docker/Portainer), the image bakes the exact runtime version into
+  //   APP_IMAGE_VERSION.
+  // - Falling back to DEFAULT_APP_VERSION keeps local/dev builds working without Docker metadata.
   // - Allowing APP_VERSION to override causes confusing "stuck on old version" situations
   //   when users duplicate/recreate containers and Portainer preserves env vars.
   // If you really need to override for local/dev, set ALLOW_APP_VERSION_OVERRIDE=true.
   const allowOverride =
     (process.env.ALLOW_APP_VERSION_OVERRIDE ?? '').trim() === 'true';
+  const imageVersion = (process.env.APP_IMAGE_VERSION ?? '').trim();
   const envVersion = (process.env.APP_VERSION ?? '').trim();
   const version =
-    allowOverride && envVersion ? envVersion : DEFAULT_APP_VERSION;
+    imageVersion ||
+    (allowOverride && envVersion ? envVersion : DEFAULT_APP_VERSION);
   const buildSha = (process.env.APP_BUILD_SHA ?? '').trim() || null;
   const buildTime = (process.env.APP_BUILD_TIME ?? '').trim() || null;
 

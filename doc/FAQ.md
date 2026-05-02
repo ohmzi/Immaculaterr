@@ -1011,20 +1011,20 @@ TV-focused jobs stop making Sonarr add/search calls. Everything else around reco
 
 ### How does the app check for updates?
 
-The server checks the latest GitHub release and compares it to the running app version. The UI surfaces this in the Help menu and can toast when a newer version is available.
+The server checks the latest stable GitHub release and compares it to the running app version. Stable installs use that stable release check only. Beta installs also check numbered beta Git tags, so versions like `1.7.8-beta` and `1.7.8-beta-2` are tracked separately. The UI surfaces this in the Help menu and can toast when a newer version is available.
 
 When an update is available, use the [Setup page](/setup#update-paths-http-only) as the source of truth for update commands.
 
 ### Why does it say "Update available"? What should I do?
 
-It means a newer release exists than what your container is currently running.
+It means a newer stable release or beta tag exists than what your container is currently running.
 
 1. Run [Setup - HTTP-only update (required)](/setup#update-paths-http-only).
 2. If you use local HTTPS on port `5464`, also run [Setup - Optional HTTPS sidecar](/setup#update-paths-https-sidecar).
 
 ### Where can I see the current version and version history?
 
-In the Help menu, tap the Version button. You can also view releases on GitHub.
+In the Help menu, tap the Version button. Beta builds show their exact beta suffix there, and you can also view releases on GitHub.
 
 For actual upgrade commands, use the [Setup page](/setup#update-paths-http-only).
 

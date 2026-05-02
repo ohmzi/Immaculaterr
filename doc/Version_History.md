@@ -2,6 +2,12 @@
 
 This file tracks notable changes by version.
 
+## 1.7.9
+
+- What's new in 1.7.9:
+- Release metadata:
+  - Bumped the application version to 1.7.9 across the runtime, docs, and in-app version history so release reporting stays aligned.
+
 ## 1.7.8
 
 - What's new in 1.7.8:
