@@ -2,9 +2,9 @@
 
 This file tracks notable changes by version.
 
-## 1.7.8-beta-6
+## 1.7.8
 
-- This entry combines the beta 5 and beta 6 changes.
+- What's new in 1.7.8:
 - Hosting and routing:
   - Added `APP_BASE_PATH` support so Immaculaterr can run under any reverse-proxy subpath without a separate web build.
   - Prefixed API requests now rewrite cleanly to `/api/...`, and Profile shows the active app base path alongside API metadata.

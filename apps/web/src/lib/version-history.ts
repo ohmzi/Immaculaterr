@@ -37,13 +37,13 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.8-beta-6',
+    version: '1.7.8',
     popupHighlights: [
       'App base path hosting now works across the app, API, and Docker setup.',
       'Confirm Monitored is stricter and now checks Plex-playable media before Radarr or Sonarr items are treated as present.',
       'Task Manager now sizes scheduled jobs from live Rewind history and warns when Sunday auto-runs are stacked too tightly.',
       'Rotten Tomatoes Upcoming Run Now uses saved card settings and blocks when both branches are off.',
-      'Netflix import is safer on older SQLite databases, with no Prisma or stored-data changes in this beta.',
+      'Netflix import is safer on older SQLite databases, with no Prisma or stored-data changes in this release.',
     ],
     sections: [
       {
