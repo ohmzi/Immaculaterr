@@ -160,7 +160,7 @@ const JOB_CONFIG: Record<
     icon: <MonitorPlay className="w-8 h-8" />,
     color: 'text-emerald-300',
     description:
-      'Keeps Radarr movies and Sonarr episodes, seasons, and series aligned with verified playable media already in Plex.',
+      'Keeps Radarr movies and Sonarr episodes, seasons, and series aligned with verified playable media already in Plex, and only unmonitors Radarr movies that already have a file.',
   },
   unmonitorConfirm: {
     icon: <MonitorPlay className="w-8 h-8" />,

@@ -15,6 +15,7 @@ type PlexMock = Pick<
   | 'getSections'
   | 'getMovieTmdbRatingKeysMapForSectionKey'
   | 'verifyPlayableMetadataByRatingKey'
+  | 'getMetadataDetails'
   | 'getTvdbShowRatingKeysMapForSectionKey'
   | 'getVerifiedEpisodeAvailabilityForShowRatingKey'
 >;
@@ -87,6 +88,7 @@ function createJob() {
     getSections: jest.fn(),
     getMovieTmdbRatingKeysMapForSectionKey: jest.fn(),
     verifyPlayableMetadataByRatingKey: jest.fn(),
+    getMetadataDetails: jest.fn(),
     getTvdbShowRatingKeysMapForSectionKey: jest.fn(),
     getVerifiedEpisodeAvailabilityForShowRatingKey: jest.fn(),
   };
@@ -179,8 +181,46 @@ describe('MonitorConfirmJob', () => {
     plex.verifyPlayableMetadataByRatingKey.mockResolvedValue(
       playableResult(true),
     );
+    plex.getMetadataDetails.mockResolvedValue({
+      ratingKey: 'movie-1',
+      title: 'Playable Movie',
+      type: 'movie',
+      year: 1999,
+      addedAt: null,
+      librarySectionId: '1',
+      librarySectionTitle: 'Movies',
+      grandparentTitle: null,
+      grandparentRatingKey: null,
+      parentIndex: null,
+      index: null,
+      tmdbIds: [101],
+      tvdbIds: [],
+      genres: [],
+      audioLanguages: [],
+      media: [
+        {
+          id: 'm1',
+          videoResolution: '1080',
+          parts: [
+            {
+              id: 'p1',
+              key: '/library/parts/10/file.mkv',
+              file: '/plex/movie.mkv',
+              size: 10,
+            },
+          ],
+        },
+      ],
+    });
     radarr.listMonitoredMovies.mockResolvedValue([
-      { id: 7, title: 'Playable Movie', tmdbId: 101, monitored: true },
+      {
+        id: 7,
+        title: 'Playable Movie',
+        tmdbId: 101,
+        monitored: true,
+        hasFile: true,
+        year: 1999,
+      },
     ]);
     radarr.setMovieMonitored.mockResolvedValue(true);
 
@@ -198,13 +238,38 @@ describe('MonitorConfirmJob', () => {
     expect(radarr.setMovieMonitored).toHaveBeenCalledWith({
       baseUrl: 'http://radarr.local:7878',
       apiKey: 'radarr-key',
-      movie: { id: 7, title: 'Playable Movie', tmdbId: 101, monitored: true },
+      movie: {
+        id: 7,
+        title: 'Playable Movie',
+        tmdbId: 101,
+        monitored: true,
+        hasFile: true,
+        year: 1999,
+      },
       monitored: false,
     });
     expect(rawRadarr.metadataMatches).toBe(1);
     expect(rawRadarr.alreadyInPlex).toBe(1);
+    expect(rawRadarr.keptWithoutFile).toBe(0);
     expect(rawRadarr.unverifiedMatches).toBe(0);
     expect(rawRadarr.unmonitored).toBe(1);
+    expect(rawRadarr.sampleTitles).toEqual(['Playable Movie']);
+    expect(rawRadarr.sampleKeptWithoutFileMovies).toEqual([]);
+    expect(rawRadarr.sampleAffectedMovies).toEqual([
+      {
+        movieId: 7,
+        title: 'Playable Movie',
+        year: 1999,
+        tmdbId: 101,
+        hasFile: true,
+        status: null,
+        radarrPath: null,
+        plexRatingKey: 'movie-1',
+        plexTitle: 'Playable Movie',
+        plexYear: 1999,
+        plexFile: '/plex/movie.mkv',
+      },
+    ]);
   });
 
   it('keeps a Radarr movie monitored when Plex metadata matches but media is not verified playable', async () => {
@@ -245,6 +310,195 @@ describe('MonitorConfirmJob', () => {
     expect(rawRadarr.alreadyInPlex).toBe(0);
     expect(rawRadarr.unverifiedMatches).toBe(1);
     expect(rawRadarr.keptMonitored).toBe(1);
+  });
+
+  it('keeps a Radarr movie monitored when Plex verifies it playable but Radarr reports no file', async () => {
+    const { job, settings, plex, radarr } = createJob();
+    const ctx = createContext(false);
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex.local:32400' },
+        radarr: { baseUrl: 'http://radarr.local:7878' },
+      },
+      secrets: {
+        plex: { token: 'plex-token' },
+        'plex.token': 'plex-token',
+        radarr: { apiKey: 'radarr-key' },
+        'radarr.apiKey': 'radarr-key',
+      },
+    });
+    plex.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
+    plex.getMovieTmdbRatingKeysMapForSectionKey.mockResolvedValue(
+      new Map<number, string[]>([[101, ['movie-1']]]),
+    );
+    plex.verifyPlayableMetadataByRatingKey.mockResolvedValue(
+      playableResult(true),
+    );
+    plex.getMetadataDetails.mockResolvedValue({
+      ratingKey: 'movie-1',
+      title: 'No File Movie',
+      type: 'movie',
+      year: 2001,
+      addedAt: null,
+      librarySectionId: '1',
+      librarySectionTitle: 'Movies',
+      grandparentTitle: null,
+      grandparentRatingKey: null,
+      parentIndex: null,
+      index: null,
+      tmdbIds: [101],
+      tvdbIds: [],
+      genres: [],
+      audioLanguages: [],
+      media: [
+        {
+          id: 'm1',
+          videoResolution: '1080',
+          parts: [
+            {
+              id: 'p1',
+              key: '/library/parts/11/file.mkv',
+              file: '/plex/no-file.mkv',
+              size: 11,
+            },
+          ],
+        },
+      ],
+    });
+    radarr.listMonitoredMovies.mockResolvedValue([
+      {
+        id: 8,
+        title: 'No File Movie',
+        tmdbId: 101,
+        monitored: true,
+        hasFile: false,
+        year: 2001,
+      },
+    ]);
+
+    const result = await job.run(ctx);
+    const raw = expectRaw(result);
+    const rawRadarr = raw.radarr as Record<string, unknown>;
+
+    expect(radarr.setMovieMonitored).not.toHaveBeenCalled();
+    expect(rawRadarr.metadataMatches).toBe(1);
+    expect(rawRadarr.alreadyInPlex).toBe(1);
+    expect(rawRadarr.keptWithoutFile).toBe(1);
+    expect(rawRadarr.keptMonitored).toBe(1);
+    expect(rawRadarr.unmonitored).toBe(0);
+    expect(rawRadarr.sampleTitles).toEqual([]);
+    expect(rawRadarr.sampleAffectedMovies).toEqual([]);
+    expect(rawRadarr.sampleKeptWithoutFileMovies).toEqual([
+      {
+        movieId: 8,
+        title: 'No File Movie',
+        year: 2001,
+        tmdbId: 101,
+        hasFile: false,
+        status: null,
+        radarrPath: null,
+        plexRatingKey: 'movie-1',
+        plexTitle: 'No File Movie',
+        plexYear: 2001,
+        plexFile: '/plex/no-file.mkv',
+      },
+    ]);
+  });
+
+  it('keeps a Radarr movie monitored when Plex verifies it playable but Radarr has no hasFile state', async () => {
+    const { job, settings, plex, radarr } = createJob();
+    const ctx = createContext(false);
+
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        plex: { baseUrl: 'http://plex.local:32400' },
+        radarr: { baseUrl: 'http://radarr.local:7878' },
+      },
+      secrets: {
+        plex: { token: 'plex-token' },
+        'plex.token': 'plex-token',
+        radarr: { apiKey: 'radarr-key' },
+        'radarr.apiKey': 'radarr-key',
+      },
+    });
+    plex.getSections.mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+    ]);
+    plex.getMovieTmdbRatingKeysMapForSectionKey.mockResolvedValue(
+      new Map<number, string[]>([[101, ['movie-1']]]),
+    );
+    plex.verifyPlayableMetadataByRatingKey.mockResolvedValue(
+      playableResult(true),
+    );
+    plex.getMetadataDetails.mockResolvedValue({
+      ratingKey: 'movie-1',
+      title: 'Unknown File State Movie',
+      type: 'movie',
+      year: 2002,
+      addedAt: null,
+      librarySectionId: '1',
+      librarySectionTitle: 'Movies',
+      grandparentTitle: null,
+      grandparentRatingKey: null,
+      parentIndex: null,
+      index: null,
+      tmdbIds: [101],
+      tvdbIds: [],
+      genres: [],
+      audioLanguages: [],
+      media: [
+        {
+          id: 'm1',
+          videoResolution: '1080',
+          parts: [
+            {
+              id: 'p1',
+              key: '/library/parts/12/file.mkv',
+              file: '/plex/unknown-file-state.mkv',
+              size: 12,
+            },
+          ],
+        },
+      ],
+    });
+    radarr.listMonitoredMovies.mockResolvedValue([
+      {
+        id: 9,
+        title: 'Unknown File State Movie',
+        tmdbId: 101,
+        monitored: true,
+        year: 2002,
+      },
+    ]);
+
+    const result = await job.run(ctx);
+    const raw = expectRaw(result);
+    const rawRadarr = raw.radarr as Record<string, unknown>;
+
+    expect(radarr.setMovieMonitored).not.toHaveBeenCalled();
+    expect(rawRadarr.metadataMatches).toBe(1);
+    expect(rawRadarr.alreadyInPlex).toBe(1);
+    expect(rawRadarr.keptWithoutFile).toBe(1);
+    expect(rawRadarr.keptMonitored).toBe(1);
+    expect(rawRadarr.unmonitored).toBe(0);
+    expect(rawRadarr.sampleKeptWithoutFileMovies).toEqual([
+      {
+        movieId: 9,
+        title: 'Unknown File State Movie',
+        year: 2002,
+        tmdbId: 101,
+        hasFile: false,
+        status: null,
+        radarrPath: null,
+        plexRatingKey: 'movie-1',
+        plexTitle: 'Unknown File State Movie',
+        plexYear: 2002,
+        plexFile: '/plex/unknown-file-state.mkv',
+      },
+    ]);
   });
 
   it('keeps a Radarr movie monitored and records probe failures when every candidate verification fails', async () => {

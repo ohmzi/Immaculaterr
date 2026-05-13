@@ -1724,12 +1724,104 @@ export function JobRunDetailPage() {
                               : 0;
                           const radarrProbeFailures =
                             radarr && typeof radarr.probeFailures === 'number' ? radarr.probeFailures : 0;
+                          const radarrKeptWithoutFile =
+                            radarr && typeof radarr.keptWithoutFile === 'number'
+                              ? radarr.keptWithoutFile
+                              : 0;
                           const radarrMissingTmdbId =
                             radarr && typeof radarr.missingTmdbId === 'number' ? radarr.missingTmdbId : 0;
                           const radarrSkippedPathConflicts =
                             radarr && typeof radarr.skippedPathConflicts === 'number'
                               ? radarr.skippedPathConflicts
                               : 0;
+                          const radarrSampleAffectedMovies =
+                            radarr && Array.isArray(radarr.sampleAffectedMovies)
+                              ? radarr.sampleAffectedMovies.filter(
+                                  (item): item is Record<string, unknown> =>
+                                    Boolean(item) &&
+                                    typeof item === 'object' &&
+                                    !Array.isArray(item),
+                                )
+                              : [];
+                          const radarrSampleKeptWithoutFileMovies =
+                            radarr && Array.isArray(radarr.sampleKeptWithoutFileMovies)
+                              ? radarr.sampleKeptWithoutFileMovies.filter(
+                                  (item): item is Record<string, unknown> =>
+                                    Boolean(item) &&
+                                    typeof item === 'object' &&
+                                    !Array.isArray(item),
+                                )
+                              : [];
+                          const radarrLegacySampleTitles = radarr ? pickStringArray(radarr, 'sampleTitles') : [];
+
+                          const renderRadarrMovieSampleList = (
+                            samples: Record<string, unknown>[],
+                            summaryLabel: string,
+                          ) => (
+                            <details className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-4">
+                              <summary className="cursor-pointer text-sm text-white/80">
+                                {summaryLabel} ({samples.length})
+                              </summary>
+                              <ul className="mt-3 space-y-3 text-xs text-white/70">
+                                {samples.map((sample, index) => {
+                                  const movieId = pickNumber(sample, 'movieId');
+                                  const title = pickString(sample, 'title') ?? 'Movie';
+                                  const year = pickNumber(sample, 'year');
+                                  const tmdbId = pickNumber(sample, 'tmdbId');
+                                  const hasFileValue = sample.hasFile;
+                                  const hasFile =
+                                    typeof hasFileValue === 'boolean'
+                                      ? hasFileValue
+                                        ? 'yes'
+                                        : 'no'
+                                      : 'unknown';
+                                  const status = pickString(sample, 'status');
+                                  const radarrPath = pickString(sample, 'radarrPath');
+                                  const plexRatingKey = pickString(sample, 'plexRatingKey');
+                                  const plexTitle = pickString(sample, 'plexTitle');
+                                  const plexYear = pickNumber(sample, 'plexYear');
+                                  const plexFile = pickString(sample, 'plexFile');
+                                  const displayTitle =
+                                    year !== null
+                                      ? `${decodeHtmlEntities(title)} (${year})`
+                                      : decodeHtmlEntities(title);
+                                  const displayPlexTitle = plexTitle
+                                    ? plexYear !== null
+                                      ? `${decodeHtmlEntities(plexTitle)} (${plexYear})`
+                                      : decodeHtmlEntities(plexTitle)
+                                    : '—';
+
+                                  return (
+                                    <li
+                                      key={`${movieId ?? index}-${title}`}
+                                      className="rounded-xl border border-white/10 bg-white/5 p-3"
+                                    >
+                                      <div className="font-semibold text-white">{displayTitle}</div>
+                                      <div className="mt-1 font-mono text-[11px] text-white/60">
+                                        movieId={movieId ?? '—'} | tmdbId={tmdbId ?? '—'} | hasFile={hasFile}
+                                        {status ? ` | status=${status}` : ''}
+                                      </div>
+                                      <div className="mt-2 text-[11px] text-white/65">
+                                        <span className="font-semibold text-white/75">Radarr path:</span>{' '}
+                                        <span className="font-mono break-all">{radarrPath ?? '—'}</span>
+                                      </div>
+                                      <div className="mt-2 text-[11px] text-white/65">
+                                        <span className="font-semibold text-white/75">Plex match:</span>{' '}
+                                        <span className="font-mono">{displayPlexTitle}</span>
+                                        {plexRatingKey ? (
+                                          <span className="text-white/50"> ({plexRatingKey})</span>
+                                        ) : null}
+                                      </div>
+                                      <div className="mt-1 text-[11px] text-white/65">
+                                        <span className="font-semibold text-white/75">Plex file:</span>{' '}
+                                        <span className="font-mono break-all">{plexFile ?? '—'}</span>
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </details>
+                          );
 
                           const sonarrTotalSeries =
                             sonarr && typeof sonarr.totalSeries === 'number' ? sonarr.totalSeries : 0;
@@ -1802,6 +1894,10 @@ export function JobRunDetailPage() {
                                         {radarrAlreadyInPlex === 1
                                           ? 'Movie verified playable in Plex'
                                           : 'Movies verified playable in Plex'}
+                                      </div>
+                                      <div>
+                                        <span className="text-white font-semibold">{radarrKeptWithoutFile}</span>{' '}
+                                        verified Plex matches kept monitored by file guard
                                       </div>
                                       {radarrUnverifiedMatches ? (
                                         <div>
@@ -1880,13 +1976,18 @@ export function JobRunDetailPage() {
                                 </div>
 
                                 {/* Optional samples */}
-                                {radarr && Array.isArray(radarr.sampleTitles) && radarr.sampleTitles.length ? (
+                                {radarrSampleAffectedMovies.length ? (
+                                  renderRadarrMovieSampleList(
+                                    radarrSampleAffectedMovies,
+                                    'Sample affected Radarr movies',
+                                  )
+                                ) : radarrLegacySampleTitles.length ? (
                                   <details className="rounded-2xl border border-white/10 bg-[#0b0c0f]/30 p-4">
                                     <summary className="cursor-pointer text-sm text-white/80">
-                                      Sample affected Radarr titles ({radarr.sampleTitles.length})
+                                      Sample affected Radarr titles ({radarrLegacySampleTitles.length})
                                     </summary>
                                     <ul className="mt-3 space-y-1 text-xs text-white/70">
-                                      {radarr.sampleTitles.slice(0, 25).map((t) => (
+                                      {radarrLegacySampleTitles.slice(0, 25).map((t) => (
                                         <li key={String(t)} className="font-mono">
                                           {String(t)}
                                         </li>
@@ -1894,6 +1995,12 @@ export function JobRunDetailPage() {
                                     </ul>
                                   </details>
                                 ) : null}
+                                {radarrSampleKeptWithoutFileMovies.length
+                                  ? renderRadarrMovieSampleList(
+                                      radarrSampleKeptWithoutFileMovies,
+                                      'Sample kept monitored by file guard',
+                                    )
+                                  : null}
                               </div>
 
                             </div>

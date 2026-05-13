@@ -2,10 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import {
   PlexServerService,
+  type PlexMetadataDetails,
   type PlexPartPlayableProbeResult,
   type PlexVerifiedEpisodeAvailability,
 } from '../plex/plex-server.service';
-import { RadarrService } from '../radarr/radarr.service';
+import { RadarrService, type RadarrMovie } from '../radarr/radarr.service';
 import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
@@ -67,6 +68,64 @@ type SonarrSeriesPassState = {
   nextSeasons: SonarrSeries['seasons'];
 };
 
+type RadarrMovieAuditSample = {
+  movieId: number;
+  title: string;
+  year: number | null;
+  tmdbId: number;
+  hasFile: boolean;
+  status: string | null;
+  radarrPath: string | null;
+  plexRatingKey: string | null;
+  plexTitle: string | null;
+  plexYear: number | null;
+  plexFile: string | null;
+};
+
+function pickMovieYear(movie: RadarrMovie): number | null {
+  return toInt(movie.year);
+}
+
+function pickTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function pickFirstPlexFile(details: PlexMetadataDetails | null): string | null {
+  if (!details) return null;
+  for (const media of details.media) {
+    for (const part of media.parts) {
+      const file = pickTrimmedString(part.file);
+      if (file) return file;
+    }
+  }
+  return null;
+}
+
+function buildRadarrMovieAuditSample(params: {
+  movie: RadarrMovie;
+  title: string;
+  tmdbId: number;
+  plexRatingKey: string | null;
+  plexDetails: PlexMetadataDetails | null;
+}): RadarrMovieAuditSample {
+  const { movie, title, tmdbId, plexRatingKey, plexDetails } = params;
+  return {
+    movieId: movie.id,
+    title,
+    year: pickMovieYear(movie),
+    tmdbId,
+    hasFile: movie.hasFile === true,
+    status: pickTrimmedString(movie.status),
+    radarrPath: pickTrimmedString(movie.path),
+    plexRatingKey,
+    plexTitle: plexDetails?.title?.trim() ? plexDetails.title.trim() : null,
+    plexYear: plexDetails?.year ?? null,
+    plexFile: pickFirstPlexFile(plexDetails),
+  };
+}
+
 function buildRadarrSummary(params: {
   configured: boolean;
   totalMonitored: number;
@@ -77,9 +136,12 @@ function buildRadarrSummary(params: {
   unverifiedMatches: number;
   probeFailures: number;
   keptMonitored: number;
+  keptWithoutFile: number;
   unmonitored: number;
   skippedPathConflicts: number;
   sampleTitles: string[];
+  sampleAffectedMovies: RadarrMovieAuditSample[];
+  sampleKeptWithoutFileMovies: RadarrMovieAuditSample[];
 }): JsonObject {
   return {
     configured: params.configured,
@@ -91,9 +153,12 @@ function buildRadarrSummary(params: {
     unverifiedMatches: params.unverifiedMatches,
     probeFailures: params.probeFailures,
     keptMonitored: params.keptMonitored,
+    keptWithoutFile: params.keptWithoutFile,
     unmonitored: params.unmonitored,
     skippedPathConflicts: params.skippedPathConflicts,
     sampleTitles: params.sampleTitles,
+    sampleAffectedMovies: params.sampleAffectedMovies,
+    sampleKeptWithoutFileMovies: params.sampleKeptWithoutFileMovies,
   };
 }
 
@@ -187,9 +252,12 @@ export class MonitorConfirmJob {
         unverifiedMatches: 0,
         probeFailures: 0,
         keptMonitored: 0,
+        keptWithoutFile: 0,
         unmonitored: 0,
         skippedPathConflicts: 0,
         sampleTitles: [],
+        sampleAffectedMovies: [],
+        sampleKeptWithoutFileMovies: [],
       }),
       sonarr: buildSonarrSummary({
         configured: false,
@@ -274,9 +342,12 @@ export class MonitorConfirmJob {
       unverifiedMatches: 0,
       probeFailures: 0,
       keptMonitored: 0,
+      keptWithoutFile: 0,
       unmonitored: 0,
       skippedPathConflicts: 0,
       sampleTitles: [],
+      sampleAffectedMovies: [],
+      sampleKeptWithoutFileMovies: [],
     });
     summary.sonarr = buildSonarrSummary({
       configured: sonarrConfigured,
@@ -429,6 +500,28 @@ export class MonitorConfirmJob {
         return fallback;
       }
     };
+    const movieMetadataCache = new Map<string, PlexMetadataDetails | null>();
+    const getMovieMetadataDetails = async (ratingKey: string) => {
+      const cached = movieMetadataCache.get(ratingKey);
+      if (cached !== undefined) return cached;
+
+      try {
+        const details = await this.plexServer.getMetadataDetails({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          ratingKey,
+        });
+        movieMetadataCache.set(ratingKey, details);
+        return details;
+      } catch (error) {
+        movieMetadataCache.set(ratingKey, null);
+        await ctx.warn('plex: failed loading Plex movie metadata details', {
+          ratingKey,
+          error: (error as Error)?.message ?? String(error),
+        });
+        return null;
+      }
+    };
 
     // --- Radarr confirm
     let radarrTotalMonitored = 0;
@@ -440,8 +533,11 @@ export class MonitorConfirmJob {
     let radarrSkippedPathConflicts = 0;
     let radarrChecked = 0;
     let radarrKeptMonitored = 0;
+    let radarrKeptWithoutFile = 0;
     let radarrMissingTmdbId = 0;
     const radarrSample: string[] = [];
+    const radarrAffectedSamples: RadarrMovieAuditSample[] = [];
+    const radarrKeptWithoutFileSamples: RadarrMovieAuditSample[] = [];
     if (radarrConfigured) {
       await ctx.info('radarr: loading monitored movies');
       setProgress({
@@ -464,9 +560,12 @@ export class MonitorConfirmJob {
         unverifiedMatches: 0,
         probeFailures: 0,
         keptMonitored: 0,
+        keptWithoutFile: 0,
         unmonitored: 0,
         skippedPathConflicts: 0,
         sampleTitles: [],
+        sampleAffectedMovies: [],
+        sampleKeptWithoutFileMovies: [],
       });
       await ctx.patchSummary({
         radarr: summary.radarr as unknown as JsonObject,
@@ -504,10 +603,12 @@ export class MonitorConfirmJob {
         const title =
           typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
         let isVerifiedPlayable = false;
+        let verifiedRatingKey: string | null = null;
         for (const ratingKey of ratingKeys) {
           const verification = await getMoviePlayability(ratingKey);
           if (verification.playable) {
             isVerifiedPlayable = true;
+            verifiedRatingKey = ratingKey;
             break;
           }
         }
@@ -527,9 +628,51 @@ export class MonitorConfirmJob {
         }
 
         radarrAlreadyInPlex += 1;
-        if (radarrSample.length < 25) radarrSample.push(title);
+        const hasFile = movie.hasFile === true;
+        if (!hasFile) {
+          radarrKeptMonitored += 1;
+          radarrKeptWithoutFile += 1;
+          await ctx.info(
+            'radarr: keeping verified Plex match monitored because Radarr reports no file',
+            {
+              title,
+              tmdbId,
+              movieId: movie.id,
+              hasFile: movie.hasFile ?? null,
+              ratingKey: verifiedRatingKey,
+            },
+          );
+          if (verifiedRatingKey && radarrKeptWithoutFileSamples.length < 25) {
+            const plexDetails =
+              await getMovieMetadataDetails(verifiedRatingKey);
+            radarrKeptWithoutFileSamples.push(
+              buildRadarrMovieAuditSample({
+                movie,
+                title,
+                tmdbId,
+                plexRatingKey: verifiedRatingKey,
+                plexDetails,
+              }),
+            );
+          }
+          continue;
+        }
+
+        let affectedSample: RadarrMovieAuditSample | null = null;
+        if (verifiedRatingKey && radarrAffectedSamples.length < 25) {
+          const plexDetails = await getMovieMetadataDetails(verifiedRatingKey);
+          affectedSample = buildRadarrMovieAuditSample({
+            movie,
+            title,
+            tmdbId,
+            plexRatingKey: verifiedRatingKey,
+            plexDetails,
+          });
+        }
         if (ctx.dryRun) {
           radarrUnmonitored += 1;
+          if (radarrSample.length < 25) radarrSample.push(title);
+          if (affectedSample) radarrAffectedSamples.push(affectedSample);
         } else {
           const success = await this.radarr.setMovieMonitored({
             baseUrl: radarrBaseUrl as string,
@@ -540,6 +683,8 @@ export class MonitorConfirmJob {
 
           if (success) {
             radarrUnmonitored += 1;
+            if (radarrSample.length < 25) radarrSample.push(title);
+            if (affectedSample) radarrAffectedSamples.push(affectedSample);
           } else {
             radarrSkippedPathConflicts += 1;
             await ctx.warn(
@@ -565,6 +710,7 @@ export class MonitorConfirmJob {
             probeFailures: radarrProbeFailures,
             unmonitored: radarrUnmonitored,
             keptMonitored: radarrKeptMonitored,
+            keptWithoutFile: radarrKeptWithoutFile,
             skippedPathConflicts: radarrSkippedPathConflicts,
           });
           summary.radarr = buildRadarrSummary({
@@ -577,9 +723,12 @@ export class MonitorConfirmJob {
             unverifiedMatches: radarrUnverifiedMatches,
             probeFailures: radarrProbeFailures,
             keptMonitored: radarrKeptMonitored,
+            keptWithoutFile: radarrKeptWithoutFile,
             unmonitored: radarrUnmonitored,
             skippedPathConflicts: radarrSkippedPathConflicts,
             sampleTitles: radarrSample,
+            sampleAffectedMovies: radarrAffectedSamples,
+            sampleKeptWithoutFileMovies: radarrKeptWithoutFileSamples,
           });
           void ctx
             .patchSummary({ radarr: summary.radarr as unknown as JsonObject })
@@ -600,6 +749,7 @@ export class MonitorConfirmJob {
         alreadyInPlex: radarrAlreadyInPlex,
         unverifiedMatches: radarrUnverifiedMatches,
         probeFailures: radarrProbeFailures,
+        keptWithoutFile: radarrKeptWithoutFile,
         unmonitored: radarrUnmonitored,
         skippedPathConflicts: radarrSkippedPathConflicts,
         dryRun: ctx.dryRun,
@@ -617,9 +767,12 @@ export class MonitorConfirmJob {
       unverifiedMatches: radarrUnverifiedMatches,
       probeFailures: radarrProbeFailures,
       keptMonitored: radarrKeptMonitored,
+      keptWithoutFile: radarrKeptWithoutFile,
       unmonitored: radarrUnmonitored,
       skippedPathConflicts: radarrSkippedPathConflicts,
       sampleTitles: radarrSample,
+      sampleAffectedMovies: radarrAffectedSamples,
+      sampleKeptWithoutFileMovies: radarrKeptWithoutFileSamples,
     });
     await ctx.patchSummary({ radarr: summary.radarr as unknown as JsonObject });
 
@@ -1218,9 +1371,12 @@ export class MonitorConfirmJob {
       unverifiedMatches: radarrUnverifiedMatches,
       probeFailures: radarrProbeFailures,
       keptMonitored: radarrKeptMonitored,
+      keptWithoutFile: radarrKeptWithoutFile,
       unmonitored: radarrUnmonitored,
       skippedPathConflicts: radarrSkippedPathConflicts,
       sampleTitles: radarrSample,
+      sampleAffectedMovies: radarrAffectedSamples,
+      sampleKeptWithoutFileMovies: radarrKeptWithoutFileSamples,
     });
     summary.sonarr = buildSonarrSummary({
       configured: sonarrConfigured,
@@ -1288,6 +1444,7 @@ function buildMonitorConfirmReport(params: {
     radarrTotalMonitored - radarrUnmonitored,
   );
   const radarrAlreadyInPlex = asNum(radarr.alreadyInPlex) ?? 0;
+  const radarrKeptWithoutFile = asNum(radarr.keptWithoutFile) ?? 0;
   const radarrUnverifiedMatches = asNum(radarr.unverifiedMatches) ?? 0;
   const radarrProbeFailures = asNum(radarr.probeFailures) ?? 0;
   const radarrSkippedPathConflicts = asNum(radarr.skippedPathConflicts) ?? 0;
@@ -1398,6 +1555,14 @@ function buildMonitorConfirmReport(params: {
           }),
           metricRow({
             label:
+              radarrKeptWithoutFile === 1
+                ? 'Verified Plex match kept monitored (Radarr has no file)'
+                : 'Verified Plex matches kept monitored (Radarr has no file)',
+            end: radarrKeptWithoutFile,
+            unit: 'movies',
+          }),
+          metricRow({
+            label:
               radarrUnverifiedMatches === 1
                 ? 'Metadata match not verified playable'
                 : 'Metadata matches not verified playable',
@@ -1492,6 +1657,14 @@ function buildMonitorConfirmReport(params: {
                 ? 'Movie verified playable in Plex'
                 : 'Movies verified playable in Plex',
             end: radarrAlreadyInPlex,
+            unit: 'movies',
+          }),
+          metricRow({
+            label:
+              radarrKeptWithoutFile === 1
+                ? 'Verified Plex match kept monitored (Radarr has no file)'
+                : 'Verified Plex matches kept monitored (Radarr has no file)',
+            end: radarrKeptWithoutFile,
             unit: 'movies',
           }),
           metricRow({
