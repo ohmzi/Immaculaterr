@@ -2062,18 +2062,23 @@ export function TaskManagerPage() {
           if (runs.length === 0) continue;
 
           const latestRun = runs[0];
-          const runTime = new Date(latestRun.startedAt).getTime();
-
-          // Only consider runs from the last 5 minutes
-          if (runTime < fiveMinutesAgo) continue;
-
-          // Set terminal state based on run status
           if (latestRun.status === 'RUNNING' || latestRun.status === 'PENDING') {
             setTerminalState((prev) => ({
               ...prev,
               [job.id]: { status: 'running', runId: latestRun.id },
             }));
-          } else if (
+            continue;
+          }
+
+          const runTime = new Date(latestRun.startedAt).getTime();
+          const shouldKeepLatestCompletedRun =
+            job.id === 'unmonitorConfirm';
+
+          // Most jobs only keep completed runs warm in the terminal briefly,
+          // but Confirm Unmonitored should always reopen its latest report.
+          if (!shouldKeepLatestCompletedRun && runTime < fiveMinutesAgo) continue;
+
+          if (
             latestRun.status === 'SUCCESS' ||
             latestRun.status === 'FAILED' ||
             latestRun.status === 'CANCELLED'
