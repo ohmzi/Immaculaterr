@@ -291,7 +291,7 @@ Open in app: [Task Manager -> Confirm Monitored](/task-manager#job-monitorConfir
 
 ### What does Confirm Monitored do?
 
-It keeps ARR monitoring aligned with verified playable media already in Plex. In simple English: this task only counts a movie or episode as present after Plex can actually serve a playable media part for it, not just because metadata exists.
+It keeps ARR monitoring aligned with verified playable media already in Plex. In simple English: this task only counts a movie or episode as present after Plex can actually serve a playable media part for it, not just because metadata exists. For Radarr movies, it only unmonitors titles that Plex can play and that Radarr already marks as having a file.
 On the Sonarr side, the cascade still happens, but in order: it checks episodes across all monitored shows first, then seasons, then series.
 If every regular episode in a season ends unmonitored, the season is unmonitored too. If every tracked season ends unmonitored, the series itself is unmonitored too.
 

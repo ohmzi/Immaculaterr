@@ -122,9 +122,7 @@ describe('UpdatesService', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1]?.[0]).toContain(
-      '/git/matching-refs/tags/v',
-    );
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/git/matching-refs/tags/v');
   });
 
   it('notifies beta installs when a numbered beta tag for the same core version exists', async () => {

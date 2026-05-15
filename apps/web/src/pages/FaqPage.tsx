@@ -440,7 +440,9 @@ export const FaqPage = () => {
               <p>
                 It keeps ARR monitoring aligned with verified playable media already in Plex. In
                 simple English: this task only counts a movie or episode as present after Plex can
-                actually serve a playable media part for it, not just because metadata exists.
+                actually serve a playable media part for it, not just because metadata exists. For
+                Radarr movies, it only unmonitors titles that Plex can play and that Radarr already
+                marks as having a file.
               </p>
               <p>
                 On the Sonarr side, the cascade still happens, but in order: it checks episodes
