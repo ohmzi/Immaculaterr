@@ -37,6 +37,22 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.10-beta-1',
+    popupHighlights: [
+      'Confirm Monitored now keeps Radarr movies monitored unless Plex verifies them as playable and Radarr confirms a file already exists.',
+    ],
+    sections: [
+      {
+        title: 'Confirm Monitored file guard',
+        bullets: [
+          'Radarr movies are only unmonitored when Plex verifies playable media and Radarr explicitly reports hasFile as true.',
+          'Verified Plex matches that still have no Radarr file now stay monitored, so missing or incomplete downloads are not treated as safely finished.',
+          'The beta also hardens the file-state check so ambiguous Radarr hasFile values no longer slip through as eligible matches.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.9',
     popupHighlights: [
       'App base path hosting now works across the app, API, and Docker setup.',

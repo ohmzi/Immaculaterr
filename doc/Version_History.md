@@ -2,6 +2,14 @@
 
 This file tracks notable changes by version.
 
+## 1.7.10-beta-1
+
+- What's new since 1.7.9:
+- Confirm Monitored file guard:
+  - Radarr movies are only unmonitored when Plex verifies playable media and Radarr explicitly reports `hasFile=true`.
+  - Verified Plex matches that still have no Radarr file now stay monitored, so missing or incomplete downloads are not treated as safely finished.
+  - The beta also hardens the file-state check so ambiguous Radarr `hasFile` values no longer slip through as eligible matches.
+
 ## 1.7.9
 
 - What's new in 1.7.9:
