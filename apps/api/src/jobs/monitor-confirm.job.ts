@@ -638,7 +638,12 @@ export class MonitorConfirmJob {
               title,
               tmdbId,
               movieId: movie.id,
-              hasFile: movie.hasFile ?? null,
+              hasFile:
+                movie.hasFile === true
+                  ? true
+                  : movie.hasFile === false
+                    ? false
+                    : null,
               ratingKey: verifiedRatingKey,
             },
           );
