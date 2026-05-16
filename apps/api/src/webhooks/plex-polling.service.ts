@@ -22,6 +22,8 @@ import { SettingsService } from '../settings/settings.service';
 import { normalizeTitleForMatching } from '../lib/title-normalize';
 import { WebhooksService } from './webhooks.service';
 
+type AutoRunConflictReason = 'already_processed' | 'already_queued_or_running';
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -46,12 +48,14 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
-function readConflictReason(error: unknown): string | null {
+function readConflictReason(error: unknown): AutoRunConflictReason | null {
   if (!(error instanceof ConflictException)) return null;
   const response = error.getResponse();
   if (!isPlainObject(response)) return null;
   const reason = response['reason'];
-  return typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+  if (reason === 'already_processed' || reason === 'already_queued_or_running')
+    return reason;
+  return null;
 }
 
 function parseBoolEnv(raw: string | undefined, defaultValue: boolean): boolean {
@@ -1362,6 +1366,14 @@ export class PlexPollingService implements OnModuleInit {
         const conflictReason = readConflictReason(error);
         if (conflictReason) {
           skipped[params.jobId] = conflictReason;
+          await this.jobsService.recordAutoRunSkippedRun({
+            jobId: params.jobId,
+            trigger: 'auto',
+            dryRun: false,
+            userId,
+            input: params.input,
+            reason: conflictReason,
+          });
           this.setSessionJobStatus(
             sessionAutomationId,
             params.jobId,

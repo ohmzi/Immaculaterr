@@ -1616,8 +1616,9 @@ export const FaqPage = () => {
                 <li>
                   <span className="font-semibold text-white/85">Repeat-watch dedupe:</span> once one
                   of these auto-runs completes successfully for the same Plex user, library, and
-                  exact movie/episode, repeated watches of that same item are skipped automatically.
-                  Manual runs still work any time.
+                  same movie or same show, repeated watches are skipped automatically instead of
+                  rebuilding the same collections again. Those blocked duplicates now appear as
+                  skipped entries in Task Manager and Rewind. Manual runs still work any time.
                 </li>
                 <li>
                   <span className="font-semibold text-white/85">New content trigger:</span> when a

@@ -37,9 +37,10 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.10-beta-1',
+    version: '1.7.10-beta-2',
     popupHighlights: [
       'Confirm Monitored now keeps Radarr movies monitored unless Plex verifies them as playable and Radarr confirms a file already exists.',
+      'Plex repeat-watch dedupe now blocks later episodes at the show level and records skipped entries in Task Manager and Rewind.',
     ],
     sections: [
       {
@@ -48,6 +49,15 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Radarr movies are only unmonitored when Plex verifies playable media and Radarr explicitly reports hasFile as true.',
           'Verified Plex matches that still have no Radarr file now stay monitored, so missing or incomplete downloads are not treated as safely finished.',
           'The beta also hardens the file-state check so ambiguous Radarr hasFile values no longer slip through as eligible matches.',
+        ],
+      },
+      {
+        title: 'Plex-triggered repeat-watch dedupe',
+        bullets: [
+          'Based on your recently watched and Immaculate Taste now dedupe TV auto-runs per Plex user, library, and same show instead of per individual episode.',
+          'Once a show has already triggered one of those auto-runs, later episodes of that same show are skipped instead of rebuilding the same collections again.',
+          'Repeat and in-progress duplicate auto-triggers now create skipped Task Manager and Rewind entries so the reason is visible without digging through Plex automation logs.',
+          'Existing durable auto-run history is reused, so older episode-level records still block later episodes of the same show after upgrading.',
         ],
       },
     ],
