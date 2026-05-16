@@ -175,6 +175,32 @@ function makeRunInput() {
   };
 }
 
+function makeEpisodeRunInput(overrides?: Partial<Record<string, unknown>>) {
+  const input = {
+    source: 'plexPolling',
+    plexUserId: 'plex-user-2',
+    plexUserTitle: 'Alice',
+    mediaType: 'episode',
+    seedTitle: 'Lost',
+    seedRatingKey: 'episode-1',
+    showRatingKey: 'show-1',
+    seasonNumber: 1,
+    episodeNumber: 1,
+    seedLibrarySectionId: 4,
+    seedLibrarySectionTitle: 'TV Shows',
+    ...(overrides ?? {}),
+  };
+  const autoRunMediaFingerprint = buildAutoRunMediaFingerprint(input);
+  if (!autoRunMediaFingerprint) {
+    throw new Error('Expected a stable auto-run media fingerprint');
+  }
+
+  return {
+    ...input,
+    autoRunMediaFingerprint,
+  };
+}
+
 function makeCreatedRun(params: {
   jobId: string;
   trigger: JobRunTrigger;
@@ -199,6 +225,30 @@ function makeCreatedRun(params: {
     claimedAt: null,
     heartbeatAt: null,
     workerId: null,
+  };
+}
+
+function makeFinishedRun(params: {
+  runId: string;
+  jobId: string;
+  trigger: JobRunTrigger;
+  status?: 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  summary?: Record<string, unknown> | null;
+}) {
+  const now = new Date('2026-04-11T00:00:00.000Z');
+  return {
+    id: params.runId,
+    jobId: params.jobId,
+    userId: 'admin-user',
+    trigger: params.trigger,
+    dryRun: false,
+    status: params.status ?? 'SUCCESS',
+    startedAt: now,
+    queuedAt: now,
+    executionStartedAt: now,
+    finishedAt: now,
+    summary: params.summary ?? makeSuccessReport(true),
+    errorMessage: null,
   };
 }
 
@@ -272,6 +322,16 @@ function getAutoRunHistoryUpsertArg(tx: ReturnType<typeof makeService>['tx']) {
     | undefined;
 }
 
+function getCreatedRunArg(tx: ReturnType<typeof makeService>['tx']) {
+  const firstCall = tx.jobRun.create.mock.calls[0] as [unknown] | undefined;
+  return firstCall?.[0] as
+    | {
+        data: Record<string, unknown>;
+        select: Record<string, unknown>;
+      }
+    | undefined;
+}
+
 function makeService() {
   const tx = {
     jobRun: {
@@ -288,6 +348,7 @@ function makeService() {
     },
     autoRunMediaHistory: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       upsert: jest.fn(),
     },
   };
@@ -319,6 +380,7 @@ function makeService() {
   tx.jobQueueState.update.mockResolvedValue(makeQueueState());
   tx.jobLogLine.create.mockResolvedValue({});
   tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
+  tx.autoRunMediaHistory.findFirst.mockResolvedValue(null);
   tx.autoRunMediaHistory.upsert.mockResolvedValue({ id: 'history-1' });
   prisma.jobSchedule.findMany.mockResolvedValue([]);
   prisma.jobRun.findMany.mockResolvedValue([]);
@@ -339,6 +401,30 @@ function makeService() {
 describe('JobsService durable auto-run media dedupe', () => {
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('uses one stable fingerprint for later episodes of the same show', () => {
+    const firstInput = makeEpisodeRunInput({
+      seedRatingKey: 'episode-1',
+      episodeNumber: 1,
+    });
+    const laterEpisodeInput = makeEpisodeRunInput({
+      seedRatingKey: 'episode-9',
+      episodeNumber: 9,
+      seasonNumber: 2,
+    });
+    const differentShowInput = makeEpisodeRunInput({
+      seedTitle: 'Fringe',
+      showRatingKey: 'show-2',
+      seedRatingKey: 'episode-22',
+    });
+
+    expect(firstInput.autoRunMediaFingerprint).toBe(
+      laterEpisodeInput.autoRunMediaFingerprint,
+    );
+    expect(firstInput.autoRunMediaFingerprint).not.toBe(
+      differentShowInput.autoRunMediaFingerprint,
+    );
   });
 
   it('blocks auto enqueue when a durable media history record already exists', async () => {
@@ -369,6 +455,77 @@ describe('JobsService durable auto-run media dedupe', () => {
       select: { id: true },
     });
     expect(tx.jobRun.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks later episodes of the same show from legacy episode-level history rows', async () => {
+    const { service, tx } = makeService();
+    const input = makeEpisodeRunInput({
+      seedRatingKey: 'episode-4',
+      episodeNumber: 4,
+    });
+    tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
+    tx.autoRunMediaHistory.findFirst.mockResolvedValueOnce({ id: 'history-1' });
+
+    await service
+      .runJob({
+        jobId: 'watchedMovieRecommendations',
+        trigger: 'auto',
+        dryRun: false,
+        userId: 'admin-user',
+        input,
+      })
+      .catch((error) => {
+        expect(error).toBeInstanceOf(ConflictException);
+        expect(readConflictReason(error)).toBe('already_processed');
+      });
+
+    expect(tx.autoRunMediaHistory.findFirst).toHaveBeenCalledWith({
+      where: {
+        jobId: 'watchedMovieRecommendations',
+        mediaType: 'episode',
+        plexUserId: 'plex-user-2',
+        librarySectionKey: '4',
+        showRatingKey: 'show-1',
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    expect(tx.jobRun.create).not.toHaveBeenCalled();
+  });
+
+  it('falls back to show title when episode auto-run history lacks show ids', async () => {
+    const { service, tx } = makeService();
+    const input = makeEpisodeRunInput({
+      showRatingKey: '',
+      seedRatingKey: 'episode-6',
+      episodeNumber: 6,
+    });
+    tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
+    tx.autoRunMediaHistory.findFirst.mockResolvedValueOnce({ id: 'history-2' });
+
+    await service
+      .runJob({
+        jobId: 'immaculateTastePoints',
+        trigger: 'auto',
+        dryRun: false,
+        userId: 'admin-user',
+        input,
+      })
+      .catch((error) => {
+        expect(readConflictReason(error)).toBe('already_processed');
+      });
+
+    expect(tx.autoRunMediaHistory.findFirst).toHaveBeenCalledWith({
+      where: {
+        jobId: 'immaculateTastePoints',
+        mediaType: 'episode',
+        plexUserId: 'plex-user-2',
+        librarySectionKey: '4',
+        seedTitle: 'Lost',
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
   });
 
   it('writes a durable history record only after a successful non-skipped auto run', async () => {
@@ -490,6 +647,49 @@ describe('JobsService durable auto-run media dedupe', () => {
     expect(run.status).toBe('PENDING');
     expect(tx.autoRunMediaHistory.findUnique).not.toHaveBeenCalled();
     expect(tx.jobRun.create).toHaveBeenCalled();
+  });
+
+  it('records a visible skipped run for auto-run conflicts without durable history writes', async () => {
+    const { service, tx } = makeService();
+    const input = makeEpisodeRunInput({
+      seedTitle: 'Rooster',
+      showRatingKey: 'show-rooster',
+      seedRatingKey: 'episode-3',
+      episodeNumber: 3,
+    });
+    tx.jobRun.create.mockResolvedValue(
+      makeFinishedRun({
+        runId: 'skipped-run-1',
+        jobId: 'watchedMovieRecommendations',
+        trigger: 'auto',
+      }),
+    );
+
+    const run = await service.recordAutoRunSkippedRun({
+      jobId: 'watchedMovieRecommendations',
+      trigger: 'auto',
+      dryRun: false,
+      userId: 'admin-user',
+      input,
+      reason: 'already_processed',
+    });
+
+    expect(run.status).toBe('SUCCESS');
+    const createArg = getCreatedRunArg(tx);
+    expect(createArg?.data['status']).toBe('SUCCESS');
+    expect(createArg?.data['queueFingerprint']).toBeNull();
+    expect(createArg?.data['summary']).toMatchObject({
+      template: 'jobReportV1',
+      version: 1,
+      headline: 'Auto-run skipped because this show was already processed.',
+      raw: {
+        skipped: true,
+        reason: 'already_processed',
+        repeatScope: 'show',
+        seedTitle: 'Rooster',
+      },
+    });
+    expect(tx.autoRunMediaHistory.upsert).not.toHaveBeenCalled();
   });
 
   it('coalesces rapid same-step summary patches into a single deferred write', async () => {

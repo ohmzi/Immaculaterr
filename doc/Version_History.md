@@ -2,9 +2,15 @@
 
 This file tracks notable changes by version.
 
-## 1.7.10-beta-1
+## 1.7.10-beta-2
 
 - What's new since 1.7.9:
+- Plex-triggered repeat-watch dedupe:
+  - Based on your recently watched and Immaculate Taste now dedupe TV auto-runs at the show level instead of per episode.
+  - Once a show has already triggered one of those Plex auto-runs for the same user and library, later episodes of that same show are skipped instead of rebuilding the same collections again.
+  - Repeat or in-progress duplicate auto-triggers now create skipped Task Manager and Rewind entries so the reason is visible without digging through Plex automation logs.
+  - Existing durable auto-run history is reused, so older episode-level records still block later episodes of the same show after upgrading.
+
 - Confirm Monitored file guard:
   - Radarr movies are only unmonitored when Plex verifies playable media and Radarr explicitly reports `hasFile=true`.
   - Verified Plex matches that still have no Radarr file now stay monitored, so missing or incomplete downloads are not treated as safely finished.

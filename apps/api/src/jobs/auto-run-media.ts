@@ -109,44 +109,26 @@ export function buildAutoRunMediaFingerprint(
   }
 
   if (mediaType === 'episode') {
-    const episodeRatingKey = pickString(input, ['seedRatingKey', 'ratingKey']);
-    if (episodeRatingKey) {
-      return [
-        'episode',
-        `plexUser:${plexUserId}`,
-        `library:${librarySectionKey}`,
-        `ratingKey:${episodeRatingKey}`,
-      ].join('|');
-    }
-
     const showRatingKey = pickString(input, 'showRatingKey');
-    const seasonNumber = pickInteger(input, 'seasonNumber');
-    const episodeNumber = pickInteger(input, 'episodeNumber');
-    if (showRatingKey && seasonNumber !== null && episodeNumber !== null) {
+    if (showRatingKey) {
       return [
         'episode',
         `plexUser:${plexUserId}`,
         `library:${librarySectionKey}`,
         `showRatingKey:${showRatingKey}`,
-        `season:${seasonNumber}`,
-        `episode:${episodeNumber}`,
       ].join('|');
     }
 
     const showTitle = normalizeFingerprintTitle(
       pickString(input, ['showTitle', 'grandparentTitle', 'seedTitle']),
     );
-    if (!showTitle || seasonNumber === null || episodeNumber === null) {
-      return null;
-    }
+    if (!showTitle) return null;
 
     return [
       'episode',
       `plexUser:${plexUserId}`,
       `library:${librarySectionKey}`,
       `showTitle:${showTitle}`,
-      `season:${seasonNumber}`,
-      `episode:${episodeNumber}`,
     ].join('|');
   }
 

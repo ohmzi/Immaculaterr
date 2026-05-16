@@ -25,10 +25,27 @@ type InternalPlexPollingLoggingService = {
   };
 };
 
+type RecordedAutoRunSkip = {
+  jobId: string;
+  reason: string;
+  input: {
+    seedTitle: string;
+    showRatingKey: string;
+    episodeNumber: number;
+  };
+};
+
 function makeAlreadyProcessedConflict() {
   return new ConflictException({
     reason: 'already_processed',
     message: 'Job already processed for this media.',
+  });
+}
+
+function makeAlreadyQueuedOrRunningConflict() {
+  return new ConflictException({
+    reason: 'already_queued_or_running',
+    message: 'Job already queued or running',
   });
 }
 
@@ -41,6 +58,7 @@ function makeService() {
   };
   const jobsService = {
     runJob: jest.fn(),
+    recordAutoRunSkippedRun: jest.fn(),
   };
   const plexServer = {
     listNowPlayingSessions: jest.fn(),
@@ -250,9 +268,10 @@ describe('PlexPollingService durable auto-run dedupe', () => {
         },
       }),
     );
+    expect(jobsService.recordAutoRunSkippedRun).toHaveBeenCalledTimes(2);
   });
 
-  it('skips a repeated episode but still runs a different episode of the same show', async () => {
+  it('skips later episodes of the same show after one episode already succeeded', async () => {
     const { service, jobsService, plexUsers } = makeService();
     const internalService = service as unknown as InternalPlexPollingService;
     plexUsers.resolvePlexUser.mockResolvedValue({
@@ -264,8 +283,8 @@ describe('PlexPollingService durable auto-run dedupe', () => {
       .mockResolvedValueOnce({ id: 'immaculate-run-1' })
       .mockRejectedValueOnce(makeAlreadyProcessedConflict())
       .mockRejectedValueOnce(makeAlreadyProcessedConflict())
-      .mockResolvedValueOnce({ id: 'watched-run-2' })
-      .mockResolvedValueOnce({ id: 'immaculate-run-2' });
+      .mockRejectedValueOnce(makeAlreadyProcessedConflict())
+      .mockRejectedValueOnce(makeAlreadyProcessedConflict());
 
     const settings = makeSettings();
 
@@ -309,7 +328,70 @@ describe('PlexPollingService durable auto-run dedupe', () => {
     const repeatedFingerprint = getRunJobFingerprint(jobsService, 2);
     const differentEpisodeFingerprint = getRunJobFingerprint(jobsService, 4);
     expect(firstFingerprint).toBe(repeatedFingerprint);
-    expect(firstFingerprint).not.toBe(differentEpisodeFingerprint);
+    expect(firstFingerprint).toBe(differentEpisodeFingerprint);
+    expect(jobsService.recordAutoRunSkippedRun).toHaveBeenCalledTimes(4);
+    const skippedCallArgs = jobsService.recordAutoRunSkippedRun.mock
+      .calls[3] as [RecordedAutoRunSkip] | undefined;
+    const recordedSkip = skippedCallArgs?.[0];
+    expect(recordedSkip).toBeDefined();
+    expect(recordedSkip?.jobId).toBe('immaculateTastePoints');
+    expect(recordedSkip?.reason).toBe('already_processed');
+    expect(recordedSkip?.input.seedTitle).toBe('Lost');
+    expect(recordedSkip?.input.showRatingKey).toBe('show-1');
+    expect(recordedSkip?.input.episodeNumber).toBe(2);
+  });
+
+  it('records skipped runs when the same media is already queued or running', async () => {
+    const { service, jobsService, plexUsers, webhooksService } = makeService();
+    const internalService = service as unknown as InternalPlexPollingService;
+    plexUsers.resolvePlexUser.mockResolvedValue({
+      id: 'plex-user-2',
+      plexAccountTitle: 'Alice',
+    });
+    jobsService.runJob
+      .mockResolvedValueOnce({ id: 'watched-run-1' })
+      .mockResolvedValueOnce({ id: 'immaculate-run-1' })
+      .mockRejectedValueOnce(makeAlreadyQueuedOrRunningConflict())
+      .mockRejectedValueOnce(makeAlreadyQueuedOrRunningConflict());
+
+    const settings = makeSettings();
+
+    await internalService.maybeTriggerWatchedAutomation({
+      userId: 'admin',
+      snap: makeMovieSnap({ sessionKey: 'movie-session-1' }),
+      settings,
+      reason: 'progress',
+    });
+    await internalService.maybeTriggerWatchedAutomation({
+      userId: 'admin',
+      snap: makeMovieSnap({ sessionKey: 'movie-session-2' }),
+      settings,
+      reason: 'progress',
+    });
+
+    expect(jobsService.recordAutoRunSkippedRun).toHaveBeenCalledTimes(2);
+    expect(jobsService.recordAutoRunSkippedRun).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        jobId: 'watchedMovieRecommendations',
+        reason: 'already_queued_or_running',
+      }),
+    );
+    expect(jobsService.recordAutoRunSkippedRun).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        jobId: 'immaculateTastePoints',
+        reason: 'already_queued_or_running',
+      }),
+    );
+    expect(webhooksService.logPlexWebhookAutomation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        skipped: {
+          watchedMovieRecommendations: 'already_queued_or_running',
+          immaculateTastePoints: 'already_queued_or_running',
+        },
+      }),
+    );
   });
 
   it('still runs the same title for a different Plex user or a different library', async () => {

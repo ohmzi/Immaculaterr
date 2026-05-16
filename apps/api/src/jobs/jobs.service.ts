@@ -34,7 +34,7 @@ import {
   DURABLE_AUTO_RUN_JOB_ID_SET,
 } from './auto-run-media';
 import { JobsHandlers } from './jobs.handlers';
-import type { JobReportV1 } from './job-report-v1';
+import { issue, type JobReportV1 } from './job-report-v1';
 import type {
   JobContext,
   JobLogLevel,
@@ -296,6 +296,105 @@ function buildDurableAutoRunHistoryRecord(params: {
   };
 }
 
+function pickAutoRunInputString(
+  input: JsonObject | null | undefined,
+  key: string,
+): string {
+  const raw = input?.[key];
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function pickAutoRunInputSectionId(
+  input: JsonObject | null | undefined,
+): string | null {
+  const rawKey = pickAutoRunInputString(input, 'seedLibrarySectionKey');
+  if (rawKey) return rawKey;
+
+  const rawId = input?.['seedLibrarySectionId'];
+  if (typeof rawId === 'number' && Number.isFinite(rawId)) {
+    return String(Math.trunc(rawId));
+  }
+  if (typeof rawId === 'string' && rawId.trim()) return rawId.trim();
+  return null;
+}
+
+function buildAutoRunSkippedSummary(params: {
+  jobId: string;
+  trigger: JobRunTrigger;
+  dryRun: boolean;
+  input?: JsonObject | null;
+  reason: EnqueueConflictReason;
+}): JobReportV1 {
+  const mediaType = pickAutoRunInputString(
+    params.input,
+    'mediaType',
+  ).toLowerCase();
+  const isEpisode = mediaType === 'episode';
+  const mediaScope = isEpisode ? 'show' : 'movie';
+  const seedTitle = pickAutoRunInputString(params.input, 'seedTitle');
+  const plexUserId = pickAutoRunInputString(params.input, 'plexUserId');
+  const plexUserTitle = pickAutoRunInputString(params.input, 'plexUserTitle');
+  const seedLibrarySectionId = pickAutoRunInputSectionId(params.input);
+  const seedLibrarySectionTitle = pickAutoRunInputString(
+    params.input,
+    'seedLibrarySectionTitle',
+  );
+  const reasonMessage =
+    params.reason === 'already_processed'
+      ? `Skipped because this ${mediaScope} already completed this Plex-triggered auto-run before.`
+      : `Skipped because this ${mediaScope} already has a Plex-triggered auto-run queued or running.`;
+  const headline =
+    params.reason === 'already_processed'
+      ? `Auto-run skipped because this ${mediaScope} was already processed.`
+      : `Auto-run skipped because this ${mediaScope} is already queued or running.`;
+
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: params.jobId,
+    dryRun: params.dryRun,
+    trigger: params.trigger,
+    headline,
+    sections: [],
+    tasks: [
+      {
+        id: 'auto_run_dedupe',
+        title: 'Plex auto-run dedupe',
+        status: 'skipped',
+        facts: [
+          { label: 'Reason', value: params.reason },
+          { label: 'Repeat scope', value: mediaScope },
+          { label: 'Media type', value: mediaType || 'unknown' },
+          { label: 'Plex user id', value: plexUserId || 'unknown' },
+          { label: 'Plex user', value: plexUserTitle || 'unknown' },
+          { label: 'Seed title', value: seedTitle || 'unknown' },
+          {
+            label: 'Seed library section',
+            value: seedLibrarySectionId ?? 'unknown',
+          },
+          {
+            label: 'Seed library title',
+            value: seedLibrarySectionTitle || 'unknown',
+          },
+        ],
+        issues: [issue('warn', reasonMessage)],
+      },
+    ],
+    issues: [issue('warn', reasonMessage)],
+    raw: {
+      skipped: true,
+      reason: params.reason,
+      mediaType: mediaType || null,
+      repeatScope: mediaScope,
+      plexUserId: plexUserId || null,
+      plexUserTitle: plexUserTitle || null,
+      seedTitle: seedTitle || null,
+      seedLibrarySectionId,
+      seedLibrarySectionTitle: seedLibrarySectionTitle || null,
+    },
+  };
+}
+
 function extractInputContext(input?: JsonObject): JsonObject | null {
   if (!input) return null;
   const raw = input as Record<string, unknown>;
@@ -521,6 +620,62 @@ export class JobsService implements OnModuleInit {
     input?: JsonObject;
   }) {
     return this.serializeRun(await this.enqueueRun(params));
+  }
+
+  async recordAutoRunSkippedRun(params: {
+    jobId: string;
+    trigger: JobRunTrigger;
+    dryRun: boolean;
+    userId: string;
+    input?: JsonObject;
+    reason: EnqueueConflictReason;
+  }) {
+    const definition = findJobDefinition(params.jobId);
+    if (!definition) {
+      throw new NotFoundException(`Unknown job: ${params.jobId}`);
+    }
+
+    const now = new Date();
+    const summary = buildAutoRunSkippedSummary({
+      jobId: params.jobId,
+      trigger: params.trigger,
+      dryRun: params.dryRun,
+      input: params.input ?? null,
+      reason: params.reason,
+    });
+
+    const run = await this.prisma.$transaction(async (tx) => {
+      return await tx.jobRun.create({
+        data: {
+          jobId: params.jobId,
+          userId: params.userId,
+          trigger: params.trigger,
+          dryRun: params.dryRun,
+          status: 'SUCCESS',
+          startedAt: now,
+          queuedAt: now,
+          executionStartedAt: now,
+          finishedAt: now,
+          input: params.input ?? Prisma.DbNull,
+          summary,
+          errorMessage: null,
+          queueFingerprint: null,
+          claimedAt: null,
+          heartbeatAt: null,
+          workerId: null,
+        },
+        select: RUN_SAFE_SELECT,
+      });
+    });
+
+    this.logQueueDecision('auto_run_skip_recorded', {
+      jobId: params.jobId,
+      trigger: params.trigger,
+      reason: params.reason,
+      runId: run.id,
+    });
+
+    return this.serializeRun(run);
   }
 
   async startQueuedJob(params: { runId: string }) {
@@ -961,6 +1116,57 @@ export class JobsService implements OnModuleInit {
     return state;
   }
 
+  private async findExistingDurableAutoRunHistory(
+    tx: Prisma.TransactionClient,
+    params: {
+      jobId: string;
+      durableHistory: NonNullable<
+        ReturnType<typeof buildAutoRunMediaHistoryPayload>
+      >;
+    },
+  ) {
+    const { durableHistory } = params;
+    const existing = await tx.autoRunMediaHistory.findUnique({
+      where: {
+        jobId_mediaFingerprint: {
+          jobId: params.jobId,
+          mediaFingerprint: durableHistory.mediaFingerprint,
+        },
+      },
+      select: { id: true },
+    });
+    if (existing || durableHistory.mediaType !== 'episode') return existing;
+
+    if (durableHistory.showRatingKey) {
+      const existingByShowRatingKey = await tx.autoRunMediaHistory.findFirst({
+        where: {
+          jobId: params.jobId,
+          mediaType: 'episode',
+          plexUserId: durableHistory.plexUserId,
+          librarySectionKey: durableHistory.librarySectionKey,
+          showRatingKey: durableHistory.showRatingKey,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      });
+      if (existingByShowRatingKey) return existingByShowRatingKey;
+    }
+
+    if (!durableHistory.seedTitle) return null;
+
+    return await tx.autoRunMediaHistory.findFirst({
+      where: {
+        jobId: params.jobId,
+        mediaType: 'episode',
+        plexUserId: durableHistory.plexUserId,
+        librarySectionKey: durableHistory.librarySectionKey,
+        seedTitle: durableHistory.seedTitle,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+  }
+
   private async enqueueRun(params: {
     jobId: string;
     trigger: JobRunTrigger;
@@ -1048,14 +1254,9 @@ export class JobsService implements OnModuleInit {
         params.input &&
         buildAutoRunMediaHistoryPayload(params.input);
       if (durableHistory) {
-        const existing = await tx.autoRunMediaHistory.findUnique({
-          where: {
-            jobId_mediaFingerprint: {
-              jobId: params.jobId,
-              mediaFingerprint: durableHistory.mediaFingerprint,
-            },
-          },
-          select: { id: true },
+        const existing = await this.findExistingDurableAutoRunHistory(tx, {
+          jobId: params.jobId,
+          durableHistory,
         });
         if (existing) {
           this.logQueueDecision('enqueue_deduped', {

@@ -21,6 +21,7 @@ function makeController() {
   };
   const jobsService = {
     runJob: jest.fn(),
+    recordAutoRunSkippedRun: jest.fn(),
   };
   const authService = {
     getFirstAdminUserId: jest.fn(),
@@ -77,6 +78,29 @@ function makeMovieWebhookPayload() {
         ratingKey: 'movie-1',
         librarySectionID: 1,
         librarySectionTitle: 'Movies',
+      },
+    }),
+  };
+}
+
+function makeEpisodeWebhookPayload(
+  overrides?: Partial<Record<string, unknown>>,
+) {
+  return {
+    payload: JSON.stringify({
+      event: 'media.scrobble',
+      Account: { id: 2, title: 'Alice' },
+      Metadata: {
+        type: 'episode',
+        title: 'Pilot',
+        grandparentTitle: 'Lost',
+        grandparentRatingKey: 'show-1',
+        parentIndex: 1,
+        index: 1,
+        ratingKey: 'episode-1',
+        librarySectionID: 4,
+        librarySectionTitle: 'TV Shows',
+        ...(overrides ?? {}),
       },
     }),
   };
@@ -168,6 +192,81 @@ describe('WebhooksController plex webhook auto-runs', () => {
       immaculateTastePoints: 'already_processed',
     });
     expect(jobsService.runJob).toHaveBeenCalledTimes(2);
+    expect(jobsService.recordAutoRunSkippedRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: 'immaculateTastePoints',
+        trigger: 'auto',
+        reason: 'already_processed',
+      }),
+    );
+    const firstFingerprint = getRunJobFingerprint(jobsService, 0);
+    const secondFingerprint = getRunJobFingerprint(jobsService, 1);
+    expect(firstFingerprint).toBe(secondFingerprint);
+  });
+
+  it('skips later episodes of the same show and records a skipped run report', async () => {
+    const { controller, jobsService, settingsService } = makeController();
+    settingsService.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          webhookEnabled: {
+            watchedMovieRecommendations: true,
+            immaculateTastePoints: true,
+          },
+        },
+      },
+      secrets: {},
+    });
+    jobsService.runJob
+      .mockResolvedValueOnce({ id: 'immaculate-run-1' })
+      .mockRejectedValueOnce(makeAlreadyProcessedConflict());
+
+    const request = {
+      ip: '127.0.0.1',
+      headers: { 'user-agent': 'jest' },
+    } as never;
+
+    await controller.plexWebhook(
+      request,
+      makeEpisodeWebhookPayload({
+        title: 'Pilot',
+        index: 1,
+        ratingKey: 'episode-1',
+      }) as never,
+      [],
+    );
+    const result = await controller.plexWebhook(
+      request,
+      makeEpisodeWebhookPayload({
+        title: 'Tabula Rasa',
+        index: 4,
+        ratingKey: 'episode-4',
+      }) as never,
+      [],
+    );
+
+    expect(result.triggered).toBe(false);
+    expect(result.skipped).toEqual({
+      watchedMovieRecommendations: 'polling_only',
+      immaculateTastePoints: 'already_processed',
+    });
+    expect(jobsService.runJob).toHaveBeenCalledTimes(2);
+    const skippedCall = jobsService.recordAutoRunSkippedRun.mock.calls[0] as [
+      {
+        jobId: string;
+        reason: string;
+        input: {
+          seedTitle: string;
+          showRatingKey: string;
+          episodeNumber: number;
+        };
+      },
+    ];
+    expect(skippedCall[0].jobId).toBe('immaculateTastePoints');
+    expect(skippedCall[0].reason).toBe('already_processed');
+    expect(skippedCall[0].input.seedTitle).toBe('Lost');
+    expect(skippedCall[0].input.showRatingKey).toBe('show-1');
+    expect(skippedCall[0].input.episodeNumber).toBe(4);
     const firstFingerprint = getRunJobFingerprint(jobsService, 0);
     const secondFingerprint = getRunJobFingerprint(jobsService, 1);
     expect(firstFingerprint).toBe(secondFingerprint);
