@@ -25,6 +25,7 @@ type FinalizeRunningRun = (params: {
 }) => Promise<boolean>;
 
 type FinalizeRunningRunParams = Parameters<FinalizeRunningRun>[0];
+type BackfillLegacyAutoRunSkippedReports = () => Promise<void>;
 
 type EstimateHistoryGroups = Map<
   string,
@@ -70,6 +71,15 @@ function callCreateJobContext(
     }
   ).createJobContext;
   return createJobContext.call(service, params);
+}
+
+function callBackfillLegacyAutoRunSkippedReports(service: JobsService) {
+  const backfillLegacyAutoRunSkippedReports = (
+    service as unknown as {
+      backfillLegacyAutoRunSkippedReports: BackfillLegacyAutoRunSkippedReports;
+    }
+  ).backfillLegacyAutoRunSkippedReports;
+  return backfillLegacyAutoRunSkippedReports.call(service);
 }
 
 function callBuildEstimateHistoryGroups(
@@ -338,6 +348,7 @@ function makeService() {
       count: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
     },
     jobQueueState: {
@@ -377,6 +388,7 @@ function makeService() {
   const privateService = service as unknown as JobsServicePrivate;
   tx.jobRun.count.mockResolvedValue(0);
   tx.jobRun.findFirst.mockResolvedValue(null);
+  tx.jobRun.update.mockResolvedValue({});
   tx.jobQueueState.update.mockResolvedValue(makeQueueState());
   tx.jobLogLine.create.mockResolvedValue({});
   tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
@@ -452,7 +464,7 @@ describe('JobsService durable auto-run media dedupe', () => {
           mediaFingerprint: input.autoRunMediaFingerprint,
         },
       },
-      select: { id: true },
+      select: { id: true, seedTitle: true, firstRunId: true },
     });
     expect(tx.jobRun.create).not.toHaveBeenCalled();
   });
@@ -488,7 +500,7 @@ describe('JobsService durable auto-run media dedupe', () => {
         showRatingKey: 'show-1',
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true },
+      select: { id: true, seedTitle: true, firstRunId: true },
     });
     expect(tx.jobRun.create).not.toHaveBeenCalled();
   });
@@ -524,7 +536,7 @@ describe('JobsService durable auto-run media dedupe', () => {
         seedTitle: 'Lost',
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true },
+      select: { id: true, seedTitle: true, firstRunId: true },
     });
   });
 
@@ -687,9 +699,166 @@ describe('JobsService durable auto-run media dedupe', () => {
         reason: 'already_processed',
         repeatScope: 'show',
         seedTitle: 'Rooster',
+        previouslyProcessedTitle: null,
+        previousAutoRunId: null,
       },
     });
     expect(tx.autoRunMediaHistory.upsert).not.toHaveBeenCalled();
+  });
+
+  it('includes the previously processed title in skipped auto-run reports when available', async () => {
+    const { service, tx } = makeService();
+    const input = makeEpisodeRunInput({
+      seedTitle: 'Rooster',
+      showRatingKey: 'show-rooster',
+      seedRatingKey: 'episode-7',
+      episodeNumber: 7,
+    });
+    tx.autoRunMediaHistory.findUnique.mockResolvedValue({
+      id: 'history-rooster',
+      seedTitle: 'Rooster',
+      firstRunId: 'run-rooster-1',
+    });
+    tx.jobRun.create.mockResolvedValue(
+      makeFinishedRun({
+        runId: 'skipped-run-2',
+        jobId: 'watchedMovieRecommendations',
+        trigger: 'auto',
+      }),
+    );
+
+    await service.recordAutoRunSkippedRun({
+      jobId: 'watchedMovieRecommendations',
+      trigger: 'auto',
+      dryRun: false,
+      userId: 'admin-user',
+      input,
+      reason: 'already_processed',
+    });
+
+    const createArg = getCreatedRunArg(tx);
+    expect(createArg?.data['summary']).toMatchObject({
+      issues: [
+        {
+          level: 'warn',
+          message:
+            'Skipped because this show already completed this Plex-triggered auto-run before. Previously processed show: Rooster.',
+        },
+      ],
+      raw: {
+        previouslyProcessedTitle: 'Rooster',
+        previousAutoRunId: 'run-rooster-1',
+      },
+    });
+    const summary = createArg?.data['summary'];
+    expect(summary).toBeTruthy();
+    expect(summary).not.toBeNull();
+    expect(typeof summary).toBe('object');
+    expect(Array.isArray(summary)).toBe(false);
+    const taskList = (summary as Record<string, unknown>)['tasks'];
+    const tasks = Array.isArray(taskList) ? taskList : [];
+    const autoRunTask = tasks.find((task) => {
+      if (!task || typeof task !== 'object' || Array.isArray(task))
+        return false;
+      return (task as Record<string, unknown>)['id'] === 'auto_run_dedupe';
+    }) as Record<string, unknown> | undefined;
+    expect(autoRunTask).toBeDefined();
+    expect(autoRunTask?.['facts']).toEqual(
+      expect.arrayContaining([
+        {
+          label: 'Previously processed title',
+          value: 'Rooster',
+        },
+        {
+          label: 'Previous auto-run id',
+          value: 'run-rooster-1',
+        },
+      ]),
+    );
+    expect(tx.autoRunMediaHistory.upsert).not.toHaveBeenCalled();
+  });
+
+  it('backfills older already-processed skipped reports with the previous title', async () => {
+    const { service, tx, prisma } = makeService();
+    const input = makeEpisodeRunInput({
+      seedTitle: 'Rooster',
+      showRatingKey: 'show-rooster',
+      seedRatingKey: 'episode-9',
+      episodeNumber: 9,
+    });
+    const legacySummary = {
+      template: 'jobReportV1' as const,
+      version: 1 as const,
+      jobId: 'watchedMovieRecommendations',
+      dryRun: false,
+      trigger: 'auto' as const,
+      headline: 'Auto-run skipped because this show was already processed.',
+      sections: [],
+      tasks: [],
+      issues: [
+        {
+          level: 'warn' as const,
+          message:
+            'Skipped because this show already completed this Plex-triggered auto-run before.',
+        },
+      ],
+      raw: {
+        skipped: true,
+        reason: 'already_processed',
+        mediaType: 'episode',
+        repeatScope: 'show',
+        plexUserId: 'plex-user-2',
+        plexUserTitle: 'Alice',
+        seedTitle: 'Rooster',
+        seedLibrarySectionId: '4',
+        seedLibrarySectionTitle: 'TV Shows',
+      },
+    };
+    prisma.jobRun.findMany.mockResolvedValue([
+      {
+        ...makeFinishedRun({
+          runId: 'legacy-skip-run-1',
+          jobId: 'watchedMovieRecommendations',
+          trigger: 'auto',
+          summary: legacySummary,
+        }),
+        input,
+        queueFingerprint: null,
+        claimedAt: null,
+        heartbeatAt: null,
+        workerId: null,
+      },
+    ]);
+    tx.autoRunMediaHistory.findUnique.mockResolvedValue({
+      id: 'history-rooster',
+      seedTitle: 'Rooster',
+      firstRunId: 'run-rooster-1',
+    });
+
+    await callBackfillLegacyAutoRunSkippedReports(service);
+
+    const updateCall = tx.jobRun.update.mock.calls[0] as
+      | [
+          {
+            where: { id: string };
+            data: { summary: Record<string, unknown> };
+          },
+        ]
+      | undefined;
+    expect(updateCall?.[0].where).toEqual({ id: 'legacy-skip-run-1' });
+    expect(updateCall?.[0].data.summary).toMatchObject({
+      issues: [
+        {
+          level: 'warn',
+          message:
+            'Skipped because this show already completed this Plex-triggered auto-run before. Previously processed show: Rooster.',
+        },
+      ],
+      raw: {
+        previouslyProcessedTitle: 'Rooster',
+        previousAutoRunId: 'run-rooster-1',
+      },
+    });
   });
 
   it('coalesces rapid same-step summary patches into a single deferred write', async () => {
