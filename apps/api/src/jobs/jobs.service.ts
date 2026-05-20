@@ -83,6 +83,12 @@ const RUNTIME_HISTORY_SELECT = {
   finishedAt: true,
 } satisfies Prisma.JobRunSelect;
 
+const AUTO_RUN_HISTORY_MATCH_SELECT = {
+  id: true,
+  seedTitle: true,
+  firstRunId: true,
+} satisfies Prisma.AutoRunMediaHistorySelect;
+
 type SafeRunRecord = Prisma.JobRunGetPayload<{
   select: typeof RUN_SAFE_SELECT;
 }>;
@@ -91,6 +97,9 @@ type QueueRunRecord = Prisma.JobRunGetPayload<{
 }>;
 type RuntimeHistoryRecord = Prisma.JobRunGetPayload<{
   select: typeof RUNTIME_HISTORY_SELECT;
+}>;
+type AutoRunHistoryMatch = Prisma.AutoRunMediaHistoryGetPayload<{
+  select: typeof AUTO_RUN_HISTORY_MATCH_SELECT;
 }>;
 
 type QueueEstimateSource =
@@ -324,6 +333,8 @@ function buildAutoRunSkippedSummary(params: {
   dryRun: boolean;
   input?: JsonObject | null;
   reason: EnqueueConflictReason;
+  priorProcessedTitle?: string | null;
+  priorProcessedRunId?: string | null;
 }): JobReportV1 {
   const mediaType = pickAutoRunInputString(
     params.input,
@@ -339,14 +350,50 @@ function buildAutoRunSkippedSummary(params: {
     params.input,
     'seedLibrarySectionTitle',
   );
-  const reasonMessage =
+  const priorProcessedTitle = String(params.priorProcessedTitle ?? '').trim();
+  const priorProcessedRunId = String(params.priorProcessedRunId ?? '').trim();
+  const baseReasonMessage =
     params.reason === 'already_processed'
       ? `Skipped because this ${mediaScope} already completed this Plex-triggered auto-run before.`
       : `Skipped because this ${mediaScope} already has a Plex-triggered auto-run queued or running.`;
+  const reasonMessage =
+    params.reason === 'already_processed' && priorProcessedTitle
+      ? `${baseReasonMessage} Previously processed ${mediaScope}: ${priorProcessedTitle}.`
+      : baseReasonMessage;
   const headline =
     params.reason === 'already_processed'
       ? `Auto-run skipped because this ${mediaScope} was already processed.`
       : `Auto-run skipped because this ${mediaScope} is already queued or running.`;
+  const facts: NonNullable<JobReportV1['tasks'][number]['facts']> = [
+    { label: 'Reason', value: params.reason },
+    { label: 'Repeat scope', value: mediaScope },
+    { label: 'Media type', value: mediaType || 'unknown' },
+    { label: 'Plex user id', value: plexUserId || 'unknown' },
+    { label: 'Plex user', value: plexUserTitle || 'unknown' },
+    { label: 'Seed title', value: seedTitle || 'unknown' },
+    {
+      label: 'Seed library section',
+      value: seedLibrarySectionId ?? 'unknown',
+    },
+    {
+      label: 'Seed library title',
+      value: seedLibrarySectionTitle || 'unknown',
+    },
+  ];
+
+  if (params.reason === 'already_processed' && priorProcessedTitle) {
+    facts.push({
+      label: 'Previously processed title',
+      value: priorProcessedTitle,
+    });
+  }
+
+  if (params.reason === 'already_processed' && priorProcessedRunId) {
+    facts.push({
+      label: 'Previous auto-run id',
+      value: priorProcessedRunId,
+    });
+  }
 
   return {
     template: 'jobReportV1',
@@ -361,22 +408,7 @@ function buildAutoRunSkippedSummary(params: {
         id: 'auto_run_dedupe',
         title: 'Plex auto-run dedupe',
         status: 'skipped',
-        facts: [
-          { label: 'Reason', value: params.reason },
-          { label: 'Repeat scope', value: mediaScope },
-          { label: 'Media type', value: mediaType || 'unknown' },
-          { label: 'Plex user id', value: plexUserId || 'unknown' },
-          { label: 'Plex user', value: plexUserTitle || 'unknown' },
-          { label: 'Seed title', value: seedTitle || 'unknown' },
-          {
-            label: 'Seed library section',
-            value: seedLibrarySectionId ?? 'unknown',
-          },
-          {
-            label: 'Seed library title',
-            value: seedLibrarySectionTitle || 'unknown',
-          },
-        ],
+        facts,
         issues: [issue('warn', reasonMessage)],
       },
     ],
@@ -391,8 +423,21 @@ function buildAutoRunSkippedSummary(params: {
       seedTitle: seedTitle || null,
       seedLibrarySectionId,
       seedLibrarySectionTitle: seedLibrarySectionTitle || null,
+      previouslyProcessedTitle: priorProcessedTitle || null,
+      previousAutoRunId: priorProcessedRunId || null,
     },
   };
+}
+
+function shouldBackfillLegacyAutoRunSkippedSummary(
+  summary: JsonObject | null | undefined,
+) {
+  if (!summary || summary['template'] !== 'jobReportV1') return false;
+  const raw = asJsonObject(summary['raw']);
+  if (!raw || raw['skipped'] !== true) return false;
+  if (raw['reason'] !== 'already_processed') return false;
+  const previousTitle = raw['previouslyProcessedTitle'];
+  return typeof previousTitle !== 'string' || !previousTitle.trim();
 }
 
 function extractInputContext(input?: JsonObject): JsonObject | null {
@@ -537,6 +582,12 @@ export class JobsService implements OnModuleInit {
   async onModuleInit() {
     await this.ensureQueueState();
     await this.recoverQueueOnStartup();
+    await this.backfillLegacyAutoRunSkippedReports().catch((error) => {
+      const message = errToMessage(error);
+      this.logger.warn(
+        `Legacy auto-run skip rewind backfill failed: ${message}`,
+      );
+    });
     void this.scheduleQueuePump('startup');
   }
 
@@ -636,15 +687,29 @@ export class JobsService implements OnModuleInit {
     }
 
     const now = new Date();
-    const summary = buildAutoRunSkippedSummary({
-      jobId: params.jobId,
-      trigger: params.trigger,
-      dryRun: params.dryRun,
-      input: params.input ?? null,
-      reason: params.reason,
-    });
+    const durableHistory =
+      params.reason === 'already_processed' &&
+      shouldUseDurableAutoRunDedupe(params) &&
+      params.input
+        ? buildAutoRunMediaHistoryPayload(params.input)
+        : null;
 
     const run = await this.prisma.$transaction(async (tx) => {
+      const matchedHistory = durableHistory
+        ? await this.findExistingDurableAutoRunHistory(tx, {
+            jobId: params.jobId,
+            durableHistory,
+          })
+        : null;
+      const summary = buildAutoRunSkippedSummary({
+        jobId: params.jobId,
+        trigger: params.trigger,
+        dryRun: params.dryRun,
+        input: params.input ?? null,
+        reason: params.reason,
+        priorProcessedTitle: matchedHistory?.seedTitle ?? null,
+        priorProcessedRunId: matchedHistory?.firstRunId ?? null,
+      });
       return await tx.jobRun.create({
         data: {
           jobId: params.jobId,
@@ -940,6 +1005,81 @@ export class JobsService implements OnModuleInit {
     return await this.getRun({ userId: params.userId, runId: params.runId });
   }
 
+  private async backfillLegacyAutoRunSkippedReports() {
+    const candidateRuns = await this.prisma.jobRun.findMany({
+      where: {
+        jobId: { in: Array.from(DURABLE_AUTO_RUN_JOB_ID_SET) },
+        trigger: 'auto',
+        status: 'SUCCESS',
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      select: RUN_QUEUE_SELECT,
+    });
+
+    let scanned = 0;
+    let updated = 0;
+    let unresolved = 0;
+
+    for (const run of candidateRuns) {
+      const summary = asJsonObject(run.summary) ?? null;
+      if (!shouldBackfillLegacyAutoRunSkippedSummary(summary)) continue;
+
+      const input = asJsonObject(run.input) ?? null;
+      if (!input) {
+        unresolved += 1;
+        continue;
+      }
+
+      const durableHistory = buildAutoRunMediaHistoryPayload(input);
+      if (!durableHistory) {
+        unresolved += 1;
+        continue;
+      }
+
+      scanned += 1;
+      const didUpdate = await this.prisma.$transaction(async (tx) => {
+        const matchedHistory = await this.findExistingDurableAutoRunHistory(
+          tx,
+          {
+            jobId: run.jobId,
+            durableHistory,
+          },
+        );
+        if (!matchedHistory) return false;
+
+        const rebuiltSummary = buildAutoRunSkippedSummary({
+          jobId: run.jobId,
+          trigger: run.trigger,
+          dryRun: run.dryRun,
+          input,
+          reason: 'already_processed',
+          priorProcessedTitle: matchedHistory.seedTitle ?? null,
+          priorProcessedRunId: matchedHistory.firstRunId ?? null,
+        });
+        if (JSON.stringify(rebuiltSummary) === JSON.stringify(summary)) {
+          return false;
+        }
+
+        await tx.jobRun.update({
+          where: { id: run.id },
+          data: { summary: rebuiltSummary },
+        });
+        return true;
+      });
+
+      if (didUpdate) {
+        updated += 1;
+      } else {
+        unresolved += 1;
+      }
+    }
+
+    if (!scanned && !updated && !unresolved) return;
+    this.logger.log(
+      `Legacy auto-run skip rewind backfill scanned=${scanned} updated=${updated} unresolved=${unresolved}`,
+    );
+  }
+
   async getQueueSnapshot(params: { userId: string }) {
     const now = new Date();
     const [state, pendingRuns, activeRun, estimateHistory] = await Promise.all([
@@ -1124,7 +1264,7 @@ export class JobsService implements OnModuleInit {
         ReturnType<typeof buildAutoRunMediaHistoryPayload>
       >;
     },
-  ) {
+  ): Promise<AutoRunHistoryMatch | null> {
     const { durableHistory } = params;
     const existing = await tx.autoRunMediaHistory.findUnique({
       where: {
@@ -1133,7 +1273,7 @@ export class JobsService implements OnModuleInit {
           mediaFingerprint: durableHistory.mediaFingerprint,
         },
       },
-      select: { id: true },
+      select: AUTO_RUN_HISTORY_MATCH_SELECT,
     });
     if (existing || durableHistory.mediaType !== 'episode') return existing;
 
@@ -1147,7 +1287,7 @@ export class JobsService implements OnModuleInit {
           showRatingKey: durableHistory.showRatingKey,
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true },
+        select: AUTO_RUN_HISTORY_MATCH_SELECT,
       });
       if (existingByShowRatingKey) return existingByShowRatingKey;
     }
@@ -1163,7 +1303,7 @@ export class JobsService implements OnModuleInit {
         seedTitle: durableHistory.seedTitle,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true },
+      select: AUTO_RUN_HISTORY_MATCH_SELECT,
     });
   }
 
