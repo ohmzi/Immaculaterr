@@ -8,6 +8,21 @@ export type RadarrMovie = Record<string, unknown> & {
   title?: string;
   tmdbId?: number;
   monitored?: boolean;
+  hasFile?: boolean;
+  movieFileId?: number;
+  movieFile?: Record<string, unknown> & {
+    id?: number;
+    path?: string;
+    relativePath?: string;
+  };
+};
+
+export type RadarrHistoryRecord = {
+  id: number;
+  movieId: number | null;
+  eventType: string | null;
+  sourceTitle: string | null;
+  date: string | null;
 };
 
 export type RadarrRootFolder = {
@@ -551,8 +566,205 @@ export class RadarrService {
     }
   }
 
+  async deleteMovieFile(params: {
+    baseUrl: string;
+    apiKey: string;
+    movieFileId: number;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, movieFileId } = params;
+    const url = this.buildApiUrl(baseUrl, `api/v3/moviefile/${movieFileId}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr delete movie file failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr delete movie file failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async listMovieHistory(params: {
+    baseUrl: string;
+    apiKey: string;
+    movieId: number;
+  }): Promise<RadarrHistoryRecord[]> {
+    const { baseUrl, apiKey, movieId } = params;
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/history/movie?movieId=${movieId}&eventType=1`,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr list movie history failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const records =
+        isRecord(data) && Array.isArray(data['records'])
+          ? (data['records'] as Array<Record<string, unknown>>)
+          : Array.isArray(data)
+            ? (data as Array<Record<string, unknown>>)
+            : [];
+
+      const out: RadarrHistoryRecord[] = [];
+      for (const r of records) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        const movieRaw =
+          typeof r['movieId'] === 'number'
+            ? r['movieId']
+            : Number(r['movieId']);
+        out.push({
+          id: Math.trunc(id),
+          movieId: Number.isFinite(movieRaw) ? Math.trunc(movieRaw) : null,
+          eventType: typeof r['eventType'] === 'string' ? r['eventType'] : null,
+          sourceTitle:
+            typeof r['sourceTitle'] === 'string' ? r['sourceTitle'] : null,
+          date: typeof r['date'] === 'string' ? r['date'] : null,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr list movie history failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async markHistoryFailed(params: {
+    baseUrl: string;
+    apiKey: string;
+    historyId: number;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, historyId } = params;
+    const url = this.buildApiUrl(baseUrl, `api/v3/history/failed/${historyId}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: '{}',
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr mark history failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr mark history failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async searchMovies(params: {
+    baseUrl: string;
+    apiKey: string;
+    movieIds: number[];
+  }): Promise<boolean> {
+    const { baseUrl, apiKey } = params;
+    const movieIds = (params.movieIds ?? [])
+      .map((id) => Math.trunc(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (movieIds.length === 0) return false;
+
+    const url = this.buildApiUrl(baseUrl, 'api/v3/command');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({ name: 'MoviesSearch', movieIds }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr movie search failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr movie search failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private readonly buildApiUrl = (baseUrl: string, path: string) => {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

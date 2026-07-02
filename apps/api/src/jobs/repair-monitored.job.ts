@@ -2,15 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import {
   PlexServerService,
+  type PlexPartPlayableProbeResult,
   type PlexVerifiedEpisodeAvailability,
 } from '../plex/plex-server.service';
+import { RadarrService } from '../radarr/radarr.service';
 import {
   SonarrService,
   type SonarrEpisode,
   type SonarrEpisodeFile,
 } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
-import type { JobReportV1 } from './job-report-v1';
+import type { JobReportV1, JobReportTask } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 
 const MAX_REPORTED_ITEMS = 100;
@@ -78,6 +80,9 @@ function pushCapped(list: string[], item: string) {
   list.push(item);
 }
 
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 // ---- Path mapping helpers (pure; unit-tested) -----------------------------
 
 export type PathPrefixMapping = { from: string; to: string };
@@ -101,17 +106,17 @@ function commonSuffixLength(a: string[], b: string[]): number {
 }
 
 /**
- * Derives Sonarr -> Plex path prefix mappings by matching each Sonarr root
- * folder to the Plex library location that shares the longest trailing path
- * suffix (e.g. `/data/x/Shows` <-> `/media/x/Shows` yields `/data` -> `/media`).
+ * Derives *arr -> Plex path prefix mappings by matching each *arr root folder
+ * to the Plex library location that shares the longest trailing path suffix
+ * (e.g. `/data/x/Shows` <-> `/media/x/Shows` yields `/data` -> `/media`).
  */
 export function derivePathMap(
-  sonarrRoots: string[],
+  arrRoots: string[],
   plexLocations: string[],
 ): PathPrefixMapping[] {
   const seen = new Set<string>();
   const out: PathPrefixMapping[] = [];
-  for (const root of sonarrRoots) {
+  for (const root of arrRoots) {
     const rootSegs = splitSegments(root);
     let best: { loc: string; suffix: number } | null = null;
     for (const loc of plexLocations) {
@@ -138,7 +143,7 @@ function segmentStartsWith(path: string, prefix: string): boolean {
 }
 
 /**
- * Translates a Sonarr path into the Plex namespace using the longest matching
+ * Translates an *arr path into the Plex namespace using the longest matching
  * prefix mapping. Returns the original path when no mapping applies.
  */
 export function translatePath(
@@ -159,11 +164,27 @@ function dirnameOf(path: string): string {
   return idx > 0 ? path.slice(0, idx) : path;
 }
 
+function readPathOverrides(
+  settings: Record<string, unknown>,
+  key: string,
+): PathPrefixMapping[] {
+  const raw = pick(settings, key);
+  if (!Array.isArray(raw)) return [];
+  const out: PathPrefixMapping[] = [];
+  for (const entry of raw) {
+    if (!isPlainObject(entry)) continue;
+    const from = typeof entry['from'] === 'string' ? entry['from'].trim() : '';
+    const to = typeof entry['to'] === 'string' ? entry['to'].trim() : '';
+    if (from && to) out.push({ from, to });
+  }
+  return out;
+}
+
 // ---- Job -------------------------------------------------------------------
 
-type ShowLocation = { sectionKey: string; path: string };
+type PlexLocation = { sectionKey: string; path: string };
 
-type RepairCandidate = {
+type EpisodeRepairCandidate = {
   seriesTitle: string;
   season: number;
   episode: number;
@@ -171,28 +192,38 @@ type RepairCandidate = {
   episodeFileId: number;
   episode_: SonarrEpisode;
   sonarrPath: string;
-  translatedFolder: string;
   sectionKey: string;
   showRatingKeys: string[];
 };
+
+type MovieRepairCandidate = {
+  title: string;
+  movieId: number;
+  movieFileId: number;
+  tmdbId: number;
+  radarrPath: string;
+  sectionKey: string;
+};
+
+type Progress = (params: {
+  step: string;
+  message: string;
+  current?: number;
+  total?: number;
+  unit?: string;
+}) => void;
 
 @Injectable()
 export class RepairMonitoredJob {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly plexServer: PlexServerService,
+    private readonly radarr: RadarrService,
     private readonly sonarr: SonarrService,
   ) {}
 
-  // skipcq: JS-R1005 - Coordinates Plex/Sonarr reconcile + repair with explicit branch handling.
   async run(ctx: JobContext): Promise<JobRunResult> {
-    const setProgress = (params: {
-      step: string;
-      message: string;
-      current?: number;
-      total?: number;
-      unit?: string;
-    }) => {
+    const setProgress: Progress = (params) => {
       const { step, message, current, total, unit } = params;
       void ctx
         .patchSummary({
@@ -221,6 +252,20 @@ export class RepairMonitoredJob {
       pickString(secrets, 'plexToken') ??
       requireString(secrets, 'plex.token');
 
+    const radarrBaseUrl =
+      pickString(settings, 'radarr.baseUrl') ??
+      pickString(settings, 'radarr.url') ??
+      null;
+    const radarrApiKey =
+      pickString(secrets, 'radarr.apiKey') ??
+      pickString(secrets, 'radarrApiKey') ??
+      null;
+    const radarrEnabledSetting = pickBool(settings, 'radarr.enabled');
+    const radarrIntegrationEnabled =
+      (radarrEnabledSetting ?? Boolean(radarrApiKey)) === true;
+    const radarrConfigured =
+      radarrIntegrationEnabled && Boolean(radarrBaseUrl && radarrApiKey);
+
     const sonarrBaseUrl =
       pickString(settings, 'sonarr.baseUrl') ??
       pickString(settings, 'sonarr.url') ??
@@ -235,93 +280,492 @@ export class RepairMonitoredJob {
     const sonarrConfigured =
       sonarrIntegrationEnabled && Boolean(sonarrBaseUrl && sonarrApiKey);
 
-    if (!sonarrConfigured) {
+    if (!radarrConfigured && !sonarrConfigured) {
       throw new Error(
-        'Repair Monitored requires Sonarr to be configured (baseUrl + apiKey).',
+        'Repair Monitored requires at least one configured integration: Radarr or Sonarr (baseUrl + apiKey).',
       );
     }
-    const sonarrUrl = sonarrBaseUrl as string;
-    const sonarrKey = sonarrApiKey as string;
-
-    // Counters
-    let totalSeries = 0;
-    let seriesProcessed = 0;
-    let episodesChecked = 0;
-    let confirmedInPlex = 0;
-    let unmonitored = 0;
-    let inPlexUnverified = 0;
-    let showsNotInPlex = 0;
-    let missingNoFile = 0;
-    let scannedFolders = 0;
-    let recoveredByScan = 0;
-    let deletedFiles = 0;
-    let blocklisted = 0;
-    let blocklistUnavailable = 0;
-    let searchQueued = 0;
-    let uncoveredPaths = 0;
-    let availabilityFailures = 0;
-    let actionFailures = 0;
-
-    const unmonitoredSamples: string[] = [];
-    const wouldRepairSamples: string[] = [];
-    const deletedSamples: string[] = [];
-    const blocklistUnavailableSamples: string[] = [];
-    const uncoveredSamples: string[] = [];
-    const recoveredSamples: string[] = [];
-    const stillMissingSamples: string[] = [];
-    const showsNotInPlexSamples: string[] = [];
 
     await ctx.info('repairMonitored: start', {
       dryRun: ctx.dryRun,
       plexBaseUrl,
-      sonarrBaseUrl,
+      radarrConfigured,
+      sonarrConfigured,
+      ...(radarrConfigured ? { radarrBaseUrl } : {}),
+      ...(sonarrConfigured ? { sonarrBaseUrl } : {}),
     });
     setProgress({ step: 'plex_discovery', message: 'Discovering Plex…' });
 
-    // --- Plex library discovery -------------------------------------------
+    // Shared Plex discovery.
     const sections = await this.plexServer.getSections({
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
-    const tvSections = sections.filter(
-      (s) => (s.type ?? '').toLowerCase() === 'show',
-    );
-
     const sectionLocations = await this.plexServer.getSectionLocations({
       baseUrl: plexBaseUrl,
       token: plexToken,
     });
-    const showLocations: ShowLocation[] = [];
+    const showLocations: PlexLocation[] = [];
+    const movieLocations: PlexLocation[] = [];
     for (const [sectionKey, info] of sectionLocations.entries()) {
-      if ((info.type ?? '').toLowerCase() !== 'show') continue;
-      for (const path of info.locations) {
-        showLocations.push({ sectionKey, path });
+      const bucket =
+        (info.type ?? '').toLowerCase() === 'show'
+          ? showLocations
+          : (info.type ?? '').toLowerCase() === 'movie'
+            ? movieLocations
+            : null;
+      if (!bucket) continue;
+      for (const path of info.locations) bucket.push({ sectionKey, path });
+    }
+
+    const radarrResult = radarrConfigured
+      ? await this.runRadarrPass({
+          ctx,
+          setProgress,
+          settings,
+          plexBaseUrl,
+          plexToken,
+          radarrBaseUrl: radarrBaseUrl as string,
+          radarrApiKey: radarrApiKey as string,
+          movieSections: sections.filter(
+            (s) => (s.type ?? '').toLowerCase() === 'movie',
+          ),
+          movieLocations,
+        })
+      : disabledRadarrResult();
+
+    const sonarrResult = sonarrConfigured
+      ? await this.runSonarrPass({
+          ctx,
+          setProgress,
+          settings,
+          plexBaseUrl,
+          plexToken,
+          sonarrBaseUrl: sonarrBaseUrl as string,
+          sonarrApiKey: sonarrApiKey as string,
+          tvSections: sections.filter(
+            (s) => (s.type ?? '').toLowerCase() === 'show',
+          ),
+          showLocations,
+        })
+      : disabledSonarrResult();
+
+    await ctx.patchSummary({
+      progress: {
+        step: 'done',
+        message: 'Completed.',
+        updatedAt: new Date().toISOString(),
+      },
+    });
+    const raw: JsonObject = {
+      phase: 'repairMonitored',
+      dryRun: ctx.dryRun,
+      radarr: radarrResult,
+      sonarr: sonarrResult,
+    };
+    await ctx.info('repairMonitored: done', raw);
+    return {
+      summary: buildReport({
+        ctx,
+        raw,
+        radarr: radarrResult,
+        sonarr: sonarrResult,
+      }) as unknown as JsonObject,
+    };
+  }
+
+  // ---- Radarr (movies) ----------------------------------------------------
+
+  // skipcq: JS-R1005 - Coordinates Plex/Radarr reconcile + repair with explicit branch handling.
+  private async runRadarrPass(params: {
+    ctx: JobContext;
+    setProgress: Progress;
+    settings: Record<string, unknown>;
+    plexBaseUrl: string;
+    plexToken: string;
+    radarrBaseUrl: string;
+    radarrApiKey: string;
+    movieSections: Array<{ key: string; title: string }>;
+    movieLocations: PlexLocation[];
+  }): Promise<RadarrResult> {
+    const {
+      ctx,
+      setProgress,
+      settings,
+      plexBaseUrl,
+      plexToken,
+      radarrBaseUrl,
+      radarrApiKey,
+      movieSections,
+      movieLocations,
+    } = params;
+
+    const result = disabledRadarrResult();
+    result.configured = true;
+
+    const roots = await this.radarr.listRootFolders({
+      baseUrl: radarrBaseUrl,
+      apiKey: radarrApiKey,
+    });
+    const pathMap = [
+      ...readPathOverrides(settings, 'radarr.plexPathMappings'),
+      ...derivePathMap(
+        roots.map((r) => r.path),
+        movieLocations.map((l) => l.path),
+      ),
+    ];
+    await ctx.info('repairMonitored[radarr]: path map', {
+      derived: pathMap,
+      radarrRoots: roots.map((r) => r.path),
+      plexMovieLocations: movieLocations.map((l) => l.path),
+    });
+
+    const buildTmdbMap = async () => {
+      const map = new Map<number, string[]>();
+      for (const sec of movieSections) {
+        const m = await this.plexServer.getMovieTmdbRatingKeysMapForSectionKey({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: sec.key,
+          sectionTitle: sec.title,
+        });
+        for (const [tmdbId, ratingKeys] of m.entries()) {
+          const prev = map.get(tmdbId) ?? [];
+          for (const rk of ratingKeys) if (!prev.includes(rk)) prev.push(rk);
+          map.set(tmdbId, prev);
+        }
+      }
+      return map;
+    };
+
+    setProgress({ step: 'radarr_index', message: 'Indexing Plex movies…' });
+    const tmdbRatingKeys = await buildTmdbMap();
+
+    const partProbeCache = new Map<string, PlexPartPlayableProbeResult>();
+    const anyPlayable = async (ratingKeys: string[]) => {
+      for (const rk of ratingKeys) {
+        try {
+          const v = await this.plexServer.verifyPlayableMetadataByRatingKey({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            ratingKey: rk,
+            partProbeCache,
+          });
+          if (v.playable) return true;
+        } catch {
+          // Treat probe errors as "not verified" — never triggers a delete.
+        }
+      }
+      return false;
+    };
+
+    const movies = await this.radarr.listMonitoredMovies({
+      baseUrl: radarrBaseUrl,
+      apiKey: radarrApiKey,
+    });
+    result.totalMovies = movies.length;
+
+    const candidates: MovieRepairCandidate[] = [];
+    const scanTargets = new Map<
+      string,
+      { sectionKey: string; folder: string }
+    >();
+
+    let processed = 0;
+    setProgress({
+      step: 'radarr_scan',
+      message: 'Scanning Radarr movies…',
+      current: 0,
+      total: movies.length,
+      unit: 'movies',
+    });
+    for (const movie of movies) {
+      processed += 1;
+      result.moviesProcessed = processed;
+      const title =
+        typeof movie.title === 'string' ? movie.title : `movie#${movie.id}`;
+      const tmdbId = toInt(movie.tmdbId);
+      const ratingKeys = tmdbId ? (tmdbRatingKeys.get(tmdbId) ?? []) : [];
+      const inPlex = ratingKeys.length > 0;
+      const hasFile = movie.hasFile === true;
+
+      if (inPlex) {
+        if (await anyPlayable(ratingKeys)) {
+          result.confirmedInPlex += 1;
+          if (movie.monitored && hasFile) {
+            if (ctx.dryRun) {
+              result.unmonitored += 1;
+              pushCapped(result.unmonitoredSamples, title);
+            } else {
+              const ok = await this.radarr.setMovieMonitored({
+                baseUrl: radarrBaseUrl,
+                apiKey: radarrApiKey,
+                movie,
+                monitored: false,
+              });
+              if (ok) {
+                result.unmonitored += 1;
+                pushCapped(result.unmonitoredSamples, title);
+              } else {
+                result.actionFailures += 1;
+              }
+            }
+          }
+        } else {
+          result.inPlexUnverified += 1;
+        }
+        continue;
+      }
+
+      // Not in Plex metadata.
+      if (!hasFile) {
+        result.missingNoFile += 1;
+        continue;
+      }
+      const filePath =
+        typeof movie.movieFile?.path === 'string'
+          ? movie.movieFile.path.trim()
+          : '';
+      const fileId = toInt(movie.movieFile?.id) ?? toInt(movie.movieFileId);
+      if (!filePath || !fileId || !tmdbId) {
+        result.unresolvedFiles += 1;
+        continue;
+      }
+
+      const translated = translatePath(filePath, pathMap);
+      const cover = movieLocations.find((loc) =>
+        segmentStartsWith(translated, loc.path),
+      );
+      if (!cover) {
+        result.uncoveredPaths += 1;
+        pushCapped(result.uncoveredSamples, `${title}  (${filePath})`);
+        continue;
+      }
+
+      candidates.push({
+        title,
+        movieId: movie.id,
+        movieFileId: fileId,
+        tmdbId,
+        radarrPath: filePath,
+        sectionKey: cover.sectionKey,
+      });
+      const folder = dirnameOf(translated);
+      scanTargets.set(`${cover.sectionKey}:${folder}`, {
+        sectionKey: cover.sectionKey,
+        folder,
+      });
+
+      if (processed % 250 === 0 || processed === movies.length) {
+        setProgress({
+          step: 'radarr_scan',
+          message: 'Scanning Radarr movies…',
+          current: processed,
+          total: movies.length,
+          unit: 'movies',
+        });
+      }
+    }
+    result.repairCandidates = candidates.length;
+
+    if (ctx.dryRun) {
+      for (const c of candidates)
+        pushCapped(result.wouldRepairSamples, c.title);
+      return result;
+    }
+
+    if (scanTargets.size > 0) {
+      setProgress({
+        step: 'radarr_repair',
+        message: `Scanning ${scanTargets.size} Plex movie folder(s)…`,
+      });
+      for (const { sectionKey, folder } of scanTargets.values()) {
+        try {
+          await this.plexServer.refreshLibraryPath({
+            baseUrl: plexBaseUrl,
+            token: plexToken,
+            sectionKey,
+            path: folder,
+          });
+          result.scannedFolders += 1;
+        } catch (error) {
+          await ctx.warn('plex: refresh movie path failed', {
+            sectionKey,
+            folder,
+            error: (error as Error)?.message ?? String(error),
+          });
+        }
+      }
+      await this.waitForScansToSettle(ctx, plexBaseUrl, plexToken);
+    }
+
+    // Pass B: re-verify each candidate against a fresh index + a title fallback.
+    const freshTmdb: Map<number, string[]> =
+      candidates.length > 0
+        ? await buildTmdbMap()
+        : new Map<number, string[]>();
+    let repaired = 0;
+    for (const c of candidates) {
+      repaired += 1;
+      const stillAbsent =
+        (freshTmdb.get(c.tmdbId) ?? []).length === 0 &&
+        !(await this.movieFoundByTitle(
+          plexBaseUrl,
+          plexToken,
+          movieSections,
+          c.title,
+        ));
+      if (!stillAbsent) {
+        // Plex has it after the scan (or under a non-tmdb match) — keep the file.
+        result.recoveredByScan += 1;
+        pushCapped(result.recoveredSamples, c.title);
+        continue;
+      }
+
+      try {
+        await this.radarr.deleteMovieFile({
+          baseUrl: radarrBaseUrl,
+          apiKey: radarrApiKey,
+          movieFileId: c.movieFileId,
+        });
+        result.deletedFiles += 1;
+        pushCapped(result.deletedSamples, `${c.title}  (${c.radarrPath})`);
+      } catch (error) {
+        result.actionFailures += 1;
+        await ctx.warn('radarr: delete movie file failed', {
+          title: c.title,
+          movieFileId: c.movieFileId,
+          error: (error as Error)?.message ?? String(error),
+        });
+        continue;
+      }
+
+      try {
+        const history = await this.radarr.listMovieHistory({
+          baseUrl: radarrBaseUrl,
+          apiKey: radarrApiKey,
+          movieId: c.movieId,
+        });
+        const grabbed = history
+          .filter((h) => (h.eventType ?? '').toLowerCase() === 'grabbed')
+          .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+        if (grabbed.length > 0) {
+          await this.radarr.markHistoryFailed({
+            baseUrl: radarrBaseUrl,
+            apiKey: radarrApiKey,
+            historyId: grabbed[0].id,
+          });
+          result.blocklisted += 1;
+        } else {
+          result.blocklistUnavailable += 1;
+          pushCapped(result.blocklistUnavailableSamples, c.title);
+        }
+      } catch (error) {
+        result.blocklistUnavailable += 1;
+        pushCapped(result.blocklistUnavailableSamples, c.title);
+        await ctx.warn('radarr: blocklist failed', {
+          title: c.title,
+          error: (error as Error)?.message ?? String(error),
+        });
+      }
+
+      try {
+        const ok = await this.radarr.searchMovies({
+          baseUrl: radarrBaseUrl,
+          apiKey: radarrApiKey,
+          movieIds: [c.movieId],
+        });
+        if (ok) result.searchQueued += 1;
+      } catch (error) {
+        await ctx.warn('radarr: movie search failed', {
+          title: c.title,
+          error: (error as Error)?.message ?? String(error),
+        });
+      }
+
+      if (repaired % 5 === 0 || repaired === candidates.length) {
+        setProgress({
+          step: 'radarr_repair',
+          message: 'Repairing unfit movies…',
+          current: repaired,
+          total: candidates.length,
+          unit: 'movies',
+        });
       }
     }
 
-    // --- Path map (auto-derived + optional settings override) -------------
-    const rootFolders = await this.sonarr.listRootFolders({
-      baseUrl: sonarrUrl,
-      apiKey: sonarrKey,
+    return result;
+  }
+
+  private async movieFoundByTitle(
+    plexBaseUrl: string,
+    plexToken: string,
+    movieSections: Array<{ key: string }>,
+    title: string,
+  ): Promise<boolean> {
+    for (const sec of movieSections) {
+      try {
+        const hit = await this.plexServer.findMovieRatingKeyByTitle({
+          baseUrl: plexBaseUrl,
+          token: plexToken,
+          librarySectionKey: sec.key,
+          title,
+        });
+        if (hit) return true;
+      } catch {
+        // ignore and try the next section
+      }
+    }
+    return false;
+  }
+
+  // ---- Sonarr (episodes) --------------------------------------------------
+
+  // skipcq: JS-R1005 - Coordinates Plex/Sonarr reconcile + repair with explicit branch handling.
+  private async runSonarrPass(params: {
+    ctx: JobContext;
+    setProgress: Progress;
+    settings: Record<string, unknown>;
+    plexBaseUrl: string;
+    plexToken: string;
+    sonarrBaseUrl: string;
+    sonarrApiKey: string;
+    tvSections: Array<{ key: string; title: string }>;
+    showLocations: PlexLocation[];
+  }): Promise<SonarrResult> {
+    const {
+      ctx,
+      setProgress,
+      settings,
+      plexBaseUrl,
+      plexToken,
+      sonarrBaseUrl,
+      sonarrApiKey,
+      tvSections,
+      showLocations,
+    } = params;
+
+    const result = disabledSonarrResult();
+    result.configured = true;
+
+    const roots = await this.sonarr.listRootFolders({
+      baseUrl: sonarrBaseUrl,
+      apiKey: sonarrApiKey,
     });
-    const derived = derivePathMap(
-      rootFolders.map((r) => r.path),
-      showLocations.map((l) => l.path),
-    );
-    const overrides = readPathOverrides(settings);
-    const pathMap = [...overrides, ...derived];
-    await ctx.info('repairMonitored: path map', {
-      derived,
-      overrides,
-      sonarrRoots: rootFolders.map((r) => r.path),
-      plexLocations: showLocations.map((l) => l.path),
+    const pathMap = [
+      ...readPathOverrides(settings, 'sonarr.plexPathMappings'),
+      ...derivePathMap(
+        roots.map((r) => r.path),
+        showLocations.map((l) => l.path),
+      ),
+    ];
+    await ctx.info('repairMonitored[sonarr]: path map', {
+      derived: pathMap,
+      sonarrRoots: roots.map((r) => r.path),
+      plexShowLocations: showLocations.map((l) => l.path),
     });
 
-    // --- Plex tvdb -> ratingKeys map --------------------------------------
-    setProgress({
-      step: 'plex_tvdb_index',
-      message: 'Indexing Plex TV shows…',
-    });
+    setProgress({ step: 'sonarr_index', message: 'Indexing Plex TV shows…' });
     const tvdbRatingKeys = new Map<number, string[]>();
     for (const sec of tvSections) {
       const map = await this.plexServer.getTvdbShowRatingKeysMapForSectionKey({
@@ -337,25 +781,27 @@ export class RepairMonitoredJob {
       }
     }
 
-    // Availability cache (pass A). Value null => fetch failed.
     const availabilityCache = new Map<
       string,
       PlexVerifiedEpisodeAvailability | null
     >();
-    const getAvailability = async (ratingKey: string) => {
-      const cached = availabilityCache.get(ratingKey);
+    const getAvailability = async (
+      ratingKey: string,
+      cache: Map<string, PlexVerifiedEpisodeAvailability | null>,
+    ) => {
+      const cached = cache.get(ratingKey);
       if (cached !== undefined) return cached;
       try {
-        const result =
+        const r =
           await this.plexServer.getVerifiedEpisodeAvailabilityForShowRatingKey({
             baseUrl: plexBaseUrl,
             token: plexToken,
             showRatingKey: ratingKey,
           });
-        availabilityCache.set(ratingKey, result);
-        return result;
+        cache.set(ratingKey, r);
+        return r;
       } catch (error) {
-        availabilityCache.set(ratingKey, null);
+        cache.set(ratingKey, null);
         await ctx.warn('plex: availability fetch failed', {
           ratingKey,
           error: (error as Error)?.message ?? String(error),
@@ -364,42 +810,41 @@ export class RepairMonitoredJob {
       }
     };
 
-    // --- Pass A: classify -------------------------------------------------
     const monitoredSeries = await this.sonarr.listMonitoredSeries({
-      baseUrl: sonarrUrl,
-      apiKey: sonarrKey,
+      baseUrl: sonarrBaseUrl,
+      apiKey: sonarrApiKey,
     });
-    totalSeries = monitoredSeries.length;
+    result.totalSeries = monitoredSeries.length;
     setProgress({
-      step: 'classify',
+      step: 'sonarr_scan',
       message: 'Scanning Sonarr series…',
       current: 0,
-      total: totalSeries,
+      total: monitoredSeries.length,
       unit: 'series',
     });
 
-    const repairCandidates: RepairCandidate[] = [];
+    const candidates: EpisodeRepairCandidate[] = [];
     const scanTargets = new Map<
       string,
       { sectionKey: string; folder: string }
     >();
 
+    let processed = 0;
     for (const series of monitoredSeries) {
-      seriesProcessed += 1;
+      processed += 1;
+      result.seriesProcessed = processed;
       const title =
         typeof series.title === 'string' ? series.title : `series#${series.id}`;
       const tvdbId = toInt(series.tvdbId);
-
       const showRatingKeys = tvdbId ? (tvdbRatingKeys.get(tvdbId) ?? []) : [];
       const showFoundInPlex = showRatingKeys.length > 0;
 
-      // Build union availability for the show.
       const verified = new Set<string>();
       const metadata = new Set<string>();
       let availabilityOk = showFoundInPlex;
       if (showFoundInPlex) {
         for (const rk of showRatingKeys) {
-          const availability = await getAvailability(rk);
+          const availability = await getAvailability(rk, availabilityCache);
           if (!availability) {
             availabilityOk = false;
             continue;
@@ -408,20 +853,20 @@ export class RepairMonitoredJob {
           for (const k of availability.metadataEpisodes) metadata.add(k);
         }
       }
-      if (showFoundInPlex && !availabilityOk) availabilityFailures += 1;
+      if (showFoundInPlex && !availabilityOk) result.availabilityFailures += 1;
       if (!showFoundInPlex) {
-        showsNotInPlex += 1;
-        pushCapped(showsNotInPlexSamples, title);
+        result.showsNotInPlex += 1;
+        pushCapped(result.showsNotInPlexSamples, title);
       }
 
       const episodes = await this.sonarr.getEpisodesBySeries({
-        baseUrl: sonarrUrl,
-        apiKey: sonarrKey,
+        baseUrl: sonarrBaseUrl,
+        apiKey: sonarrApiKey,
         seriesId: series.id,
       });
       const files = await this.sonarr.getEpisodeFiles({
-        baseUrl: sonarrUrl,
-        apiKey: sonarrKey,
+        baseUrl: sonarrBaseUrl,
+        apiKey: sonarrApiKey,
         seriesId: series.id,
       });
       const fileById = new Map<number, SonarrEpisodeFile>();
@@ -431,31 +876,30 @@ export class RepairMonitoredJob {
         const season = toInt(ep.seasonNumber);
         const epNum = toInt(ep.episodeNumber);
         if (!season || !epNum) continue;
-        episodesChecked += 1;
+        result.episodesChecked += 1;
         const key = episodeKey(season, epNum);
         const label = describeEpisode(title, season, epNum);
 
-        // Show not in Plex, or availability unknown -> never delete; report only.
         if (!showFoundInPlex || !availabilityOk) continue;
 
         if (verified.has(key)) {
-          confirmedInPlex += 1;
+          result.confirmedInPlex += 1;
           if (ep.monitored) {
             if (ctx.dryRun) {
-              unmonitored += 1;
-              pushCapped(unmonitoredSamples, label);
+              result.unmonitored += 1;
+              pushCapped(result.unmonitoredSamples, label);
             } else {
               try {
                 await this.sonarr.setEpisodeMonitored({
-                  baseUrl: sonarrUrl,
-                  apiKey: sonarrKey,
+                  baseUrl: sonarrBaseUrl,
+                  apiKey: sonarrApiKey,
                   episode: ep,
                   monitored: false,
                 });
-                unmonitored += 1;
-                pushCapped(unmonitoredSamples, label);
+                result.unmonitored += 1;
+                pushCapped(result.unmonitoredSamples, label);
               } catch (error) {
-                actionFailures += 1;
+                result.actionFailures += 1;
                 await ctx.warn('sonarr: unmonitor failed', {
                   label,
                   error: (error as Error)?.message ?? String(error),
@@ -467,17 +911,15 @@ export class RepairMonitoredJob {
         }
 
         if (metadata.has(key)) {
-          // In Plex metadata but not verified playable — leave alone.
-          inPlexUnverified += 1;
+          result.inPlexUnverified += 1;
           continue;
         }
 
-        // Truly absent from Plex.
         const fileId = toInt(ep.episodeFileId);
         const file =
           ep.hasFile === true && fileId ? fileById.get(fileId) : undefined;
         if (!file) {
-          missingNoFile += 1;
+          result.missingNoFile += 1;
           continue;
         }
 
@@ -486,13 +928,12 @@ export class RepairMonitoredJob {
           segmentStartsWith(translated, loc.path),
         );
         if (!cover) {
-          uncoveredPaths += 1;
-          pushCapped(uncoveredSamples, `${label}  (${file.path})`);
+          result.uncoveredPaths += 1;
+          pushCapped(result.uncoveredSamples, `${label}  (${file.path})`);
           continue;
         }
 
-        const folder = dirnameOf(translated);
-        repairCandidates.push({
+        candidates.push({
           seriesTitle: title,
           season,
           episode: epNum,
@@ -500,84 +941,42 @@ export class RepairMonitoredJob {
           episodeFileId: file.id,
           episode_: ep,
           sonarrPath: file.path,
-          translatedFolder: folder,
           sectionKey: cover.sectionKey,
           showRatingKeys,
         });
+        const folder = dirnameOf(translated);
         scanTargets.set(`${cover.sectionKey}:${folder}`, {
           sectionKey: cover.sectionKey,
           folder,
         });
       }
 
-      if (seriesProcessed % 10 === 0 || seriesProcessed === totalSeries) {
+      if (processed % 10 === 0 || processed === monitoredSeries.length) {
         setProgress({
-          step: 'classify',
+          step: 'sonarr_scan',
           message: 'Scanning Sonarr series…',
-          current: seriesProcessed,
-          total: totalSeries,
+          current: processed,
+          total: monitoredSeries.length,
           unit: 'series',
         });
       }
     }
+    result.repairCandidates = candidates.length;
 
-    // --- Dry run: project, then stop --------------------------------------
     if (ctx.dryRun) {
-      for (const c of repairCandidates) {
+      for (const c of candidates) {
         pushCapped(
-          wouldRepairSamples,
+          result.wouldRepairSamples,
           describeEpisode(c.seriesTitle, c.season, c.episode),
         );
       }
-      const summary = buildRawSummary({
-        dryRun: true,
-        totalSeries,
-        seriesProcessed,
-        episodesChecked,
-        confirmedInPlex,
-        unmonitored,
-        inPlexUnverified,
-        showsNotInPlex,
-        missingNoFile,
-        scannedFolders: scanTargets.size,
-        recoveredByScan,
-        deletedFiles: 0,
-        blocklisted: 0,
-        blocklistUnavailable: 0,
-        searchQueued: 0,
-        uncoveredPaths,
-        repairCandidates: repairCandidates.length,
-        availabilityFailures,
-        actionFailures,
-        samples: {
-          unmonitoredSamples,
-          wouldRepairSamples,
-          deletedSamples,
-          blocklistUnavailableSamples,
-          uncoveredSamples,
-          recoveredSamples,
-          stillMissingSamples,
-          showsNotInPlexSamples,
-        },
-      });
-      await ctx.patchSummary({
-        progress: {
-          step: 'done',
-          message: 'Dry-run complete.',
-          updatedAt: new Date().toISOString(),
-        },
-      });
-      await ctx.info('repairMonitored: dry-run done', summary);
-      return {
-        summary: buildReport({ ctx, raw: summary }) as unknown as JsonObject,
-      };
+      return result;
     }
 
-    // --- Live: trigger targeted scans -------------------------------------
     if (scanTargets.size > 0) {
       setProgress({
-        step: 'scan',
-        message: `Scanning ${scanTargets.size} Plex folder(s)…`,
+        step: 'sonarr_repair',
+        message: `Scanning ${scanTargets.size} Plex TV folder(s)…`,
       });
       for (const { sectionKey, folder } of scanTargets.values()) {
         try {
@@ -587,7 +986,7 @@ export class RepairMonitoredJob {
             sectionKey,
             path: folder,
           });
-          scannedFolders += 1;
+          result.scannedFolders += 1;
         } catch (error) {
           await ctx.warn('plex: refresh path failed', {
             sectionKey,
@@ -599,48 +998,21 @@ export class RepairMonitoredJob {
       await this.waitForScansToSettle(ctx, plexBaseUrl, plexToken);
     }
 
-    // --- Pass B: re-verify + repair ---------------------------------------
-    const freshAvailability = new Map<
+    const freshCache = new Map<
       string,
       PlexVerifiedEpisodeAvailability | null
     >();
-    const getFresh = async (ratingKey: string) => {
-      const cached = freshAvailability.get(ratingKey);
-      if (cached !== undefined) return cached;
-      try {
-        const result =
-          await this.plexServer.getVerifiedEpisodeAvailabilityForShowRatingKey({
-            baseUrl: plexBaseUrl,
-            token: plexToken,
-            showRatingKey: ratingKey,
-          });
-        freshAvailability.set(ratingKey, result);
-        return result;
-      } catch {
-        freshAvailability.set(ratingKey, null);
-        return null;
-      }
-    };
-
-    let repairProcessed = 0;
-    setProgress({
-      step: 'repair',
-      message: 'Repairing unfit files…',
-      current: 0,
-      total: repairCandidates.length,
-      unit: 'episodes',
-    });
-    for (const c of repairCandidates) {
-      repairProcessed += 1;
+    let repaired = 0;
+    for (const c of candidates) {
+      repaired += 1;
       const label = describeEpisode(c.seriesTitle, c.season, c.episode);
       const key = episodeKey(c.season, c.episode);
 
-      // Re-verify against a fresh scan.
       const verified = new Set<string>();
       const metadata = new Set<string>();
       let ok = true;
       for (const rk of c.showRatingKeys) {
-        const availability = await getFresh(rk);
+        const availability = await getAvailability(rk, freshCache);
         if (!availability) {
           ok = false;
           continue;
@@ -650,44 +1022,41 @@ export class RepairMonitoredJob {
       }
 
       if (!ok) {
-        // Couldn't re-verify — do not delete. Report and move on.
-        availabilityFailures += 1;
-        pushCapped(stillMissingSamples, `${label} (re-verify failed)`);
+        result.availabilityFailures += 1;
+        pushCapped(result.stillMissingSamples, `${label} (re-verify failed)`);
         continue;
       }
 
       if (metadata.has(key)) {
-        // The scan picked it up: the file was fine, just unscanned.
-        recoveredByScan += 1;
-        pushCapped(recoveredSamples, label);
+        result.recoveredByScan += 1;
+        pushCapped(result.recoveredSamples, label);
         if (verified.has(key) && c.episode_.monitored) {
           try {
             await this.sonarr.setEpisodeMonitored({
-              baseUrl: sonarrUrl,
-              apiKey: sonarrKey,
+              baseUrl: sonarrBaseUrl,
+              apiKey: sonarrApiKey,
               episode: c.episode_,
               monitored: false,
             });
-            unmonitored += 1;
-            pushCapped(unmonitoredSamples, label);
+            result.unmonitored += 1;
+            pushCapped(result.unmonitoredSamples, label);
           } catch {
-            actionFailures += 1;
+            result.actionFailures += 1;
           }
         }
         continue;
       }
 
-      // Still absent after scan -> the file is unfit. Delete + blocklist + search.
       try {
         await this.sonarr.deleteEpisodeFile({
-          baseUrl: sonarrUrl,
-          apiKey: sonarrKey,
+          baseUrl: sonarrBaseUrl,
+          apiKey: sonarrApiKey,
           episodeFileId: c.episodeFileId,
         });
-        deletedFiles += 1;
-        pushCapped(deletedSamples, `${label}  (${c.sonarrPath})`);
+        result.deletedFiles += 1;
+        pushCapped(result.deletedSamples, `${label}  (${c.sonarrPath})`);
       } catch (error) {
-        actionFailures += 1;
+        result.actionFailures += 1;
         await ctx.warn('sonarr: delete episode file failed', {
           label,
           episodeFileId: c.episodeFileId,
@@ -696,11 +1065,10 @@ export class RepairMonitoredJob {
         continue;
       }
 
-      // Blocklist the exact grabbed release (best-effort).
       try {
         const history = await this.sonarr.listEpisodeHistory({
-          baseUrl: sonarrUrl,
-          apiKey: sonarrKey,
+          baseUrl: sonarrBaseUrl,
+          apiKey: sonarrApiKey,
           episodeId: c.episodeId,
         });
         const grabbed = history
@@ -708,32 +1076,31 @@ export class RepairMonitoredJob {
           .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
         if (grabbed.length > 0) {
           await this.sonarr.markHistoryFailed({
-            baseUrl: sonarrUrl,
-            apiKey: sonarrKey,
+            baseUrl: sonarrBaseUrl,
+            apiKey: sonarrApiKey,
             historyId: grabbed[0].id,
           });
-          blocklisted += 1;
+          result.blocklisted += 1;
         } else {
-          blocklistUnavailable += 1;
-          pushCapped(blocklistUnavailableSamples, label);
+          result.blocklistUnavailable += 1;
+          pushCapped(result.blocklistUnavailableSamples, label);
         }
       } catch (error) {
-        blocklistUnavailable += 1;
-        pushCapped(blocklistUnavailableSamples, label);
+        result.blocklistUnavailable += 1;
+        pushCapped(result.blocklistUnavailableSamples, label);
         await ctx.warn('sonarr: blocklist failed', {
           label,
           error: (error as Error)?.message ?? String(error),
         });
       }
 
-      // Trigger a fresh grab.
       try {
         const ok2 = await this.sonarr.searchEpisodes({
-          baseUrl: sonarrUrl,
-          apiKey: sonarrKey,
+          baseUrl: sonarrBaseUrl,
+          apiKey: sonarrApiKey,
           episodeIds: [c.episodeId],
         });
-        if (ok2) searchQueued += 1;
+        if (ok2) result.searchQueued += 1;
       } catch (error) {
         await ctx.warn('sonarr: episode search failed', {
           label,
@@ -741,62 +1108,18 @@ export class RepairMonitoredJob {
         });
       }
 
-      if (
-        repairProcessed % 5 === 0 ||
-        repairProcessed === repairCandidates.length
-      ) {
+      if (repaired % 5 === 0 || repaired === candidates.length) {
         setProgress({
-          step: 'repair',
+          step: 'sonarr_repair',
           message: 'Repairing unfit files…',
-          current: repairProcessed,
-          total: repairCandidates.length,
+          current: repaired,
+          total: candidates.length,
           unit: 'episodes',
         });
       }
     }
 
-    const summary = buildRawSummary({
-      dryRun: false,
-      totalSeries,
-      seriesProcessed,
-      episodesChecked,
-      confirmedInPlex,
-      unmonitored,
-      inPlexUnverified,
-      showsNotInPlex,
-      missingNoFile,
-      scannedFolders,
-      recoveredByScan,
-      deletedFiles,
-      blocklisted,
-      blocklistUnavailable,
-      searchQueued,
-      uncoveredPaths,
-      repairCandidates: repairCandidates.length,
-      availabilityFailures,
-      actionFailures,
-      samples: {
-        unmonitoredSamples,
-        wouldRepairSamples,
-        deletedSamples,
-        blocklistUnavailableSamples,
-        uncoveredSamples,
-        recoveredSamples,
-        stillMissingSamples,
-        showsNotInPlexSamples,
-      },
-    });
-    await ctx.patchSummary({
-      progress: {
-        step: 'done',
-        message: 'Completed.',
-        updatedAt: new Date().toISOString(),
-      },
-    });
-    await ctx.info('repairMonitored: done', summary);
-    return {
-      summary: buildReport({ ctx, raw: summary }) as unknown as JsonObject,
-    };
+    return result;
   }
 
   private async waitForScansToSettle(
@@ -804,8 +1127,6 @@ export class RepairMonitoredJob {
     plexBaseUrl: string,
     plexToken: string,
   ): Promise<void> {
-    const sleep = (ms: number) =>
-      new Promise<void>((resolve) => setTimeout(resolve, ms));
     await sleep(SCAN_SETTLE_INITIAL_MS);
     const start = Date.now();
     while (Date.now() - start < SCAN_SETTLE_MAX_MS) {
@@ -817,11 +1138,10 @@ export class RepairMonitoredJob {
         });
         scanning = activities.some((a) => {
           const type = (a.type ?? '').toLowerCase();
-          const title = (a.title ?? '').toLowerCase();
-          return type.includes('library.update') || title.includes('scan');
+          const t = (a.title ?? '').toLowerCase();
+          return type.includes('library.update') || t.includes('scan');
         });
       } catch {
-        // If we can't read activities, stop waiting and proceed.
         return;
       }
       if (!scanning) return;
@@ -831,23 +1151,64 @@ export class RepairMonitoredJob {
   }
 }
 
-function readPathOverrides(
-  settings: Record<string, unknown>,
-): PathPrefixMapping[] {
-  const raw = pick(settings, 'sonarr.plexPathMappings');
-  if (!Array.isArray(raw)) return [];
-  const out: PathPrefixMapping[] = [];
-  for (const entry of raw) {
-    if (!isPlainObject(entry)) continue;
-    const from = typeof entry['from'] === 'string' ? entry['from'].trim() : '';
-    const to = typeof entry['to'] === 'string' ? entry['to'].trim() : '';
-    if (from && to) out.push({ from, to });
-  }
-  return out;
+// ---- Result shapes ---------------------------------------------------------
+
+type RadarrResult = {
+  configured: boolean;
+  totalMovies: number;
+  moviesProcessed: number;
+  confirmedInPlex: number;
+  unmonitored: number;
+  inPlexUnverified: number;
+  missingNoFile: number;
+  unresolvedFiles: number;
+  scannedFolders: number;
+  recoveredByScan: number;
+  repairCandidates: number;
+  deletedFiles: number;
+  blocklisted: number;
+  blocklistUnavailable: number;
+  searchQueued: number;
+  uncoveredPaths: number;
+  actionFailures: number;
+  unmonitoredSamples: string[];
+  wouldRepairSamples: string[];
+  deletedSamples: string[];
+  blocklistUnavailableSamples: string[];
+  uncoveredSamples: string[];
+  recoveredSamples: string[];
+};
+
+function disabledRadarrResult(): RadarrResult {
+  return {
+    configured: false,
+    totalMovies: 0,
+    moviesProcessed: 0,
+    confirmedInPlex: 0,
+    unmonitored: 0,
+    inPlexUnverified: 0,
+    missingNoFile: 0,
+    unresolvedFiles: 0,
+    scannedFolders: 0,
+    recoveredByScan: 0,
+    repairCandidates: 0,
+    deletedFiles: 0,
+    blocklisted: 0,
+    blocklistUnavailable: 0,
+    searchQueued: 0,
+    uncoveredPaths: 0,
+    actionFailures: 0,
+    unmonitoredSamples: [],
+    wouldRepairSamples: [],
+    deletedSamples: [],
+    blocklistUnavailableSamples: [],
+    uncoveredSamples: [],
+    recoveredSamples: [],
+  };
 }
 
-type RawSummaryInput = {
-  dryRun: boolean;
+type SonarrResult = {
+  configured: boolean;
   totalSeries: number;
   seriesProcessed: number;
   episodesChecked: number;
@@ -858,111 +1219,272 @@ type RawSummaryInput = {
   missingNoFile: number;
   scannedFolders: number;
   recoveredByScan: number;
+  repairCandidates: number;
   deletedFiles: number;
   blocklisted: number;
   blocklistUnavailable: number;
   searchQueued: number;
   uncoveredPaths: number;
-  repairCandidates: number;
   availabilityFailures: number;
   actionFailures: number;
-  samples: {
-    unmonitoredSamples: string[];
-    wouldRepairSamples: string[];
-    deletedSamples: string[];
-    blocklistUnavailableSamples: string[];
-    uncoveredSamples: string[];
-    recoveredSamples: string[];
-    stillMissingSamples: string[];
-    showsNotInPlexSamples: string[];
-  };
+  unmonitoredSamples: string[];
+  wouldRepairSamples: string[];
+  deletedSamples: string[];
+  blocklistUnavailableSamples: string[];
+  uncoveredSamples: string[];
+  recoveredSamples: string[];
+  stillMissingSamples: string[];
+  showsNotInPlexSamples: string[];
 };
 
-function buildRawSummary(input: RawSummaryInput): JsonObject {
+function disabledSonarrResult(): SonarrResult {
   return {
-    phase: 'repairMonitored',
-    dryRun: input.dryRun,
-    totalSeries: input.totalSeries,
-    seriesProcessed: input.seriesProcessed,
-    episodesChecked: input.episodesChecked,
-    confirmedInPlex: input.confirmedInPlex,
-    unmonitored: input.unmonitored,
-    inPlexUnverified: input.inPlexUnverified,
-    showsNotInPlex: input.showsNotInPlex,
-    missingNoFile: input.missingNoFile,
-    scannedFolders: input.scannedFolders,
-    recoveredByScan: input.recoveredByScan,
-    deletedFiles: input.deletedFiles,
-    blocklisted: input.blocklisted,
-    blocklistUnavailable: input.blocklistUnavailable,
-    searchQueued: input.searchQueued,
-    uncoveredPaths: input.uncoveredPaths,
-    repairCandidates: input.repairCandidates,
-    availabilityFailures: input.availabilityFailures,
-    actionFailures: input.actionFailures,
-    ...input.samples,
-  } as unknown as JsonObject;
+    configured: false,
+    totalSeries: 0,
+    seriesProcessed: 0,
+    episodesChecked: 0,
+    confirmedInPlex: 0,
+    unmonitored: 0,
+    inPlexUnverified: 0,
+    showsNotInPlex: 0,
+    missingNoFile: 0,
+    scannedFolders: 0,
+    recoveredByScan: 0,
+    repairCandidates: 0,
+    deletedFiles: 0,
+    blocklisted: 0,
+    blocklistUnavailable: 0,
+    searchQueued: 0,
+    uncoveredPaths: 0,
+    availabilityFailures: 0,
+    actionFailures: 0,
+    unmonitoredSamples: [],
+    wouldRepairSamples: [],
+    deletedSamples: [],
+    blocklistUnavailableSamples: [],
+    uncoveredSamples: [],
+    recoveredSamples: [],
+    stillMissingSamples: [],
+    showsNotInPlexSamples: [],
+  };
+}
+
+// ---- Report ----------------------------------------------------------------
+
+function sampleFact(label: string, items: string[], unit: string) {
+  return { label, value: { count: items.length, unit, items } };
 }
 
 function buildReport(params: {
   ctx: JobContext;
   raw: JsonObject;
+  radarr: RadarrResult;
+  sonarr: SonarrResult;
 }): JobReportV1 {
-  const { ctx, raw } = params;
-  const n = (k: string): number => {
-    const v = raw[k];
-    return typeof v === 'number' && Number.isFinite(v) ? v : 0;
-  };
+  const { ctx, raw, radarr, sonarr } = params;
+  const dry = ctx.dryRun;
+  const radarrRepairValue = dry ? radarr.repairCandidates : radarr.deletedFiles;
+  const sonarrRepairValue = dry ? sonarr.repairCandidates : sonarr.deletedFiles;
 
   const issues = [
-    ...(n('uncoveredPaths')
+    ...(radarr.uncoveredPaths || sonarr.uncoveredPaths
       ? [
           issue(
             'warn',
-            `${n('uncoveredPaths')} episode file(s) sit outside any Plex library location (reported, no action).`,
+            `${radarr.uncoveredPaths + sonarr.uncoveredPaths} file(s) sit outside any Plex library location (reported, no action).`,
           ),
         ]
       : []),
-    ...(n('blocklistUnavailable')
+    ...(radarr.blocklistUnavailable || sonarr.blocklistUnavailable
       ? [
           issue(
             'warn',
-            `${n('blocklistUnavailable')} file(s) were deleted but could not be blocklisted (no grab history — e.g. wrong-show import).`,
+            `${radarr.blocklistUnavailable + sonarr.blocklistUnavailable} file(s) were deleted but could not be blocklisted (no grab history — e.g. wrong import).`,
           ),
         ]
       : []),
-    ...(n('showsNotInPlex')
+    ...(sonarr.showsNotInPlex
       ? [
           issue(
             'warn',
-            `${n('showsNotInPlex')} monitored series were not found in Plex at all (skipped for safety).`,
+            `${sonarr.showsNotInPlex} monitored series were not found in Plex at all (skipped for safety).`,
           ),
         ]
       : []),
-    ...(n('availabilityFailures')
+    ...(radarr.actionFailures || sonarr.actionFailures
       ? [
           issue(
             'warn',
-            `${n('availabilityFailures')} series could not be verified against Plex (skipped for safety).`,
+            `${radarr.actionFailures + sonarr.actionFailures} *arr action(s) failed.`,
           ),
         ]
-      : []),
-    ...(n('actionFailures')
-      ? [issue('warn', `${n('actionFailures')} Sonarr action(s) failed.`)]
       : []),
   ];
 
-  const repairLabel = ctx.dryRun ? 'Would delete + blocklist' : 'Deleted files';
-  const repairValue = ctx.dryRun ? n('repairCandidates') : n('deletedFiles');
+  const tasks: JobReportTask[] = [];
+  if (radarr.configured) {
+    tasks.push({
+      id: 'radarr',
+      title: 'Radarr: repair movies',
+      status: 'success',
+      rows: [
+        metricRow({
+          label: 'Monitored movies',
+          end: radarr.totalMovies,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: 'Confirmed in Plex',
+          end: radarr.confirmedInPlex,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: dry ? 'Would unmonitor' : 'Unmonitored',
+          end: radarr.unmonitored,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: 'Repair candidates (missing from Plex, covered)',
+          end: radarr.repairCandidates,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: 'Recovered by scan (kept)',
+          end: radarr.recoveredByScan,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: dry ? 'Would delete' : 'Deleted files',
+          end: radarrRepairValue,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: 'Blocklisted releases',
+          end: radarr.blocklisted,
+          unit: 'releases',
+        }),
+        metricRow({
+          label: 'Blocklist unavailable',
+          end: radarr.blocklistUnavailable,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: dry ? 'Would re-search' : 'Searches queued',
+          end: radarr.searchQueued,
+          unit: 'movies',
+        }),
+        metricRow({
+          label: 'Uncovered paths (reported)',
+          end: radarr.uncoveredPaths,
+          unit: 'movies',
+        }),
+      ],
+      facts: [
+        dry
+          ? sampleFact(
+              'Would delete + blocklist',
+              radarr.wouldRepairSamples,
+              'movies',
+            )
+          : sampleFact('Deleted', radarr.deletedSamples, 'movies'),
+        sampleFact('Recovered by scan', radarr.recoveredSamples, 'movies'),
+        sampleFact(
+          'Blocklist unavailable',
+          radarr.blocklistUnavailableSamples,
+          'movies',
+        ),
+        sampleFact('Uncovered paths', radarr.uncoveredSamples, 'movies'),
+      ],
+    });
+  }
+  if (sonarr.configured) {
+    tasks.push({
+      id: 'sonarr',
+      title: 'Sonarr: repair episodes',
+      status: 'success',
+      rows: [
+        metricRow({
+          label: 'Monitored series',
+          end: sonarr.totalSeries,
+          unit: 'series',
+        }),
+        metricRow({
+          label: 'Episodes checked',
+          end: sonarr.episodesChecked,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: 'Confirmed in Plex',
+          end: sonarr.confirmedInPlex,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: dry ? 'Would unmonitor' : 'Unmonitored',
+          end: sonarr.unmonitored,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: 'Repair candidates (missing from Plex, covered)',
+          end: sonarr.repairCandidates,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: 'Recovered by scan (kept)',
+          end: sonarr.recoveredByScan,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: dry ? 'Would delete' : 'Deleted files',
+          end: sonarrRepairValue,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: 'Blocklisted releases',
+          end: sonarr.blocklisted,
+          unit: 'releases',
+        }),
+        metricRow({
+          label: 'Blocklist unavailable',
+          end: sonarr.blocklistUnavailable,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: dry ? 'Would re-search' : 'Searches queued',
+          end: sonarr.searchQueued,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: 'Uncovered paths (reported)',
+          end: sonarr.uncoveredPaths,
+          unit: 'episodes',
+        }),
+        metricRow({
+          label: 'Shows not in Plex (skipped)',
+          end: sonarr.showsNotInPlex,
+          unit: 'series',
+        }),
+      ],
+      facts: [
+        dry
+          ? sampleFact(
+              'Would delete + blocklist',
+              sonarr.wouldRepairSamples,
+              'episodes',
+            )
+          : sampleFact('Deleted', sonarr.deletedSamples, 'episodes'),
+        sampleFact('Recovered by scan', sonarr.recoveredSamples, 'episodes'),
+        sampleFact(
+          'Blocklist unavailable',
+          sonarr.blocklistUnavailableSamples,
+          'episodes',
+        ),
+        sampleFact('Uncovered paths', sonarr.uncoveredSamples, 'episodes'),
+        sampleFact('Shows not in Plex', sonarr.showsNotInPlexSamples, 'series'),
+      ],
+    });
+  }
 
-  const sampleFact = (label: string, key: string, unit: string) => ({
-    label,
-    value: {
-      count: Array.isArray(raw[key]) ? (raw[key] as unknown[]).length : 0,
-      unit,
-      items: Array.isArray(raw[key]) ? (raw[key] as string[]) : [],
-    },
-  });
+  const totalDeleted = radarrRepairValue + sonarrRepairValue;
 
   return {
     template: 'jobReportV1',
@@ -970,127 +1492,33 @@ function buildReport(params: {
     jobId: ctx.jobId,
     dryRun: ctx.dryRun,
     trigger: ctx.trigger,
-    headline: ctx.dryRun
+    headline: dry
       ? 'Repair Monitored dry-run complete.'
       : 'Repair Monitored run complete.',
     sections: [
       {
         id: 'summary',
-        title: 'Sonarr ↔ Plex',
+        title: 'Repair summary',
         rows: [
           metricRow({
-            label: 'Monitored series',
-            end: n('totalSeries'),
-            unit: 'series',
+            label: dry ? 'Would unmonitor' : 'Unmonitored',
+            end: radarr.unmonitored + sonarr.unmonitored,
+            unit: 'items',
           }),
           metricRow({
-            label: 'Episodes checked',
-            end: n('episodesChecked'),
-            unit: 'episodes',
+            label: dry ? 'Would delete + blocklist' : 'Deleted files',
+            end: totalDeleted,
+            unit: 'items',
           }),
           metricRow({
-            label: ctx.dryRun ? 'Would unmonitor' : 'Unmonitored',
-            end: n('unmonitored'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: repairLabel,
-            end: repairValue,
-            unit: 'episodes',
+            label: dry ? 'Would re-search' : 'Searches queued',
+            end: radarr.searchQueued + sonarr.searchQueued,
+            unit: 'items',
           }),
         ],
       },
     ],
-    tasks: [
-      {
-        id: 'confirm',
-        title: 'Confirm in-Plex episodes',
-        status: 'success',
-        rows: [
-          metricRow({
-            label: 'Confirmed in Plex',
-            end: n('confirmedInPlex'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: ctx.dryRun ? 'Would unmonitor' : 'Unmonitored',
-            end: n('unmonitored'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: 'In Plex but unverified (left as-is)',
-            end: n('inPlexUnverified'),
-            unit: 'episodes',
-          }),
-        ],
-        facts: [sampleFact('Unmonitored', 'unmonitoredSamples', 'episodes')],
-      },
-      {
-        id: 'repair',
-        title: 'Repair unfit files',
-        status: 'success',
-        rows: [
-          metricRow({
-            label: 'Repair candidates (missing from Plex, file covered)',
-            end: n('repairCandidates'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: 'Folders scanned',
-            end: n('scannedFolders'),
-            unit: 'folders',
-          }),
-          metricRow({
-            label: 'Recovered by scan (kept)',
-            end: n('recoveredByScan'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: ctx.dryRun ? 'Would delete' : 'Deleted files',
-            end: repairValue,
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: 'Blocklisted releases',
-            end: n('blocklisted'),
-            unit: 'releases',
-          }),
-          metricRow({
-            label: 'Blocklist unavailable',
-            end: n('blocklistUnavailable'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: ctx.dryRun ? 'Would re-search' : 'Searches queued',
-            end: n('searchQueued'),
-            unit: 'episodes',
-          }),
-          metricRow({
-            label: 'Uncovered paths (reported)',
-            end: n('uncoveredPaths'),
-            unit: 'episodes',
-          }),
-        ],
-        facts: [
-          ctx.dryRun
-            ? sampleFact(
-                'Would delete + blocklist',
-                'wouldRepairSamples',
-                'episodes',
-              )
-            : sampleFact('Deleted', 'deletedSamples', 'episodes'),
-          sampleFact('Recovered by scan', 'recoveredSamples', 'episodes'),
-          sampleFact(
-            'Blocklist unavailable',
-            'blocklistUnavailableSamples',
-            'episodes',
-          ),
-          sampleFact('Uncovered paths', 'uncoveredSamples', 'episodes'),
-          sampleFact('Shows not in Plex', 'showsNotInPlexSamples', 'series'),
-        ],
-        issues: issues.length ? issues : undefined,
-      },
-    ],
+    tasks,
     issues,
     raw,
   };

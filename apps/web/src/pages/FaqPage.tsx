@@ -547,7 +547,7 @@ export const FaqPage = () => {
     },
     {
       id: 'task-manager-repair-monitored',
-      title: 'Repair Monitored (Sonarr)',
+      title: 'Repair Monitored',
       items: [
         {
           id: 'task-manager-repair-monitored-what-does',
@@ -555,22 +555,22 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                It goes further than Confirm Monitored. For every monitored Sonarr series it
-                confirms episodes that Plex can actually play and unmonitors them. Then, for episodes
-                that Sonarr thinks it has a file for but Plex never indexed, it figures out{' '}
-                <span className="font-semibold text-white/85">why</span> and repairs the mismatch.
+                It picks up where Confirm Monitored leaves off. For every monitored Radarr movie and
+                Sonarr episode, it confirms the ones Plex can actually play and unmonitors them. Then
+                it looks at the tricky cases: items that Radarr or Sonarr believes it has a file for,
+                but that never showed up in Plex.
               </p>
               <p>
-                If the file sits inside a folder your Plex TV library already scans, Plex should have
-                picked it up — so the file is treated as unfit. The task triggers a targeted Plex
-                scan of that folder, waits, and re-checks. If Plex still does not have the episode,
-                it deletes the unfit file and blocklists that exact release so Sonarr grabs a
-                different one, then kicks off a fresh search.
+                If that file lives inside a folder Plex already scans, Plex should have picked it up —
+                so the file is treated as unfit (a bad or wrong-titled download). The task tells Plex
+                to rescan just that folder, waits, and checks again. If the movie or episode still is
+                not in Plex, it deletes the unfit file, blocklists that exact release so Radarr or
+                Sonarr does not grab it again, and starts a fresh search for a good copy.
               </p>
               <p>
                 If the file is <span className="font-semibold text-white/85">not</span> inside any
-                Plex library folder, nothing is deleted — the path is simply reported so you can fix
-                the library or the download location yourself.
+                folder Plex scans, nothing is deleted — the path is just listed in the report so you
+                can fix the library or the download location yourself.
               </p>
             </>
           ),
@@ -581,10 +581,11 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Use it when a show looks complete in Sonarr but is missing episodes in Plex, or after
-                bad imports where Sonarr grabbed the wrong file. It is safe to schedule off-peak: it
-                only deletes a file after a fresh Plex scan still cannot find the episode, and it
-                never touches a series that is not in Plex at all.
+                Use it when a movie or show looks complete in Radarr or Sonarr but is missing in
+                Plex, or after a bad import grabbed the wrong file. It is safe to schedule off-peak:
+                it only deletes a file after a fresh Plex scan still cannot find the item, it never
+                touches a series that is missing from Plex entirely, and for movies it keeps the file
+                if Plex still matches it by title after the rescan.
               </p>
             </>
           ),
@@ -595,15 +596,16 @@ export const FaqPage = () => {
           answer: (
             <>
               <p>
-                Blocklisting needs Sonarr grab history for that episode. If the file came from a
-                wrong-show import or a manual add, there is no matching history, so the file is still
-                deleted and re-searched but cannot be blocklisted — the report flags this.
+                Blocklisting relies on Radarr or Sonarr still having the grab history for that item.
+                A wrong import or a manual add has no matching history, so the file is still deleted
+                and re-searched, but it cannot be blocklisted — the report calls this out so you know.
               </p>
               <p>
-                Sonarr and Plex must point at the same storage. The task auto-derives the path
-                mapping (for example <span className="font-semibold text-white/85">/data</span> to{' '}
-                <span className="font-semibold text-white/85">/media</span>) from your Sonarr root
-                folders and Plex library folders.
+                Radarr, Sonarr, and Plex all need to point at the same storage. The task works out
+                the path translation automatically (for example{' '}
+                <span className="font-semibold text-white/85">/data</span> to{' '}
+                <span className="font-semibold text-white/85">/media</span>) by comparing your Radarr
+                and Sonarr root folders against your Plex library folders.
               </p>
             </>
           ),

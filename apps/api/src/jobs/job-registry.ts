@@ -241,9 +241,9 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
   }),
   defineJob({
     id: 'repairMonitored',
-    name: 'Repair Monitored (Sonarr)',
+    name: 'Repair Monitored',
     description:
-      'For each monitored Sonarr series, confirms episodes verified playable in Plex (unmonitors them) and repairs episodes that Sonarr has a file for but Plex never indexed: if the file is under a Plex library location, it triggers a targeted scan, re-verifies, then deletes the unfit file and blocklists that exact release so Sonarr grabs a different one. Files outside any Plex library location are reported, not touched.',
+      'Fixes movies and episodes that Radarr or Sonarr think are downloaded but that never showed up in Plex — it deletes the bad file, blocks that release, and searches for a working copy.',
     defaultScheduleCron: '0 2 * * *',
     defaultEstimatedRuntimeMs: 12 * 60_000,
     dedupePolicy: 'schedule_singleton',

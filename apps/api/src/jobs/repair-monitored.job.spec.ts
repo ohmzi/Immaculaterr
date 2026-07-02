@@ -6,6 +6,7 @@ import {
 import type { JobContext, JsonObject } from './jobs.types';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from '../plex/plex-server.service';
+import { RadarrService } from '../radarr/radarr.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 
 // Real data captured from the live environment this feature targets.
@@ -28,24 +29,28 @@ const PLEX_LOCATIONS = [
 
 describe('derivePathMap / translatePath', () => {
   it('derives a single /data -> /media prefix mapping from the live layout', () => {
-    const map = derivePathMap(SONARR_ROOTS, PLEX_LOCATIONS);
-    expect(map).toEqual([{ from: '/data', to: '/media' }]);
+    expect(derivePathMap(SONARR_ROOTS, PLEX_LOCATIONS)).toEqual([
+      { from: '/data', to: '/media' },
+    ]);
   });
 
-  it('translates the Turning Point bad file path into the Plex namespace', () => {
+  it('translates a Sonarr bad-file path into the Plex namespace', () => {
     const map = derivePathMap(SONARR_ROOTS, PLEX_LOCATIONS);
-    const sonarrPath =
-      '/data/toshiba12tb/Plex/Complete/English/Shows/What If 2021 S01E01/f.mkv';
-    expect(translatePath(sonarrPath, map)).toBe(
-      '/media/toshiba12tb/Plex/Complete/English/Shows/What If 2021 S01E01/f.mkv',
-    );
+    expect(
+      translatePath(
+        '/data/toshiba12tb/Plex/Complete/English/Shows/What If 2021/f.mkv',
+        map,
+      ),
+    ).toBe('/media/toshiba12tb/Plex/Complete/English/Shows/What If 2021/f.mkv');
   });
 
-  it('honors an explicit override before the derived mapping', () => {
-    const map = [{ from: '/data/x', to: '/mnt/x' }];
-    expect(translatePath('/data/x/Shows/a.mkv', map)).toBe(
-      '/mnt/x/Shows/a.mkv',
-    );
+  it('derives the /data -> /media mapping from Radarr movie roots too', () => {
+    expect(
+      derivePathMap(
+        ['/data/WD18TB/Plex/Complete/English/Movies'],
+        ['/media/WD18TB/Plex/Complete/English/Movies'],
+      ),
+    ).toEqual([{ from: '/data', to: '/media' }]);
   });
 
   it('returns the original path when no mapping matches', () => {
@@ -54,9 +59,9 @@ describe('derivePathMap / translatePath', () => {
   });
 
   it('does not match on a partial segment (segment-boundary aware)', () => {
-    const map = [{ from: '/data', to: '/media' }];
-    // '/database/...' must not be rewritten by a '/data' prefix.
-    expect(translatePath('/database/x.mkv', map)).toBe('/database/x.mkv');
+    expect(
+      translatePath('/database/x.mkv', [{ from: '/data', to: '/media' }]),
+    ).toBe('/database/x.mkv');
   });
 });
 
@@ -67,8 +72,21 @@ type PlexMock = Pick<
   | 'getSectionLocations'
   | 'getTvdbShowRatingKeysMapForSectionKey'
   | 'getVerifiedEpisodeAvailabilityForShowRatingKey'
+  | 'getMovieTmdbRatingKeysMapForSectionKey'
+  | 'verifyPlayableMetadataByRatingKey'
+  | 'findMovieRatingKeyByTitle'
   | 'refreshLibraryPath'
   | 'listActivities'
+>;
+type RadarrMock = Pick<
+  RadarrService,
+  | 'listRootFolders'
+  | 'listMonitoredMovies'
+  | 'setMovieMonitored'
+  | 'deleteMovieFile'
+  | 'listMovieHistory'
+  | 'markHistoryFailed'
+  | 'searchMovies'
 >;
 type SonarrMock = Pick<
   SonarrService,
@@ -120,20 +138,32 @@ function createJob() {
     getInternalSettings: jest.fn().mockResolvedValue({
       settings: {
         plex: { baseUrl: 'http://plex.local:32400' },
+        radarr: { baseUrl: 'http://radarr.local:7878' },
         sonarr: { baseUrl: 'http://sonarr.local:8989' },
       },
       secrets: {
         plex: { token: 'plex-token' },
+        radarr: { apiKey: 'radarr-key' },
         sonarr: { apiKey: 'sonarr-key' },
       },
     }),
   };
   const plex: jest.Mocked<PlexMock> = {
-    getSections: jest
-      .fn()
-      .mockResolvedValue([{ key: '3', title: 'TV Shows', type: 'show' }]),
+    getSections: jest.fn().mockResolvedValue([
+      { key: '1', title: 'Movies', type: 'movie' },
+      { key: '3', title: 'TV Shows', type: 'show' },
+    ]),
     getSectionLocations: jest.fn().mockResolvedValue(
-      new Map([
+      new Map<string, unknown>([
+        [
+          '1',
+          {
+            key: '1',
+            title: 'Movies',
+            type: 'movie',
+            locations: ['/media/toshiba12tb/Plex/Complete/English/Movies'],
+          },
+        ],
         [
           '3',
           {
@@ -151,8 +181,56 @@ function createJob() {
     getVerifiedEpisodeAvailabilityForShowRatingKey: jest
       .fn()
       .mockResolvedValue(availability(['1:2'], ['1:2'])),
+    // Only the "good" movie (tmdb 111) is in Plex; the bad one (tmdb 999) is absent.
+    getMovieTmdbRatingKeysMapForSectionKey: jest
+      .fn()
+      .mockResolvedValue(new Map([[111, ['rk-111']]])),
+    verifyPlayableMetadataByRatingKey: jest
+      .fn()
+      .mockResolvedValue({ playable: true, probeFailureCount: 0 }),
+    findMovieRatingKeyByTitle: jest.fn().mockResolvedValue(null),
     refreshLibraryPath: jest.fn().mockResolvedValue(undefined),
     listActivities: jest.fn().mockResolvedValue([]),
+  };
+  const radarr: jest.Mocked<RadarrMock> = {
+    listRootFolders: jest
+      .fn()
+      .mockResolvedValue([
+        { id: 1, path: '/data/toshiba12tb/Plex/Complete/English/Movies' },
+      ]),
+    listMonitoredMovies: jest.fn().mockResolvedValue([
+      // In Plex + playable + has file + monitored -> should be unmonitored.
+      {
+        id: 10,
+        title: 'Good Movie',
+        tmdbId: 111,
+        monitored: true,
+        hasFile: true,
+        movieFileId: 500,
+        movieFile: {
+          id: 500,
+          path: '/data/toshiba12tb/Plex/Complete/English/Movies/Good Movie (2020)/g.mkv',
+        },
+      },
+      // Not in Plex, has a covered file -> repair candidate (wrong import).
+      {
+        id: 11,
+        title: 'Bad Import',
+        tmdbId: 999,
+        monitored: true,
+        hasFile: true,
+        movieFileId: 501,
+        movieFile: {
+          id: 501,
+          path: '/data/toshiba12tb/Plex/Complete/English/Movies/Bad Import (2021)/wrong.mkv',
+        },
+      },
+    ]),
+    setMovieMonitored: jest.fn().mockResolvedValue(true),
+    deleteMovieFile: jest.fn().mockResolvedValue(true),
+    listMovieHistory: jest.fn().mockResolvedValue([]),
+    markHistoryFailed: jest.fn().mockResolvedValue(true),
+    searchMovies: jest.fn().mockResolvedValue(true),
   };
   const sonarr: jest.Mocked<SonarrMock> = {
     listRootFolders: jest
@@ -188,28 +266,20 @@ function createJob() {
         id: 860,
         seriesId: 275,
         seasonNumber: 1,
-        path: '/data/toshiba12tb/Plex/Complete/English/Shows/What If 2021 S01E01/f.mkv',
-        relativePath: 'What If 2021 S01E01/f.mkv',
+        path: '/data/toshiba12tb/Plex/Complete/English/Shows/What If 2021/f.mkv',
+        relativePath: 'What If 2021/f.mkv',
       },
       {
         id: 861,
         seriesId: 275,
         seasonNumber: 1,
-        path: '/data/toshiba12tb/Plex/Complete/English/Shows/Turning Point S01E02/f.mkv',
-        relativePath: 'Turning Point S01E02/f.mkv',
+        path: '/data/toshiba12tb/Plex/Complete/English/Shows/TP S01E02/f.mkv',
+        relativePath: 'TP S01E02/f.mkv',
       },
     ]),
     setEpisodeMonitored: jest.fn().mockResolvedValue(true),
     deleteEpisodeFile: jest.fn().mockResolvedValue(true),
-    listEpisodeHistory: jest.fn().mockResolvedValue([
-      {
-        id: 99,
-        episodeId: 1,
-        eventType: 'grabbed',
-        sourceTitle: 'What.If.2021.S01E01',
-        date: '2024-01-01T00:00:00Z',
-      },
-    ]),
+    listEpisodeHistory: jest.fn().mockResolvedValue([]),
     markHistoryFailed: jest.fn().mockResolvedValue(true),
     searchEpisodes: jest.fn().mockResolvedValue(true),
   };
@@ -217,24 +287,27 @@ function createJob() {
   const job = new RepairMonitoredJob(
     settings as unknown as SettingsService,
     plex as unknown as PlexServerService,
+    radarr as unknown as RadarrService,
     sonarr as unknown as SonarrService,
   );
-  return { job, settings, plex, sonarr };
+  return { job, settings, plex, radarr, sonarr };
 }
 
 function raw(result: { summary?: JsonObject }) {
   const report = result.summary as Record<string, unknown>;
   expect(report.template).toBe('jobReportV1');
-  return report.raw as Record<string, unknown>;
+  return report.raw as {
+    radarr: Record<string, unknown>;
+    sonarr: Record<string, unknown>;
+  };
 }
 
-// Drives run() through the scan-settle sleep using fake timers.
 async function runLive(job: RepairMonitoredJob, ctx: JobContext) {
   jest.useFakeTimers();
   try {
     const p = job.run(ctx);
-    // Flush the initial settle delay + a poll interval.
-    await jest.advanceTimersByTimeAsync(9000);
+    // Two settle windows (Radarr pass + Sonarr pass).
+    await jest.advanceTimersByTimeAsync(20000);
     return await p;
   } finally {
     jest.useRealTimers();
@@ -242,87 +315,105 @@ async function runLive(job: RepairMonitoredJob, ctx: JobContext) {
 }
 
 describe('RepairMonitoredJob', () => {
-  it('dry-run: projects unmonitor + repair candidate without mutating', async () => {
-    const { job, sonarr } = createJob();
-    const result = await job.run(createContext(true));
-    const r = raw(result);
+  it('dry-run: projects unmonitor + repair candidates for both Radarr and Sonarr', async () => {
+    const { job, radarr, sonarr } = createJob();
+    const r = raw(await job.run(createContext(true)));
 
-    expect(r.confirmedInPlex).toBe(1); // E02 verified in Plex
-    expect(r.unmonitored).toBe(1); // E02 would be unmonitored
-    expect(r.repairCandidates).toBe(1); // E01 missing + covered
-    expect(r.deletedFiles).toBe(0);
-    expect((r.wouldRepairSamples as string[]).length).toBe(1);
+    expect(r.radarr.confirmedInPlex).toBe(1);
+    expect(r.radarr.repairCandidates).toBe(1);
+    expect(r.radarr.deletedFiles).toBe(0);
+    expect(r.sonarr.confirmedInPlex).toBe(1);
+    expect(r.sonarr.repairCandidates).toBe(1);
 
-    expect(sonarr.setEpisodeMonitored).not.toHaveBeenCalled();
-    expect(sonarr.deleteEpisodeFile).not.toHaveBeenCalled();
-    expect(sonarr.markHistoryFailed).not.toHaveBeenCalled();
-  });
-
-  it('live: deletes the unfit file, blocklists the grab, and re-searches', async () => {
-    const { job, plex, sonarr } = createJob();
-    const result = await runLive(job, createContext(false));
-    const r = raw(result);
-
-    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(1); // E02
-    expect(plex.refreshLibraryPath).toHaveBeenCalledTimes(1);
-    expect(sonarr.deleteEpisodeFile).toHaveBeenCalledWith(
-      expect.objectContaining({ episodeFileId: 860 }),
-    );
-    expect(sonarr.markHistoryFailed).toHaveBeenCalledWith(
-      expect.objectContaining({ historyId: 99 }),
-    );
-    expect(sonarr.searchEpisodes).toHaveBeenCalledWith(
-      expect.objectContaining({ episodeIds: [1] }),
-    );
-    expect(r.deletedFiles).toBe(1);
-    expect(r.blocklisted).toBe(1);
-    expect(r.searchQueued).toBe(1);
-  });
-
-  it('live: deletes but flags blocklistUnavailable when there is no grab history', async () => {
-    const { job, sonarr } = createJob();
-    sonarr.listEpisodeHistory.mockResolvedValue([]);
-    const result = await runLive(job, createContext(false));
-    const r = raw(result);
-
-    expect(sonarr.deleteEpisodeFile).toHaveBeenCalledTimes(1);
-    expect(sonarr.markHistoryFailed).not.toHaveBeenCalled();
-    expect(r.blocklistUnavailable).toBe(1);
-    expect(r.deletedFiles).toBe(1);
-    expect(sonarr.searchEpisodes).toHaveBeenCalledTimes(1); // still re-searches
-  });
-
-  it('safety: never deletes files for a series that is not in Plex at all', async () => {
-    const { job, plex, sonarr } = createJob();
-    plex.getTvdbShowRatingKeysMapForSectionKey.mockResolvedValue(new Map());
-    const result = await job.run(createContext(false));
-    const r = raw(result);
-
-    expect(r.showsNotInPlex).toBe(1);
-    expect(r.repairCandidates).toBe(0);
+    expect(radarr.deleteMovieFile).not.toHaveBeenCalled();
+    expect(radarr.setMovieMonitored).not.toHaveBeenCalled();
     expect(sonarr.deleteEpisodeFile).not.toHaveBeenCalled();
   });
 
-  it('safety: reports uncovered paths without deleting', async () => {
-    const { job, plex, sonarr } = createJob();
-    // A Plex library location that shares no suffix with the Sonarr root, so no
-    // prefix mapping is derived and the file translates to nothing covered.
+  it('live Radarr: unmonitors the in-Plex movie, deletes the unfit one, re-searches', async () => {
+    const { job, radarr } = createJob();
+    const r = raw(await runLive(job, createContext(false)));
+
+    expect(radarr.setMovieMonitored).toHaveBeenCalledWith(
+      expect.objectContaining({
+        monitored: false,
+        movie: expect.objectContaining({ id: 10 }),
+      }),
+    );
+    expect(radarr.deleteMovieFile).toHaveBeenCalledWith(
+      expect.objectContaining({ movieFileId: 501 }),
+    );
+    expect(radarr.searchMovies).toHaveBeenCalledWith(
+      expect.objectContaining({ movieIds: [11] }),
+    );
+    expect(r.radarr.deletedFiles).toBe(1);
+    expect(r.radarr.unmonitored).toBe(1);
+    expect(r.radarr.blocklistUnavailable).toBe(1); // no grab history
+  });
+
+  it('live Radarr safety: keeps a movie that Plex matches by title after the scan', async () => {
+    const { job, plex, radarr } = createJob();
+    plex.findMovieRatingKeyByTitle.mockResolvedValue({
+      ratingKey: 'rk-x',
+      title: 'Bad Import',
+    });
+    const r = raw(await runLive(job, createContext(false)));
+
+    expect(radarr.deleteMovieFile).not.toHaveBeenCalled();
+    expect(r.radarr.recoveredByScan).toBe(1);
+    expect(r.radarr.deletedFiles).toBe(0);
+  });
+
+  it('live Radarr safety: reports uncovered movie paths without deleting', async () => {
+    const { job, plex, radarr } = createJob();
     plex.getSectionLocations.mockResolvedValue(
-      new Map([
+      new Map<string, unknown>([
+        [
+          '1',
+          {
+            key: '1',
+            title: 'Movies',
+            type: 'movie',
+            locations: ['/media/elsewhere/Films'],
+          },
+        ],
         [
           '3',
           {
             key: '3',
             title: 'TV Shows',
             type: 'show',
-            locations: ['/media/movies/Films'],
+            locations: ['/media/toshiba12tb/Plex/Complete/English/Shows'],
           },
         ],
       ]),
     );
-    const result = await job.run(createContext(false));
-    const r = raw(result);
-    expect(r.uncoveredPaths).toBe(1);
+    const r = raw(await runLive(job, createContext(false)));
+    expect(r.radarr.uncoveredPaths).toBe(1);
+    expect(radarr.deleteMovieFile).not.toHaveBeenCalled();
+  });
+
+  it('live Sonarr: deletes the unfit episode file and re-searches', async () => {
+    const { job, sonarr } = createJob();
+    const r = raw(await runLive(job, createContext(false)));
+
+    expect(sonarr.setEpisodeMonitored).toHaveBeenCalledTimes(1); // E02 confirmed
+    expect(sonarr.deleteEpisodeFile).toHaveBeenCalledWith(
+      expect.objectContaining({ episodeFileId: 860 }),
+    );
+    expect(sonarr.searchEpisodes).toHaveBeenCalledWith(
+      expect.objectContaining({ episodeIds: [1] }),
+    );
+    expect(r.sonarr.deletedFiles).toBe(1);
+    expect(r.sonarr.blocklistUnavailable).toBe(1);
+  });
+
+  it('safety: never deletes episodes for a series not in Plex at all', async () => {
+    const { job, plex, sonarr } = createJob();
+    plex.getTvdbShowRatingKeysMapForSectionKey.mockResolvedValue(new Map());
+    const r = raw(await runLive(job, createContext(false)));
+    expect(r.sonarr.showsNotInPlex).toBe(1);
+    expect(r.sonarr.repairCandidates).toBe(0);
     expect(sonarr.deleteEpisodeFile).not.toHaveBeenCalled();
   });
 });

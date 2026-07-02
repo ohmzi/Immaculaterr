@@ -174,7 +174,7 @@ const JOB_CONFIG: Record<
     icon: <Wrench className="w-8 h-8" />,
     color: 'text-amber-300',
     description:
-      'Confirms Sonarr episodes verified in Plex (unmonitors them) and repairs episodes Sonarr has a file for but Plex never indexed: scans, re-verifies, then deletes the unfit file and blocklists that release so Sonarr grabs a different one. Files outside any Plex library location are reported only.',
+      'Fixes movies and episodes that Radarr or Sonarr think are downloaded but that never showed up in Plex — it deletes the bad file, blocks that release, and searches for a working copy.',
   },
   arrMonitoredSearch: {
     icon: <Search className="w-8 h-8" />,
