@@ -546,6 +546,71 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'task-manager-repair-monitored',
+      title: 'Repair Monitored (Sonarr)',
+      items: [
+        {
+          id: 'task-manager-repair-monitored-what-does',
+          question: 'What does Repair Monitored do?',
+          answer: (
+            <>
+              <p>
+                It goes further than Confirm Monitored. For every monitored Sonarr series it
+                confirms episodes that Plex can actually play and unmonitors them. Then, for episodes
+                that Sonarr thinks it has a file for but Plex never indexed, it figures out{' '}
+                <span className="font-semibold text-white/85">why</span> and repairs the mismatch.
+              </p>
+              <p>
+                If the file sits inside a folder your Plex TV library already scans, Plex should have
+                picked it up — so the file is treated as unfit. The task triggers a targeted Plex
+                scan of that folder, waits, and re-checks. If Plex still does not have the episode,
+                it deletes the unfit file and blocklists that exact release so Sonarr grabs a
+                different one, then kicks off a fresh search.
+              </p>
+              <p>
+                If the file is <span className="font-semibold text-white/85">not</span> inside any
+                Plex library folder, nothing is deleted — the path is simply reported so you can fix
+                the library or the download location yourself.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-repair-monitored-when-use',
+          question: 'When should I use it?',
+          answer: (
+            <>
+              <p>
+                Use it when a show looks complete in Sonarr but is missing episodes in Plex, or after
+                bad imports where Sonarr grabbed the wrong file. It is safe to schedule off-peak: it
+                only deletes a file after a fresh Plex scan still cannot find the episode, and it
+                never touches a series that is not in Plex at all.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-repair-monitored-limitations',
+          question: 'Are there any limitations?',
+          answer: (
+            <>
+              <p>
+                Blocklisting needs Sonarr grab history for that episode. If the file came from a
+                wrong-show import or a manual add, there is no matching history, so the file is still
+                deleted and re-searched but cannot be blocklisted — the report flags this.
+              </p>
+              <p>
+                Sonarr and Plex must point at the same storage. The task auto-derives the path
+                mapping (for example <span className="font-semibold text-white/85">/data</span> to{' '}
+                <span className="font-semibold text-white/85">/media</span>) from your Sonarr root
+                folders and Plex library folders.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
       id: 'task-manager-cleanup-after-adding-new-content',
       title: 'Cleanup After Adding New Content',
       items: [

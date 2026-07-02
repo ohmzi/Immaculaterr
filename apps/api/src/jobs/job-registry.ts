@@ -240,6 +240,16 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     estimateKeyBuilder: buildDefaultEstimateKey,
   }),
   defineJob({
+    id: 'repairMonitored',
+    name: 'Repair Monitored (Sonarr)',
+    description:
+      'For each monitored Sonarr series, confirms episodes verified playable in Plex (unmonitors them) and repairs episodes that Sonarr has a file for but Plex never indexed: if the file is under a Plex library location, it triggers a targeted scan, re-verifies, then deletes the unfit file and blocklists that exact release so Sonarr grabs a different one. Files outside any Plex library location are reported, not touched.',
+    defaultScheduleCron: '0 2 * * *',
+    defaultEstimatedRuntimeMs: 12 * 60_000,
+    dedupePolicy: 'schedule_singleton',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+  }),
+  defineJob({
     id: 'mediaAddedCleanup',
     name: 'Cleanup After Adding New Content',
     description:

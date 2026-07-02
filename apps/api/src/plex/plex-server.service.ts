@@ -10,6 +10,13 @@ type PlexSection = {
   type?: string;
 };
 
+export type PlexSectionWithLocations = {
+  key: string;
+  title: string;
+  type: string | null;
+  locations: string[];
+};
+
 type PlexMetadata = Record<string, unknown> & {
   ratingKey?: string;
   title?: string;
@@ -1325,6 +1332,82 @@ export class PlexServerService {
         type: typeof d.type === 'string' ? d.type.trim() : undefined,
       }))
       .filter((d) => d.key && d.title);
+  }
+
+  /**
+   * Returns a map of section key -> { title, type, locations[] }, where
+   * `locations` are the on-disk folder paths Plex scans for that library.
+   * The `library/sections` list endpoint carries the `Location` children;
+   * the per-section detail endpoint does not.
+   */
+  async getSectionLocations(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<Map<string, PlexSectionWithLocations>> {
+    const { baseUrl, token } = params;
+    const url = new URL(
+      'library/sections',
+      normalizeBaseUrl(baseUrl),
+    ).toString();
+    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+
+    const container = xml.MediaContainer;
+    const dirs = asArray(
+      (container?.Directory ?? []) as PlexDirectory | PlexDirectory[],
+    );
+
+    const out = new Map<string, PlexSectionWithLocations>();
+    for (const d of dirs) {
+      const key = toStringSafe(d.key).trim();
+      const title = toStringSafe(d.title).trim();
+      if (!key || !title) continue;
+      const type = typeof d.type === 'string' ? d.type.trim() : null;
+      const locations: string[] = [];
+      const seen = new Set<string>();
+      const locationNodes = asArray(
+        d['Location'] as
+          | Record<string, unknown>
+          | Record<string, unknown>[]
+          | undefined,
+      );
+      for (const loc of locationNodes) {
+        const path =
+          loc && typeof loc === 'object'
+            ? toStringSafe(loc['path']).trim()
+            : '';
+        if (!path || seen.has(path)) continue;
+        seen.add(path);
+        locations.push(path);
+      }
+      out.set(key, { key, title, type, locations });
+    }
+    return out;
+  }
+
+  /**
+   * Triggers a targeted Plex library scan. When `path` is provided Plex only
+   * scans that folder; otherwise it refreshes the whole section.
+   */
+  async refreshLibraryPath(params: {
+    baseUrl: string;
+    token: string;
+    sectionKey: string;
+    path?: string;
+  }): Promise<void> {
+    const { baseUrl, token, sectionKey } = params;
+    const key = sectionKey.trim();
+    if (!/^[1-9]\d*$/.test(key)) {
+      throw new BadGatewayException(
+        `Plex refresh failed: invalid section key ${JSON.stringify(sectionKey)}`,
+      );
+    }
+    const url = new URL(
+      `library/sections/${key}/refresh`,
+      normalizeBaseUrl(baseUrl),
+    );
+    const path = params.path?.trim();
+    if (path) url.searchParams.set('path', path);
+    await this.fetchXml(url.toString(), token, 20000);
   }
 
   async listLibraryGenres(params: {

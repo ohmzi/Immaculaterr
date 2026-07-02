@@ -18,6 +18,7 @@ import { JobsRetentionService } from './jobs-retention.service';
 import { JobsWatchdogService } from './jobs-watchdog.service';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { UnmonitorConfirmJob } from './unmonitor-confirm.job';
+import { RepairMonitoredJob } from './repair-monitored.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
@@ -63,6 +64,7 @@ import { AuthModule } from '../auth/auth.module';
     JobsWatchdogService,
     MonitorConfirmJob,
     UnmonitorConfirmJob,
+    RepairMonitoredJob,
     ArrMonitoredSearchJob,
     CleanupAfterAddingNewContentJob,
     BasedonLatestWatchedCollectionJob,

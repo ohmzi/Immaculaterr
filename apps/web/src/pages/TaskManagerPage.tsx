@@ -35,6 +35,7 @@ import {
   Trash2,
   FileUp,
   History,
+  Wrench,
 } from 'lucide-react';
 
 import {
@@ -123,6 +124,7 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
 ]);
 const NO_WEBHOOK_JOB_IDS = new Set<string>([
   'unmonitorConfirm', // manual only, no Plex-triggered auto-run
+  'repairMonitored', // scheduled/manual, no Plex-triggered auto-run
   'importNetflixHistory', // manual upload only, no Plex-triggered auto-run
   'importPlexHistory', // manual only, no Plex-triggered auto-run
 ]);
@@ -167,6 +169,12 @@ const JOB_CONFIG: Record<
     color: 'text-red-300',
     description:
       'Manual Run now asks for Radarr or Sonarr, then re-monitors missing unmonitored movies or episodes that Plex does not actually have.',
+  },
+  repairMonitored: {
+    icon: <Wrench className="w-8 h-8" />,
+    color: 'text-amber-300',
+    description:
+      'Confirms Sonarr episodes verified in Plex (unmonitors them) and repairs episodes Sonarr has a file for but Plex never indexed: scans, re-verifies, then deletes the unfit file and blocklists that release so Sonarr grabs a different one. Files outside any Plex library location are reported only.',
   },
   arrMonitoredSearch: {
     icon: <Search className="w-8 h-8" />,
