@@ -15,6 +15,11 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { RottenTomatoesUpcomingMoviesJob } from './rotten-tomatoes-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
+import { CuttingRoomAnalyzeJob } from './cutting-room-analyze.job';
+import { CuttingRoomPruneJob } from './cutting-room-prune.job';
+import { CuttingRoomWantedPruneJob } from './cutting-room-wanted-prune.job';
+import { CuttingRoomDuplicatesJob } from './cutting-room-duplicates.job';
+import { CuttingRoomLargeFilesJob } from './cutting-room-large-files.job';
 
 @Injectable()
 export class JobsHandlers {
@@ -34,6 +39,11 @@ export class JobsHandlers {
     private readonly rottenTomatoesUpcomingMoviesJob: RottenTomatoesUpcomingMoviesJob,
     private readonly importNetflixHistoryJob: ImportNetflixHistoryJob,
     private readonly importPlexHistoryJob: ImportPlexHistoryJob,
+    private readonly cuttingRoomAnalyzeJob: CuttingRoomAnalyzeJob,
+    private readonly cuttingRoomPruneJob: CuttingRoomPruneJob,
+    private readonly cuttingRoomWantedPruneJob: CuttingRoomWantedPruneJob,
+    private readonly cuttingRoomDuplicatesJob: CuttingRoomDuplicatesJob,
+    private readonly cuttingRoomLargeFilesJob: CuttingRoomLargeFilesJob,
   ) {}
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
@@ -68,6 +78,16 @@ export class JobsHandlers {
         return await this.importNetflixHistoryJob.run(ctx);
       case 'importPlexHistory':
         return await this.importPlexHistoryJob.run(ctx);
+      case 'cuttingRoomAnalyze':
+        return await this.cuttingRoomAnalyzeJob.run(ctx);
+      case 'cuttingRoomPrune':
+        return await this.cuttingRoomPruneJob.run(ctx);
+      case 'cuttingRoomWantedPrune':
+        return await this.cuttingRoomWantedPruneJob.run(ctx);
+      case 'cuttingRoomDuplicates':
+        return await this.cuttingRoomDuplicatesJob.run(ctx);
+      case 'cuttingRoomLargeFiles':
+        return await this.cuttingRoomLargeFilesJob.run(ctx);
       default:
         throw new Error(`No handler registered for jobId=${jobId}`);
     }

@@ -10,11 +10,31 @@ export type RadarrMovie = Record<string, unknown> & {
   monitored?: boolean;
   hasFile?: boolean;
   movieFileId?: number;
+  year?: number;
+  added?: string;
+  status?: string;
+  path?: string;
+  rootFolderPath?: string;
+  folderName?: string;
+  sizeOnDisk?: number;
+  tags?: number[];
+  ratings?: Record<
+    string,
+    Record<string, unknown> & { value?: number; votes?: number }
+  >;
   movieFile?: Record<string, unknown> & {
     id?: number;
     path?: string;
     relativePath?: string;
+    size?: number;
   };
+};
+
+export type ArrDiskSpace = {
+  path: string;
+  label: string | null;
+  freeSpace: number;
+  totalSpace: number;
 };
 
 export type RadarrHistoryRecord = {
@@ -90,7 +110,8 @@ export class RadarrService {
     const url = this.buildApiUrl(baseUrl, 'api/v3/movie');
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    // Large libraries (10k+ movies) can take well over 20s to serialize.
+    const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
       const res = await fetch(url, {
@@ -753,6 +774,355 @@ export class RadarrService {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
         `Radarr movie search failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async createTag(params: {
+    baseUrl: string;
+    apiKey: string;
+    label: string;
+  }): Promise<RadarrTag> {
+    const { baseUrl, apiKey } = params;
+    const label = (params.label ?? '').trim();
+    if (!label) {
+      throw new BadGatewayException('Radarr create tag failed: empty label');
+    }
+    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({ label }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr create tag failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const id =
+        isRecord(data) && typeof data['id'] === 'number' ? data['id'] : NaN;
+      if (!Number.isFinite(id) || id <= 0) {
+        throw new BadGatewayException(
+          'Radarr create tag failed: response missing tag id',
+        );
+      }
+      return { id: Math.trunc(id), label };
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr create tag failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async updateMoviesEditor(params: {
+    baseUrl: string;
+    apiKey: string;
+    movieIds: number[];
+    tags?: number[];
+    applyTags?: 'add' | 'remove' | 'replace';
+    monitored?: boolean;
+    qualityProfileId?: number;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey } = params;
+    const movieIds = (params.movieIds ?? [])
+      .map((id) => Math.trunc(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (movieIds.length === 0) return false;
+
+    const payload: Record<string, unknown> = { movieIds };
+    if (Array.isArray(params.tags) && params.tags.length > 0) {
+      payload['tags'] = params.tags.map((t) => Math.trunc(t));
+      payload['applyTags'] = params.applyTags ?? 'add';
+    }
+    if (typeof params.monitored === 'boolean') {
+      payload['monitored'] = params.monitored;
+    }
+    if (
+      typeof params.qualityProfileId === 'number' &&
+      params.qualityProfileId > 0
+    ) {
+      payload['qualityProfileId'] = Math.trunc(params.qualityProfileId);
+    }
+
+    const url = this.buildApiUrl(baseUrl, 'api/v3/movie/editor');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr movie editor update failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr movie editor update failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Minimal JSON request helper for the size-capped-profile endpoints
+   * (custom formats + quality profiles). GET on body=undefined, else POST.
+   */
+  private async profileApiRequest<T>(params: {
+    baseUrl: string;
+    apiKey: string;
+    path: string;
+    body?: unknown;
+  }): Promise<T> {
+    const url = this.buildApiUrl(params.baseUrl, params.path);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const res = await fetch(url, {
+        method: params.body === undefined ? 'GET' : 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': params.apiKey,
+        },
+        body:
+          params.body === undefined ? undefined : JSON.stringify(params.body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr ${params.path} failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr ${params.path} failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async listCustomFormats(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<Array<Record<string, unknown> & { id: number; name?: string }>> {
+    return await this.profileApiRequest({
+      ...params,
+      path: 'api/v3/customformat',
+    });
+  }
+
+  async createCustomFormat(params: {
+    baseUrl: string;
+    apiKey: string;
+    format: Record<string, unknown>;
+  }): Promise<Record<string, unknown> & { id: number }> {
+    return await this.profileApiRequest({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/customformat',
+      body: params.format,
+    });
+  }
+
+  async getQualityProfileSchema(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<Record<string, unknown>> {
+    return await this.profileApiRequest({
+      ...params,
+      path: 'api/v3/qualityprofile/schema',
+    });
+  }
+
+  async createQualityProfile(params: {
+    baseUrl: string;
+    apiKey: string;
+    profile: Record<string, unknown>;
+  }): Promise<Record<string, unknown> & { id: number }> {
+    return await this.profileApiRequest({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/qualityprofile',
+      body: params.profile,
+    });
+  }
+
+  async deleteMovie(params: {
+    baseUrl: string;
+    apiKey: string;
+    movieId: number;
+    deleteFiles: boolean;
+    addImportExclusion: boolean;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, movieId } = params;
+    const query = `deleteFiles=${params.deleteFiles ? 'true' : 'false'}&addImportExclusion=${
+      params.addImportExclusion ? 'true' : 'false'
+    }`;
+    const url = this.buildApiUrl(baseUrl, `api/v3/movie/${movieId}?${query}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok && res.status !== 404) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr delete movie failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr delete movie failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async getDiskSpace(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<ArrDiskSpace[]> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/diskspace');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr disk space failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
+
+      const out: ArrDiskSpace[] = [];
+      for (const r of rows) {
+        const path = typeof r['path'] === 'string' ? r['path'].trim() : '';
+        if (!path) continue;
+        const free = Number(r['freeSpace']);
+        const total = Number(r['totalSpace']);
+        out.push({
+          path,
+          label: typeof r['label'] === 'string' ? r['label'] : null,
+          freeSpace: Number.isFinite(free) ? free : 0,
+          totalSpace: Number.isFinite(total) ? total : 0,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr disk space failed: ${(err as Error)?.message ?? String(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async getRecycleBinPath(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<string | null> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/config/mediamanagement');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Radarr media management config failed: HTTP ${res.status} ${body}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const bin =
+        isRecord(data) && typeof data['recycleBin'] === 'string'
+          ? data['recycleBin'].trim()
+          : '';
+      return bin.length > 0 ? bin : null;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Radarr media management config failed: ${(err as Error)?.message ?? String(err)}`,
       );
     } finally {
       clearTimeout(timeout);

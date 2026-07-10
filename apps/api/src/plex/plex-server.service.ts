@@ -131,6 +131,69 @@ export type PlexRecentlyAddedItem = {
   index: number | null;
 };
 
+export type PlexCuttingRoomItem = {
+  ratingKey: string;
+  librarySectionKey: string;
+  mediaType: 'movie' | 'show';
+  title: string | null;
+  year: number | null;
+  addedAt: number | null;
+  viewCount: number;
+  lastViewedAt: number | null;
+  viewOffset: number | null;
+  durationMs: number | null;
+  rating: number | null;
+  audienceRating: number | null;
+  userRating: number | null;
+  leafCount: number | null;
+  viewedLeafCount: number | null;
+  tmdbId: number | null;
+  tvdbId: number | null;
+  totalSizeBytes: number;
+  fileCount: number;
+  firstFilePath: string | null;
+};
+
+export type PlexHistoryEntry = {
+  ratingKey: string | null;
+  grandparentRatingKey: string | null;
+  type: string | null;
+  accountId: number | null;
+  viewedAt: number | null;
+};
+
+export type PlexOnDeckEntry = {
+  ratingKey: string;
+  grandparentRatingKey: string | null;
+  type: string | null;
+};
+
+export type PlexLargeEpisode = {
+  ratingKey: string;
+  librarySectionKey: string;
+  title: string | null;
+  showTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  sizeBytes: number;
+  file: string | null;
+};
+
+export type PlexDuplicateGroup = {
+  ratingKey: string;
+  librarySectionKey: string;
+  title: string | null;
+  year: number | null;
+  versions: Array<{
+    mediaId: string | null;
+    videoResolution: string | null;
+    sizeBytes: number;
+    file: string | null;
+  }>;
+  totalBytes: number;
+  wasteBytes: number;
+};
+
 type PlexDirectory = Record<string, unknown> & {
   key?: unknown;
   title?: unknown;
@@ -214,6 +277,15 @@ function parseFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
     const n = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function parsePlexFloat(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number.parseFloat(value.trim());
     if (Number.isFinite(n)) return n;
   }
   return null;
@@ -3251,6 +3323,259 @@ export class PlexServerService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  /**
+   * Flat listing of a section's top-level items with the watch/size fields the
+   * cutting room engine needs. Movies (type=1) include per-part file sizes; shows
+   * (type=2) include leaf counts (sizes for shows come from Sonarr).
+   */
+  async listSectionItemsForCuttingRoom(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    mediaType: 'movie' | 'show';
+  }): Promise<PlexCuttingRoomItem[]> {
+    const { baseUrl, token, librarySectionKey, mediaType } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: mediaType === 'movie' ? 1 : 2,
+      includeGuids: true,
+      timeoutMs: 120000,
+    });
+
+    const out: PlexCuttingRoomItem[] = [];
+    for (const item of items) {
+      const ratingKey = toStringSafe(item.ratingKey).trim();
+      if (!ratingKey) continue;
+      const media = parsePlexMediaVersions(item.Media);
+      let totalSizeBytes = 0;
+      let fileCount = 0;
+      let firstFilePath: string | null = null;
+      for (const version of media) {
+        for (const part of version.parts) {
+          if (typeof part.size === 'number' && part.size > 0) {
+            totalSizeBytes += part.size;
+          }
+          fileCount += 1;
+          if (!firstFilePath && part.file) firstFilePath = part.file;
+        }
+      }
+      const tmdbIds = extractIdsFromGuids(item.Guid, 'tmdb');
+      const tvdbIds = extractIdsFromGuids(item.Guid, 'tvdb');
+      out.push({
+        ratingKey,
+        librarySectionKey,
+        mediaType,
+        title: toStringSafe(item.title).trim() || null,
+        year: parseFiniteNumber(item.year),
+        addedAt: parseFiniteNumber(item.addedAt),
+        viewCount: parseFiniteNumber(item.viewCount) ?? 0,
+        lastViewedAt: parseFiniteNumber(item.lastViewedAt),
+        viewOffset: parseFiniteNumber(item['viewOffset']),
+        durationMs: parseFiniteNumber(item['duration']),
+        rating: parsePlexFloat(item['rating']),
+        audienceRating: parsePlexFloat(item['audienceRating']),
+        userRating: parsePlexFloat(item['userRating']),
+        leafCount: parseFiniteNumber(item['leafCount']),
+        viewedLeafCount: parseFiniteNumber(item['viewedLeafCount']),
+        tmdbId: tmdbIds.length > 0 ? tmdbIds[0] : null,
+        tvdbId: tvdbIds.length > 0 ? tvdbIds[0] : null,
+        totalSizeBytes,
+        fileCount,
+        firstFilePath,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Movies that Plex reports with more than one version (Media entry) in a
+   * section — the raw material for duplicate cleanup.
+   */
+  async listDuplicateMovies(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+  }): Promise<PlexDuplicateGroup[]> {
+    const { baseUrl, token, librarySectionKey } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 1,
+      includeGuids: true,
+      duplicate: true,
+      timeoutMs: 120000,
+    });
+
+    const out: PlexDuplicateGroup[] = [];
+    for (const item of items) {
+      const ratingKey = toStringSafe(item.ratingKey).trim();
+      if (!ratingKey) continue;
+      const media = parsePlexMediaVersions(item.Media);
+      if (media.length <= 1) continue;
+      const versions = media.map((version) => {
+        const parts = version.parts;
+        const size = parts.reduce(
+          (sum, part) =>
+            sum +
+            (typeof part.size === 'number' && part.size > 0 ? part.size : 0),
+          0,
+        );
+        return {
+          mediaId: version.id,
+          videoResolution: version.videoResolution,
+          sizeBytes: size,
+          file: parts[0]?.file ?? null,
+        };
+      });
+      const totalBytes = versions.reduce((sum, v) => sum + v.sizeBytes, 0);
+      const largest = versions.reduce(
+        (max, v) => Math.max(max, v.sizeBytes),
+        0,
+      );
+      out.push({
+        ratingKey,
+        librarySectionKey,
+        title: toStringSafe(item.title).trim() || null,
+        year: parseFiniteNumber(item.year),
+        versions,
+        totalBytes,
+        wasteBytes: Math.max(0, totalBytes - largest),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Episodes in a show section whose file(s) exceed a size threshold — inputs
+   * for the Cutting Room's oversized-file replacement.
+   */
+  async listLargeEpisodes(params: {
+    baseUrl: string;
+    token: string;
+    librarySectionKey: string;
+    thresholdBytes: number;
+  }): Promise<PlexLargeEpisode[]> {
+    const { baseUrl, token, librarySectionKey, thresholdBytes } = params;
+    const items = await this.listSectionItems({
+      baseUrl,
+      token,
+      librarySectionKey,
+      type: 4,
+      timeoutMs: 180000,
+    });
+
+    const out: PlexLargeEpisode[] = [];
+    for (const item of items) {
+      const ratingKey = toStringSafe(item.ratingKey).trim();
+      if (!ratingKey) continue;
+      const media = parsePlexMediaVersions(item.Media);
+      let sizeBytes = 0;
+      let file: string | null = null;
+      for (const version of media) {
+        for (const part of version.parts) {
+          if (typeof part.size === 'number' && part.size > 0) {
+            sizeBytes += part.size;
+          }
+          if (!file && part.file) file = part.file;
+        }
+      }
+      if (sizeBytes < thresholdBytes) continue;
+      out.push({
+        ratingKey,
+        librarySectionKey,
+        title: toStringSafe(item.title).trim() || null,
+        showTitle: toStringSafe(item['grandparentTitle']).trim() || null,
+        seasonNumber: parseFiniteNumber(item.parentIndex),
+        episodeNumber: parseFiniteNumber(item.index),
+        sizeBytes,
+        file,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Server-lifetime watch history across ALL accounts
+   * (`/status/sessions/history/all`, paginated). Used by the Cutting Room to know
+   * whether anyone ever played an item, even without Tautulli.
+   */
+  async getWatchHistory(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<PlexHistoryEntry[]> {
+    const { baseUrl, token } = params;
+    const pageSize = 5000;
+    const maxPages = 40; // hard stop at 200k entries
+    const out: PlexHistoryEntry[] = [];
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const url = new URL(
+        'status/sessions/history/all',
+        normalizeBaseUrl(baseUrl),
+      );
+      url.searchParams.set('X-Plex-Container-Start', String(page * pageSize));
+      url.searchParams.set('X-Plex-Container-Size', String(pageSize));
+
+      const xml = asPlexXml(await this.fetchXml(url.toString(), token, 60000));
+      const container = xml.MediaContainer;
+      const rows = asPlexMetadataArray(container);
+      for (const row of rows) {
+        const ratingKey = toStringSafe(row.ratingKey).trim();
+        const viewedAt = parseFiniteNumber(row['viewedAt']);
+        if (!ratingKey && !row['grandparentKey']) continue;
+        const grandparentKeyRaw = toStringSafe(row['grandparentKey']).trim();
+        const grandparentRatingKey = grandparentKeyRaw
+          ? (grandparentKeyRaw.split('/').pop() ?? null)
+          : null;
+        out.push({
+          ratingKey: ratingKey || null,
+          grandparentRatingKey,
+          type: toStringSafe(row.type).trim() || null,
+          accountId: parseFiniteNumber(row['accountID']),
+          viewedAt,
+        });
+      }
+
+      const total = parseFiniteNumber(container?.['totalSize']);
+      const fetched = (page + 1) * pageSize;
+      if (rows.length === 0 || (total !== null && fetched >= total)) break;
+    }
+
+    return out;
+  }
+
+  /**
+   * On Deck (continue watching) across the server. Items here are actively
+   * mid-watch, so the Cutting Room must never touch them (or their shows).
+   */
+  async getOnDeck(params: {
+    baseUrl: string;
+    token: string;
+  }): Promise<PlexOnDeckEntry[]> {
+    const { baseUrl, token } = params;
+    const url = new URL('library/onDeck', normalizeBaseUrl(baseUrl));
+
+    const xml = asPlexXml(await this.fetchXml(url.toString(), token, 30000));
+    const rows = asPlexMetadataArray(xml.MediaContainer);
+    const out: PlexOnDeckEntry[] = [];
+    for (const row of rows) {
+      const ratingKey = toStringSafe(row.ratingKey).trim();
+      if (!ratingKey) continue;
+      const grandparentKeyRaw = toStringSafe(
+        row['grandparentRatingKey'],
+      ).trim();
+      out.push({
+        ratingKey,
+        grandparentRatingKey: grandparentKeyRaw || null,
+        type: toStringSafe(row.type).trim() || null,
+      });
+    }
+    return out;
   }
 
   private async fetchXml(

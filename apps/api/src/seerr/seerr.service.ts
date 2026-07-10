@@ -17,6 +17,13 @@ export type SeerrClearAllRequestsResult = {
   failedRequestIds: number[];
 };
 
+export type SeerrRecentRequest = {
+  tmdbId: number | null;
+  tvdbId: number | null;
+  mediaType: string | null;
+  createdAtMs: number | null;
+};
+
 type SeerrAuthMe = Record<string, unknown>;
 type SeerrRequestResponse = Record<string, unknown>;
 type SeerrRequestListResponse = {
@@ -235,6 +242,100 @@ export class SeerrService {
       bodyLower.includes('requested') ||
       bodyLower.includes('pending')
     );
+  }
+
+  /**
+   * Recent media requests (all users), newest first. Used by the Cutting Room to
+   * protect recently-requested items from pruning.
+   */
+  async listRecentRequests(params: {
+    baseUrl: string;
+    apiKey: string;
+    sinceMs: number;
+    maxRecords?: number;
+  }): Promise<SeerrRecentRequest[]> {
+    const { baseUrl, apiKey, sinceMs } = params;
+    const take = 100;
+    const maxRecords = Math.max(take, params.maxRecords ?? 5000);
+    let skip = 0;
+    const out: SeerrRecentRequest[] = [];
+
+    while (skip < maxRecords) {
+      const url = this.buildApiUrl(
+        baseUrl,
+        `/request?take=${take}&skip=${skip}&sort=added`,
+      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            'X-Api-Key': apiKey,
+          },
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new BadGatewayException(
+            `Seerr list requests failed: HTTP ${res.status} ${body}`.trim(),
+          );
+        }
+
+        const data = (await res.json()) as SeerrRequestListResponse;
+        const rows = Array.isArray(data?.results) ? data.results : [];
+        let sawOlder = false;
+        for (const row of rows) {
+          if (!row || typeof row !== 'object') continue;
+          const record = row as Record<string, unknown>;
+          const createdAtRaw = record['createdAt'];
+          const createdAtMs =
+            typeof createdAtRaw === 'string' ? Date.parse(createdAtRaw) : NaN;
+          if (Number.isFinite(createdAtMs) && createdAtMs < sinceMs) {
+            sawOlder = true;
+            continue;
+          }
+          const media =
+            record['media'] && typeof record['media'] === 'object'
+              ? (record['media'] as Record<string, unknown>)
+              : {};
+          const tmdbRaw = Number(media['tmdbId']);
+          const tvdbRaw = Number(media['tvdbId']);
+          out.push({
+            tmdbId:
+              Number.isFinite(tmdbRaw) && tmdbRaw > 0
+                ? Math.trunc(tmdbRaw)
+                : null,
+            tvdbId:
+              Number.isFinite(tvdbRaw) && tvdbRaw > 0
+                ? Math.trunc(tvdbRaw)
+                : null,
+            mediaType:
+              typeof media['mediaType'] === 'string'
+                ? media['mediaType']
+                : null,
+            createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : null,
+          });
+        }
+
+        // Results are newest-first when sorted by added; once a page contains
+        // only older-than-window rows we can stop paging.
+        if (rows.length < take || sawOlder) break;
+        skip += take;
+      } catch (err) {
+        if (err instanceof BadGatewayException) throw err;
+        throw new BadGatewayException(
+          `Seerr list requests failed: ${(err as Error)?.message ?? String(err)}`,
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    return out;
   }
 
   private async listAllRequestIds(params: {

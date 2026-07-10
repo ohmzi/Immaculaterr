@@ -34,6 +34,12 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { RottenTomatoesUpcomingMoviesJob } from './rotten-tomatoes-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
+import { CuttingRoomAnalyzeJob } from './cutting-room-analyze.job';
+import { CuttingRoomPruneJob } from './cutting-room-prune.job';
+import { CuttingRoomWantedPruneJob } from './cutting-room-wanted-prune.job';
+import { CuttingRoomDuplicatesJob } from './cutting-room-duplicates.job';
+import { CuttingRoomLargeFilesJob } from './cutting-room-large-files.job';
+import { CuttingRoomModule } from '../cutting-room/cutting-room.module';
 import { ImportModule } from '../import/import.module';
 import { AuthModule } from '../auth/auth.module';
 
@@ -52,6 +58,7 @@ import { AuthModule } from '../auth/auth.module';
     ImmaculateTasteCollectionModule,
     WatchedMovieRecommendationsModule,
     forwardRef(() => ImportModule),
+    forwardRef(() => CuttingRoomModule),
     AuthModule,
     ScheduleModule.forRoot(),
   ],
@@ -77,6 +84,11 @@ import { AuthModule } from '../auth/auth.module';
     RottenTomatoesUpcomingMoviesJob,
     ImportNetflixHistoryJob,
     ImportPlexHistoryJob,
+    CuttingRoomAnalyzeJob,
+    CuttingRoomPruneJob,
+    CuttingRoomWantedPruneJob,
+    CuttingRoomDuplicatesJob,
+    CuttingRoomLargeFilesJob,
     CollectionResyncUpgradeService,
   ],
   exports: [JobsService],

@@ -662,6 +662,101 @@ model ImportedWatchEntry {
   @@index([userId, status])
 }
 
+model CuttingRoomSnapshot {
+  id             String    @id @default(cuid())
+  userId         String
+  kind           String    @default("interactive") // interactive | report
+  mediaType      String // movie | show
+  status         String // RUNNING | READY | FAILED | PRUNING | PARTIAL | PRUNED
+  rulesJson      Json? // frozen resolved rules + factors + thresholds
+  sectionKeys    Json? // Plex section keys the user selected for this scan
+  analyzeRunId   String?
+  pruneRunId     String?
+  stopRequested  Boolean   @default(false)
+  targetBytes    BigInt?
+  libraryCount   Int       @default(0)
+  libraryBytes   BigInt    @default(0)
+  candidateCount Int       @default(0)
+  candidateBytes BigInt    @default(0)
+  selectedCount  Int       @default(0)
+  selectedBytes  BigInt    @default(0)
+  protectedJson  Json? // counts per protection reason
+  tierJson       Json? // per-tier count/bytes
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  candidates CuttingRoomCandidate[]
+
+  @@index([userId, kind, createdAt])
+}
+
+model CuttingRoomCandidate {
+  id                String    @id @default(cuid())
+  snapshotId        String
+  mediaType         String // movie | show
+  title             String
+  year              Int?
+  tier              Int
+  score             Int
+  sizeBytes         BigInt    @default(0)
+  fileCount         Int       @default(0)
+  watchStatus       String // never | abandoned | watched
+  confidence        String    @default("full") // full | plex_only
+  plexRatingKey     String?
+  librarySectionKey String?
+  tmdbId            Int?
+  tvdbId            Int?
+  arrInstanceId     String?
+  arrId             Int?
+  monitored         Boolean?
+  rootFolderPath    String?
+  path              String?
+  addedAt           DateTime?
+  lastWatchedAt     DateTime?
+  rating            Float?
+  reasonsJson       Json? // [{code,label,points}]
+  selected          Boolean   @default(false)
+  pruneStatus       String    @default("pending") // pending | pruned | failed | skipped_stale
+  pruneError        String?
+  prunedAt          DateTime?
+
+  snapshot CuttingRoomSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId, selected])
+  @@index([snapshotId, tier, score])
+  @@index([snapshotId, rootFolderPath])
+  @@index([snapshotId, sizeBytes])
+}
+
+model PruneRecord {
+  id             String    @id @default(cuid())
+  userId         String
+  source         String // cutting-room | curation (legacy) | wanted
+  mediaType      String // movie | show
+  title          String
+  year           Int?
+  sizeBytes      BigInt    @default(0)
+  tmdbId         Int?
+  tvdbId         Int?
+  arrInstanceId  String?
+  arrId          Int?
+  plexRatingKey  String?
+  rootFolderPath String?
+  snapshotId     String?
+  runId          String?
+  action         String // files_deleted_unmonitored | unmonitored_only | entry_removed | plex_only_delete
+  tagApplied     Boolean   @default(false)
+  restoredAt     DateTime?
+  restoreNote    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, restoredAt])
+  @@index([tmdbId])
+  @@index([tvdbId])
+}
+
 // Legacy table preserved by historical migrations (not used by Prisma Client).
 // We keep it in the database for debugging/back-compat reference, so Prisma
 // migrations must NOT attempt to drop it.
