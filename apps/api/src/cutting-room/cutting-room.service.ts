@@ -911,7 +911,7 @@ export class CuttingRoomService {
     if (params.search) where['title'] = { contains: params.search };
 
     const take = Math.min(200, Math.max(1, params.take));
-    const [total, rows] = await Promise.all([
+    const [total, rows, allTime] = await Promise.all([
       this.prisma.pruneRecord.count({ where: where as never }),
       this.prisma.pruneRecord.findMany({
         where: where as never,
@@ -919,9 +919,20 @@ export class CuttingRoomService {
         skip: Math.max(0, params.skip),
         take,
       }),
+      // All-time reclaim stat ignores the list filters on purpose: it is a
+      // lifetime total for this user, not a view of the current page.
+      this.prisma.pruneRecord.aggregate({
+        where: { userId: params.userId, restoredAt: null },
+        _sum: { sizeBytes: true },
+        _count: { _all: true },
+      }),
     ]);
     return {
       total,
+      allTime: {
+        count: allTime._count._all,
+        bytes: Number(allTime._sum.sizeBytes ?? 0),
+      },
       items: rows.map((row) => ({
         id: row.id,
         source: row.source,

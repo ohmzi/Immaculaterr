@@ -294,9 +294,11 @@ export function listPruneHistory(params: {
   if (params.mediaType) q.set('mediaType', params.mediaType);
   if (params.restored !== undefined) q.set('restored', String(params.restored));
   if (params.search) q.set('search', params.search);
-  return fetchJson<{ total: number; items: PruneHistoryItem[] }>(
-    apiPath(`/cutting-room/prunes${toQuerySuffix(q)}`),
-  );
+  return fetchJson<{
+    total: number;
+    allTime: { count: number; bytes: number };
+    items: PruneHistoryItem[];
+  }>(apiPath(`/cutting-room/prunes${toQuerySuffix(q)}`));
 }
 
 export function restorePrune(pruneId: string) {

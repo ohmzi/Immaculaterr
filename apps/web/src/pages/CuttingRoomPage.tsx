@@ -2661,6 +2661,7 @@ function PrunedHistoryTab() {
   });
   const total = historyQuery.data?.total ?? 0;
   const items = historyQuery.data?.items ?? [];
+  const allTime = historyQuery.data?.allTime ?? null;
 
   const restore = useMutation({
     mutationFn: (id: string) => restorePrune(id),
@@ -2799,7 +2800,15 @@ function PrunedHistoryTab() {
       )}
 
       <div className="p-3 flex items-center justify-between text-xs text-white/60 border-t border-white/10">
-        <span>{total} pruned items</span>
+        <span>
+          {total} pruned items
+          {allTime && allTime.bytes > 0 ? (
+            <span className="ml-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-0.5 font-semibold text-emerald-200">
+              all-time reclaimed: {fmtBytes(allTime.bytes)} · {allTime.count}{' '}
+              items
+            </span>
+          ) : null}
+        </span>
         <div className="flex gap-2">
           <button
             type="button"
