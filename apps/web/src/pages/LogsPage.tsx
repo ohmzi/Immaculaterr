@@ -8,6 +8,7 @@ import { usePersistentState } from '@/lib/usePersistentState';
 
 import { clearServerLogs, listServerLogs } from '@/api/logs';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PullToRefresh } from '@/components/PullToRefresh';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -364,6 +365,7 @@ export const LogsPage = () => {
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <PullToRefresh onRefresh={() => logsQuery.refetch()}>
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
           {/* Page Header */}
           <div className="mb-12">
@@ -676,6 +678,7 @@ export const LogsPage = () => {
             )}
           </div>
         </div>
+        </PullToRefresh>
       </section>
 
       <ConfirmDialog

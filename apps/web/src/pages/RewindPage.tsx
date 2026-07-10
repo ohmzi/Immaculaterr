@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { copyToClipboard } from '@/lib/clipboard';
 import { usePersistentState } from '@/lib/usePersistentState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PullToRefresh } from '@/components/PullToRefresh';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -663,6 +664,11 @@ export const RewindPage = () => {
 
       {/* History Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <PullToRefresh
+          onRefresh={() =>
+            Promise.all([historyQuery.refetch(), queueQuery.refetch()])
+          }
+        >
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
             {/* Page Header */}
             <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -1156,6 +1162,7 @@ export const RewindPage = () => {
               </div>
             )}
         </div>
+        </PullToRefresh>
       </section>
 
       <ConfirmDialog
