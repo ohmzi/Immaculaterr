@@ -1,13 +1,9 @@
-import {
-  useCallback,
-  useMemo,
-  useState,
-  type ChangeEvent,
-  type MouseEvent as ReactMouseEvent,
-} from 'react';
+import { type ChangeEvent, type MouseEvent as ReactMouseEvent, useCallback, useMemo, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, Loader2, ScrollText, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { CircleAlert, Loader2, ScrollText, Trash2, Pause, Play, RefreshCw, Download, Copy as CopyIcon } from 'lucide-react';
+import { copyToClipboard } from '@/lib/clipboard';
 import { usePersistentState } from '@/lib/usePersistentState';
 
 import { clearServerLogs, listServerLogs } from '@/api/logs';
@@ -76,6 +72,16 @@ const SERVICE_FILTERS: Array<{
     activeClass: 'bg-purple-500/15 text-purple-100 border-purple-500/25',
   },
 ] as const;
+
+function isToday(value: string | number): boolean {
+  const date = new Date(value);
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
 
 const TYPE_TAG_ORDER: Exclude<ServiceFilter, 'errors'>[] = [
   'task',
@@ -220,10 +226,12 @@ export const LogsPage = () => {
   );
   const [query, setQuery] = useState('');
   const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [pollMs, setPollMs] = usePersistentState('tcp_logs_poll_ms', 5_000);
   const logsQuery = useQuery({
     queryKey: ['serverLogs'],
     queryFn: () => listServerLogs({ limit: 5000 }),
-    refetchInterval: 5_000,
+    refetchInterval: paused ? false : pollMs,
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -250,6 +258,24 @@ export const LogsPage = () => {
     // Newest first.
     return [...scoped].sort((a, b) => b.id - a.id);
   }, [logs, query, selected]);
+  const handleDownload = useCallback(() => {
+    const lines = filtered.map((line) => {
+      const time = new Date(line.time).toISOString();
+      const ctx = line.context ? ` [${line.context}]` : '';
+      return `${time}${ctx} ${line.message ?? ''}`;
+    });
+    const blob = new Blob([lines.join('\n')], {
+      type: 'text/plain;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `immaculaterr-logs-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.log`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [filtered]);
 
   const clearMutation = useMutation({
     mutationFn: clearServerLogs,
@@ -449,6 +475,61 @@ export const LogsPage = () => {
                     />
                     <button
                       type="button"
+                      onClick={() => setPaused((v) => !v)}
+                      className={[
+                        APP_PRESSABLE_CLASS,
+                        'inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border transition whitespace-nowrap w-full sm:w-auto',
+                        paused
+                          ? 'bg-emerald-500/10 text-emerald-100 border-emerald-500/25 hover:bg-emerald-500/15'
+                          : 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10',
+                      ].join(' ')}
+                      title={paused ? 'Resume live updates' : 'Pause live updates'}
+                    >
+                      {paused ? (
+                        <>
+                          <Play className="h-4 w-4" /> Resume
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="h-4 w-4" /> Pause
+                        </>
+                      )}
+                    </button>
+                    <select
+                      value={pollMs}
+                      onChange={(e) => setPollMs(Number(e.target.value))}
+                      disabled={paused}
+                      className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/70 outline-none focus:ring-2 focus:ring-white/15 disabled:opacity-50 [&>option]:bg-[#141018]"
+                      aria-label="Refresh rate"
+                      title="How often the log refreshes"
+                    >
+                      <option value={2000}>2s</option>
+                      <option value={5000}>5s</option>
+                      <option value={15000}>15s</option>
+                      <option value={60000}>60s</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void logsQuery.refetch()}
+                      disabled={logsQuery.isFetching}
+                      className={`${APP_PRESSABLE_CLASS} inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10 whitespace-nowrap w-full sm:w-auto disabled:opacity-50`}
+                      title="Refresh now"
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${logsQuery.isFetching ? 'animate-spin' : ''}`}
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownload}
+                      disabled={filtered.length === 0}
+                      className={`${APP_PRESSABLE_CLASS} inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10 whitespace-nowrap w-full sm:w-auto disabled:opacity-50`}
+                      title="Download the filtered log lines as a text file"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleClearAllRequest}
                       disabled={clearMutation.isPending || logs.length === 0}
                       className={[
@@ -499,10 +580,40 @@ export const LogsPage = () => {
                         {filtered.map((line) => (
                           <tr
                             key={line.id}
-                            className="border-t border-white/10 hover:bg-white/5"
+                            className="group/logrow border-t border-white/10 hover:bg-white/5"
                           >
-                            <td className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60">
-                              {new Date(line.time).toLocaleTimeString()}
+                            <td
+                              className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60"
+                              title={new Date(line.time).toLocaleString()}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void copyToClipboard(
+                                      `${new Date(line.time).toISOString()} ${line.message ?? ''}`,
+                                    )
+                                      .then(() => toast.success('Log line copied'))
+                                      .catch(() => toast.error('Copy failed'));
+                                  }}
+                                  className="rounded p-0.5 text-white/30 opacity-0 transition group-hover/logrow:opacity-100 hover:text-white/80 focus:opacity-100"
+                                  aria-label="Copy log line"
+                                  title="Copy log line"
+                                >
+                                  <CopyIcon className="h-3 w-3" />
+                                </button>
+                                <span>
+                                  {isToday(line.time)
+                                    ? new Date(line.time).toLocaleTimeString()
+                                    : new Date(line.time).toLocaleString(undefined, {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                      })}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               {(() => {
