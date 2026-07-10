@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormE
 import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
-import { Info, ShieldCheck, UserRoundCog } from 'lucide-react';
+import { Copy, Info, ShieldCheck, UserRoundCog } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { copyToClipboard } from '@/lib/clipboard';
 
 import {
   changePassword,
@@ -514,13 +516,28 @@ export function ProfilePage() {
                 >
                   App base path
                 </label>
-                <input
-                  id="profile-public-path"
-                  type="text"
-                  readOnly
-                  value={publicPathLabel}
-                  className={`${inputClass} font-mono text-sm text-white/80`}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    id="profile-public-path"
+                    type="text"
+                    readOnly
+                    value={publicPathLabel}
+                    className={`${inputClass} flex-1 font-mono text-sm text-white/80`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void copyToClipboard(publicPathLabel)
+                        .then(() => toast.success('Base path copied'))
+                        .catch(() => toast.error('Copy failed'));
+                    }}
+                    className="shrink-0 rounded-xl border border-white/15 bg-white/5 p-2.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Copy base path"
+                    title="Copy base path"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <p className="mt-4 text-sm text-white/65">
                 Configure <code className="font-mono text-white/80">APP_BASE_PATH</code> and your

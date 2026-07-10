@@ -18,6 +18,7 @@ import {
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
 import { decodeHtmlEntities } from '@/lib/utils';
+import { copyToClipboard } from '@/lib/clipboard';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -134,28 +135,6 @@ function getFactPresentation(params: {
   }
 
   return { label, summary: JSON.stringify(value) };
-}
-
-async function copyToClipboard(text: string) {
-  // Prefer async clipboard API when available (secure contexts).
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  // Fallback for older browsers / non-secure contexts.
-  const el = document.createElement('textarea');
-  el.value = text;
-  el.setAttribute('readonly', 'true');
-  el.style.position = 'fixed';
-  el.style.left = '-9999px';
-  el.style.top = '0';
-  document.body.appendChild(el);
-  el.select();
-  try {
-    document.execCommand('copy');
-  } finally {
-    document.body.removeChild(el);
-  }
 }
 
 function buildJsonPreview(value: string, visibleLines: number): { text: string; truncated: boolean } {

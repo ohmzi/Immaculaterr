@@ -2,6 +2,7 @@ import { motion, useAnimation } from 'motion/react';
 import { ArrowUpRight, Check, Copy, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { copyToClipboard } from '@/lib/clipboard';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -66,22 +67,6 @@ const PUBLIC_PATH_HOSTING_ENV_SNIPPET = [
   'APP_BASE_PATH=/immaculaterr',
   'TRUST_PROXY=1',
 ].join('\n');
-
-async function copyToClipboard(text: string) {
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.setAttribute('readonly', '');
-  textArea.style.position = 'fixed';
-  textArea.style.opacity = '0';
-  document.body.appendChild(textArea);
-  textArea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textArea);
-}
 
 export const SetupPage = () => {
   const titleIconControls = useAnimation();

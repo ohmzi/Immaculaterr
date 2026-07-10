@@ -2,6 +2,7 @@ import { motion, useAnimation } from 'motion/react';
 import { ArrowLeft, Check, Copy, Server } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { copyToClipboard } from '@/lib/clipboard';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -144,22 +145,6 @@ const VERIFY_HTTPS_COMMAND = [
 const VERIFY_HTTP_COMPAT_COMMAND = [
   'curl -I http://192.168.122.179:5454',
 ].join('\n');
-
-async function copyToClipboard(text: string) {
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.setAttribute('readonly', '');
-  textArea.style.position = 'fixed';
-  textArea.style.opacity = '0';
-  document.body.appendChild(textArea);
-  textArea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textArea);
-}
 
 export function SetupTrueNasPage() {
   const titleIconControls = useAnimation();
