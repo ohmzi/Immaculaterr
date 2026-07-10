@@ -55,6 +55,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Replaced items switch to auto-created size-capped quality profiles (created once, reused after): movies reject releases over ~10 GB; episodes reject over 3 GB and prefer 1–2 GB — so re-downloads and future upgrades stay small.',
           'Smarter Low ratings factor: points only start below 6.0 (movies) / 6.2 (shows), and any title rated 7.5+ by any source is exempt — popular and highly-regarded titles are never flagged as low rated.',
           'Large Files hardening: double episodes sharing one file are listed once and deleted exactly once, episode sizes measure the largest single version (not all versions summed), the tab remembers your saved size threshold, and the scan shows clear warnings when Plex, a library, or a Radarr instance could not be reached.',
+          'Shift-click range selection in every Cutting Room list: click one row, then shift-click another to select (or clear) everything in between — works in the candidate review, Large Files, Wanted List, and Duplicates.',
         ],
       },
       {
