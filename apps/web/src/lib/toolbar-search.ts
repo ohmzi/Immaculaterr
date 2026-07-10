@@ -7,7 +7,9 @@ export type ToolbarSearchArea =
   | 'Command Center'
   | 'Task Manager'
   | 'Vault'
-  | 'Cutting Room';
+  | 'Cutting Room'
+  | 'Pages'
+  | 'FAQ';
 
 export type ToolbarSearchTarget = {
   id: string;
@@ -210,6 +212,69 @@ export const CUTTING_ROOM_SEARCH_TARGETS: ToolbarSearchTarget[] = [
   }),
 ];
 
+export const PAGE_SEARCH_TARGETS: ToolbarSearchTarget[] = [
+  ['dashboard', 'Dashboard', '/'],
+  ['observatory', 'Observatory', '/observatory'],
+  ['cutting-room', 'Cutting Room', '/cutting-room'],
+  ['command-center', 'Command Center', '/command-center'],
+  ['vault', 'Vault', '/vault'],
+  ['task-manager', 'Task Manager', '/task-manager'],
+  ['rewind', 'Rewind', '/rewind'],
+  ['logs', 'Logs', '/logs'],
+  ['profile', 'Profile', '/profile'],
+  ['faq', 'FAQ', '/faq'],
+  ['setup', 'Setup', '/setup'],
+  ['version-history', 'Version History', '/version-history'],
+].map(([id, title, route]) =>
+  createToolbarSearchTarget({
+    id: `page-${id}`,
+    title,
+    area: 'Pages',
+    route,
+    hash: '',
+  }),
+);
+
+const FAQ_SECTION_SEEDS: Array<[string, string]> = [
+  ['getting-started', 'Getting started'],
+  ['task-manager', 'Task Manager'],
+  ['task-manager-confirm-monitored', 'Confirm Monitored'],
+  ['task-manager-confirm-unmonitored', 'Confirm Unmonitored'],
+  ['task-manager-repair-monitored', 'Repair Monitored'],
+  ['task-manager-cleanup-after-adding-new-content', 'Cleanup After Adding New Content'],
+  ['task-manager-search-monitored', 'Search Monitored'],
+  ['task-manager-tmdb-upcoming-movies', 'TMDB Upcoming Movies'],
+  ['task-manager-rotten-tomatoes-upcoming-movies', 'Rotten Tomatoes Upcoming Movies + TV Shows'],
+  ['task-manager-immaculate-taste-collection', 'Immaculate Taste Collection'],
+  ['task-manager-immaculate-taste-refresher', 'Immaculate Taste Refresher'],
+  ['task-manager-based-on-latest-watched-collection', 'Based on Latest Watched Collection'],
+  ['task-manager-based-on-latest-watched-refresher', 'Based on Latest Watched Refresher'],
+  ['task-manager-fresh-out-of-the-oven', 'Fresh Out Of The Oven'],
+  ['task-manager-import-plex-history', 'Plex Watch History Import'],
+  ['task-manager-import-netflix-history', 'Netflix Watch History Import'],
+  ['recommendations', 'Recommendations'],
+  ['plex-library-selection', 'Plex Library Selection'],
+  ['plex-user-monitoring', 'Plex User Monitoring'],
+  ['immaculate-taste-profiles', 'Immaculate Taste Profiles'],
+  ['collection-posters', 'Collection Posters'],
+  ['updates', 'Updates & versions'],
+  ['security', 'Security & backups'],
+  ['troubleshooting', 'Troubleshooting'],
+  ['cutting-room', 'Cutting Room'],
+  ['glossary', 'Glossary'],
+];
+
+export const FAQ_SEARCH_TARGETS: ToolbarSearchTarget[] = FAQ_SECTION_SEEDS.map(
+  ([id, title]) =>
+    createToolbarSearchTarget({
+      id: `faq-${id}`,
+      title: `FAQ — ${title}`,
+      area: 'FAQ',
+      route: '/faq',
+      hash: id,
+    }),
+);
+
 export function getToolbarSearchRank(
   normalizedTitle: string,
   normalizedQuery: string,
@@ -252,10 +317,12 @@ export function useToolbarSearchTargets() {
 
   const targets = useMemo(
     () => [
+      ...PAGE_SEARCH_TARGETS,
       ...COMMAND_CENTER_SEARCH_TARGETS,
       ...taskTargets,
       ...VAULT_SEARCH_TARGETS,
       ...CUTTING_ROOM_SEARCH_TARGETS,
+      ...FAQ_SEARCH_TARGETS,
     ],
     [taskTargets],
   );
