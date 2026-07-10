@@ -14,6 +14,15 @@ This file tracks notable changes by version.
   - Large Files hardening: double episodes sharing one file are listed once and deleted exactly once, episode sizes measure the largest single version (not all versions summed), the tab remembers your saved size threshold, and the scan surfaces clear warnings when Plex, a library section, or a Radarr instance could not be reached.
   - Shift-click range selection in every Cutting Room list: click one row, then shift-click another to select (or clear) everything in between — works in the candidate review, Large Files, Wanted List, and Duplicates.
 - Tautulli is now a first-class optional integration: setup-wizard step, Vault card with connection testing, and a Cutting Room gate dialog that deep-links to Vault when it is not configured.
+- Quality of life across the app:
+  - Cancel queued runs and pause/resume the job queue from Rewind (and cancel from the run detail page).
+  - Relative timestamps everywhere with exact times on hover; a light/dark/system theme toggle in the Help menu; reduced-motion support.
+  - Search opens with Ctrl/Cmd+K or "/" and now finds pages and FAQ sections; the FAQ has its own search box.
+  - Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.
+  - Rewind: load more past 200 runs, expandable and copyable errors, and mobile pull-to-refresh (Logs too).
+  - Filters and tabs are remembered across visits; the Vault shows a retry on load failure and warns about unsaved changes (Command Center warns too).
+  - Task Manager sticky jump bar with expand/collapse-all; Observatory arrow-key swiping on both decks plus a pending-sync chip with Apply now.
+  - Wanted List unmonitor runs offer a 12-second Undo; Pruned History shows all-time reclaimed space; release notes are deep-linkable.
 - Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), and refreshing qs.
 
 ## 1.7.10-beta-2
