@@ -749,6 +749,14 @@ function PruneWizard() {
           />
         ) : null}
 
+        {step === 'tune' && lfMode && (lfScanQuery.data?.warnings?.length ?? 0) > 0 ? (
+          <div className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-100 space-y-0.5">
+            {(lfScanQuery.data?.warnings ?? []).map((warning) => (
+              <div key={warning}>{warning}</div>
+            ))}
+          </div>
+        ) : null}
+
         {step === 'tune' && lfMode ? (
           <LargeFilesTuneStep
             items={lfItems}
@@ -3345,8 +3353,15 @@ function DuplicatesTab() {
 
 function LargeFilesTab() {
   const queryClient = useQueryClient();
-  const [thresholdGb, setThresholdGb] = useState(10);
-  const [appliedThreshold, setAppliedThreshold] = useState(10);
+  const rulesQuery = useQuery({
+    queryKey: ['cuttingRoom', 'rules'],
+    queryFn: getCuttingRoomRules,
+  });
+  const savedThresholdGb = rulesQuery.data?.rules.largeFilesThresholdGb ?? 10;
+  const [thresholdGb, setThresholdGb] = useState<number | null>(null);
+  const [appliedThreshold, setAppliedThreshold] = useState<number | null>(null);
+  const effectiveThreshold = thresholdGb ?? savedThresholdGb;
+  const effectiveApplied = appliedThreshold ?? savedThresholdGb;
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [confirmation, setConfirmation] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -3354,11 +3369,12 @@ function LargeFilesTab() {
   const [runId, setRunId] = useState<string | null>(null);
 
   const largeQuery = useQuery({
-    queryKey: ['cuttingRoom', 'largeFiles', appliedThreshold],
-    queryFn: () => listLargeFiles(appliedThreshold),
+    queryKey: ['cuttingRoom', 'largeFiles', effectiveApplied],
+    queryFn: () => listLargeFiles(effectiveApplied),
   });
   const items = largeQuery.data?.items ?? [];
   const totalBytes = largeQuery.data?.totalBytes ?? 0;
+  const scanWarnings = largeQuery.data?.warnings ?? [];
 
   const runQuery = useQuery({
     queryKey: ['cuttingRoom', 'largeFilesRun', runId],
@@ -3436,7 +3452,7 @@ function LargeFilesTab() {
               type="number"
               min={1}
               step={1}
-              value={thresholdGb}
+              value={effectiveThreshold}
               onChange={(e: ChangeEvent<HTMLInputElement>) =>
                 setThresholdGb(Math.max(1, Number(e.target.value) || 10))
               }
@@ -3447,7 +3463,7 @@ function LargeFilesTab() {
           <button
             type="button"
             onClick={() => {
-              setAppliedThreshold(thresholdGb);
+              setAppliedThreshold(effectiveThreshold);
               setSelectedKeys(new Set());
             }}
             className={`${APP_PRESSABLE_CLASS} px-3 py-1.5 rounded-full text-xs font-semibold border bg-[#facc15]/15 text-[#fde68a] border-[#facc15]/25`}
@@ -3473,6 +3489,13 @@ function LargeFilesTab() {
             {items.length} files · {fmtBytes(totalBytes)} total
           </span>
         </div>
+        {scanWarnings.length > 0 ? (
+          <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-100 space-y-0.5">
+            {scanWarnings.map((warning) => (
+              <div key={warning}>{warning}</div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {largeQuery.isLoading ? (
@@ -3481,7 +3504,7 @@ function LargeFilesTab() {
         </div>
       ) : items.length === 0 ? (
         <div className="p-8 text-center text-white/50 text-sm">
-          Nothing over {appliedThreshold} GB — your files are already lean.
+          Nothing over {effectiveApplied} GB — your files are already lean.
         </div>
       ) : (
         <LargeFilesTable

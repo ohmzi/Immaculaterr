@@ -375,6 +375,7 @@ export function listLargeFiles(
     total: number;
     totalBytes: number;
     items: LargeFileItem[];
+    warnings: string[];
   }>(apiPath(`/cutting-room/large-files?${params.toString()}`));
 }
 
