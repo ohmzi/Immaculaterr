@@ -49,6 +49,7 @@ import {
   TmdbLogo,
 } from '@/components/ArrLogos';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
+import { useUnsavedChangesGuard } from '@/lib/useUnsavedChangesGuard';
 
 const MASKED_SECRET = '*******';
 
@@ -240,6 +241,8 @@ export const SettingsPage = ({
   const titleIconGlowControls = useAnimation();
   const didInitServiceStatus = useRef(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const [vaultDirty, setVaultDirty] = useState(false);
+  useUnsavedChangesGuard(vaultDirty);
   const didRunLandingHealthCheck = useRef(false);
   const didRunAdditionalArrLandingCheck = useRef(false);
   const tmdbLandingRetryTimeoutRef = useRef<number | null>(null);
@@ -373,6 +376,7 @@ export const SettingsPage = ({
 
     // Signal that we've applied the persisted settings to local state.
     setSettingsHydrated(true);
+    setVaultDirty(false);
   }, [settingsQuery.data?.settings, settingsQuery.data?.secretsPresent]);
 
   // If a service is already enabled, we want its card to render expanded immediately (no "pop open"
@@ -1135,6 +1139,7 @@ export const SettingsPage = ({
       });
     },
     onSuccess: async () => {
+      setVaultDirty(false);
       // Clear secret inputs after save (they are never shown again).
       setPlexToken('');
       setRadarrApiKey('');
@@ -3275,7 +3280,13 @@ export const SettingsPage = ({
             ) : (
               <>
                 {/* Settings Form */}
-                <div className="space-y-6">
+                {/* Heuristic dirty tracking: any typed or changed field marks
+                    the vault as having unsaved edits until Save succeeds. */}
+                <div
+                  className="space-y-6"
+                  onInput={() => setVaultDirty(true)}
+                  onChange={() => setVaultDirty(true)}
+                >
               {/* Plex Settings */}
               <div id="vault-plex" className="relative scroll-mt-24">
                 {renderVaultCardFlash('vault-plex')}
@@ -4710,7 +4721,12 @@ export const SettingsPage = ({
               </div>
 
               {/* Save Button */}
-              <div className="flex justify-end">
+              <div className="flex items-center justify-end gap-3">
+                {vaultDirty && !saveMutation.isPending ? (
+                  <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-200">
+                    Unsaved changes
+                  </span>
+                ) : null}
                 <motion.button
                   onClick={handleSave}
                   disabled={saveMutation.isPending}
