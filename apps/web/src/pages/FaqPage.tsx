@@ -39,6 +39,7 @@ export const FaqPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [flashSection, setFlashSection] = useState<{ id: string; nonce: number } | null>(null);
+  const [faqSearch, setFaqSearch] = useState('');
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
 
   type FaqItem = {
@@ -3348,6 +3349,27 @@ export const FaqPage = () => {
     },
   ], [faqLinkClass]);
 
+  const normalizedFaqSearch = faqSearch.trim().toLowerCase();
+  const visibleFaqSections = useMemo(() => {
+    if (!normalizedFaqSearch) return FAQ_SECTIONS;
+    return FAQ_SECTIONS.map((section) => {
+      const sectionMatches = section.title
+        .toLowerCase()
+        .includes(normalizedFaqSearch);
+      const items = sectionMatches
+        ? section.items
+        : section.items.filter((item) =>
+            item.question.toLowerCase().includes(normalizedFaqSearch),
+          );
+      return { ...section, items };
+    }).filter((section) => section.items.length > 0);
+  }, [FAQ_SECTIONS, normalizedFaqSearch]);
+  const visibleFaqCount = useMemo(
+    () =>
+      visibleFaqSections.reduce((sum, section) => sum + section.items.length, 0),
+    [visibleFaqSections],
+  );
+
   useEffect(() => {
     const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
     if (!hash) return;
@@ -3664,8 +3686,26 @@ export const FaqPage = () => {
                   Browse by feature area, then jump straight to a full answer card below.
                 </div>
               </div>
+              <div className="w-full sm:w-80">
+                <input
+                  type="search"
+                  value={faqSearch}
+                  onChange={(e) => setFaqSearch(e.target.value)}
+                  placeholder="Search questions…"
+                  aria-label="Search FAQ questions"
+                  className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-sky-300/50 focus:outline-none"
+                />
+                {normalizedFaqSearch ? (
+                  <div className="mt-1.5 text-xs text-white/55">
+                    {visibleFaqCount === 0
+                      ? 'No questions match — try a different word.'
+                      : `${visibleFaqCount} answer${visibleFaqCount === 1 ? '' : 's'} match below.`}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
+            {normalizedFaqSearch ? null : (
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               {FAQ_SECTIONS.map((section, index) => {
                 const theme = sectionThemes[index % sectionThemes.length];
@@ -3732,10 +3772,11 @@ export const FaqPage = () => {
                 );
               })}
             </div>
+            )}
           </div>
 
           <div className="mt-6 space-y-6">
-            {FAQ_SECTIONS.map((section, index) => {
+            {visibleFaqSections.map((section, index) => {
               const theme = sectionThemes[index % sectionThemes.length];
               const sectionLabel = `Section ${String(index + 1).padStart(2, '0')}`;
               const commandCenterCardId =
