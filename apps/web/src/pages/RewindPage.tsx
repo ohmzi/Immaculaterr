@@ -34,6 +34,7 @@ import {
 import { toast } from 'sonner';
 
 import { copyToClipboard } from '@/lib/clipboard';
+import { usePersistentState } from '@/lib/usePersistentState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -311,10 +312,16 @@ export const RewindPage = () => {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
-  const [jobId, setJobId] = useState('');
-  const [status, setStatus] = useState('');
-  const [plexUserFilter, setPlexUserFilter] = useState('');
-  const [mediaTypeFilter, setMediaTypeFilter] = useState('');
+  const [jobId, setJobId] = usePersistentState('tcp_rewind_filter_job', '');
+  const [status, setStatus] = usePersistentState('tcp_rewind_filter_status', '');
+  const [plexUserFilter, setPlexUserFilter] = usePersistentState(
+    'tcp_rewind_filter_user',
+    '',
+  );
+  const [mediaTypeFilter, setMediaTypeFilter] = usePersistentState(
+    'tcp_rewind_filter_media',
+    '',
+  );
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -504,16 +511,16 @@ export const RewindPage = () => {
   }, [titleIconControls, titleIconGlowControls]);
   const handleJobFilterChange = useCallback((value: string) => {
     setJobId(value === 'all' ? '' : value);
-  }, []);
+  }, [setJobId]);
   const handleStatusFilterChange = useCallback((value: string) => {
     setStatus(value === 'any' ? '' : value);
-  }, []);
+  }, [setStatus]);
   const handlePlexUserFilterChange = useCallback((value: string) => {
     setPlexUserFilter(value === 'all' ? '' : value);
-  }, []);
+  }, [setPlexUserFilter]);
   const handleMediaTypeFilterChange = useCallback((value: string) => {
     setMediaTypeFilter(value === 'all' ? '' : value);
-  }, []);
+  }, [setMediaTypeFilter]);
   const handleSearchChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       setQ(event.target.value);

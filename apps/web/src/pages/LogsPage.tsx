@@ -8,6 +8,7 @@ import {
 import { motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Loader2, ScrollText, Trash2 } from 'lucide-react';
+import { usePersistentState } from '@/lib/usePersistentState';
 
 import { clearServerLogs, listServerLogs } from '@/api/logs';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -213,7 +214,10 @@ export const LogsPage = () => {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
-  const [selected, setSelected] = useState<ServiceFilter[]>([]);
+  const [selected, setSelected] = usePersistentState<ServiceFilter[]>(
+    'tcp_logs_service_filters',
+    [],
+  );
   const [query, setQuery] = useState('');
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const logsQuery = useQuery({
@@ -278,15 +282,15 @@ export const LogsPage = () => {
 
   const toggle = useCallback((id: ServiceFilter) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }, []);
+  }, [setSelected]);
 
   const clearFilters = useCallback(() => {
     setSelected([]);
     setQuery('');
-  }, []);
+  }, [setSelected]);
   const clearSelectedFilters = useCallback(() => {
     setSelected([]);
-  }, []);
+  }, [setSelected]);
   const handleServiceFilterClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const filterId = event.currentTarget.dataset.filterId as ServiceFilter | undefined;

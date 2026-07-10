@@ -17,6 +17,7 @@ import {
 import { Telescope, Undo2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { usePersistentState } from '@/lib/usePersistentState';
 
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -432,8 +433,11 @@ export function ObservatoryPage() {
   const queryClient = useQueryClient();
 
   const [activeCollectionTab, setActiveCollectionTab] =
-    useState<CollectionTab>('immaculate');
-  const [mediaTab, setMediaTab] = useState<Tab>('movie');
+    usePersistentState<CollectionTab>('tcp_observatory_collection_tab', 'immaculate');
+  const [mediaTab, setMediaTab] = usePersistentState<Tab>(
+    'tcp_observatory_media_tab',
+    'movie',
+  );
   const [movieLibrary, setMovieLibrary] = useState<string>('');
   const [tvLibrary, setTvLibrary] = useState<string>('');
 
@@ -1407,7 +1411,7 @@ export function ObservatoryPage() {
       if (!tab) return;
       setActiveCollectionTab(tab);
     },
-    [],
+    [setActiveCollectionTab],
   );
   const handleMediaTabClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -1415,7 +1419,7 @@ export function ObservatoryPage() {
       if (!tab) return;
       setMediaTab(tab);
     },
-    [],
+    [setMediaTab],
   );
   const handleLibraryValueChange = useCallback(
     (value: string) => {
