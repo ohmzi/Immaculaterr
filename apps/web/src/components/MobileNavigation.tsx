@@ -11,6 +11,7 @@ import { LogOut } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 import { resetDev } from '@/api/auth';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ToolbarSearch } from '@/components/ToolbarSearch';
 import { getUpdates } from '@/api/updates';
@@ -499,6 +500,10 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
                     >
                       Profile
                     </button>
+
+                    <div className="px-1 py-1">
+                      <ThemeToggle />
+                    </div>
 
                     <button
                       type="button"
