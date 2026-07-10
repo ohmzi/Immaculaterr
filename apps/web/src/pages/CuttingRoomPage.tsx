@@ -2887,12 +2887,49 @@ function WantedTab() {
   });
   const run = runQuery.data?.run ?? null;
   const runFinished = run && run.status !== 'PENDING' && run.status !== 'RUNNING';
+  const lastRunModeRef = useRef<'unmonitor' | 'remove' | null>(null);
+  const undoOfferedRunIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (runFinished) {
       void queryClient.invalidateQueries({ queryKey: ['cuttingRoom', 'wanted'] });
     }
   }, [runFinished, queryClient]);
+
+  // Real unmonitor runs get a short undo window: restoring simply
+  // re-monitors the entries this run touched.
+  useEffect(() => {
+    if (!runFinished || !run || run.dryRun || run.status !== 'SUCCESS') return;
+    if (lastRunModeRef.current !== 'unmonitor') return;
+    if (undoOfferedRunIdRef.current === run.id) return;
+    undoOfferedRunIdRef.current = run.id;
+    void listPruneHistory({ take: 200, runId: run.id }).then(({ items }) => {
+      if (!items.length) return;
+      toast(`Unmonitored ${items.length} item${items.length === 1 ? '' : 's'}`, {
+        duration: 12_000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            void Promise.allSettled(
+              items.map((item) => restorePrune(item.id)),
+            ).then((results) => {
+              const restored = results.filter(
+                (result) => result.status === 'fulfilled',
+              ).length;
+              if (restored > 0) {
+                toast.success(
+                  `Re-monitored ${restored} item${restored === 1 ? '' : 's'}`,
+                );
+              } else {
+                toast.error('Undo failed — check Pruned History');
+              }
+              void queryClient.invalidateQueries({ queryKey: ['cuttingRoom'] });
+            });
+          },
+        },
+      });
+    });
+  }, [runFinished, run, queryClient]);
 
   const startPrune = useMutation({
     mutationFn: () =>
@@ -2903,6 +2940,7 @@ function WantedTab() {
         ...(useAll ? { all: true } : { arrIds: Array.from(selectedIds) }),
       }),
     onSuccess: (data) => {
+      lastRunModeRef.current = mode;
       setRunId(data.run.id);
       setSelectedIds(new Set());
       setUseAll(false);

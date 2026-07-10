@@ -264,12 +264,14 @@ export class CuttingRoomController {
     @Query('mediaType') mediaType?: string,
     @Query('restored') restoredRaw?: string,
     @Query('search') search?: string,
+    @Query('runId') runIdRaw?: string,
   ) {
     return await this.cuttingRoom.listPrunes({
       userId: user.id,
       take: parseIntParam(takeRaw, 50, 200),
       skip: parseIntParam(skipRaw, 0, 1_000_000),
       mediaType: mediaType || undefined,
+      runId: runIdRaw || undefined,
       restored:
         restoredRaw === 'true'
           ? true

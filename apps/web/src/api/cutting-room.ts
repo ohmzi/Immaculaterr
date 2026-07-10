@@ -287,10 +287,12 @@ export function listPruneHistory(params: {
   mediaType?: string;
   restored?: boolean;
   search?: string;
+  runId?: string;
 }) {
   const q = new URLSearchParams();
   if (params.take) q.set('take', String(params.take));
   if (params.skip) q.set('skip', String(params.skip));
+  if (params.runId) q.set('runId', params.runId);
   if (params.mediaType) q.set('mediaType', params.mediaType);
   if (params.restored !== undefined) q.set('restored', String(params.restored));
   if (params.search) q.set('search', params.search);

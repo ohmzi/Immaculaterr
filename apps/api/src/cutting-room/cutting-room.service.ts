@@ -903,9 +903,11 @@ export class CuttingRoomService {
     mediaType?: string;
     restored?: boolean;
     search?: string;
+    runId?: string;
   }) {
     const where: Record<string, unknown> = { userId: params.userId };
     if (params.mediaType) where['mediaType'] = params.mediaType;
+    if (params.runId) where['runId'] = params.runId;
     if (params.restored === true) where['restoredAt'] = { not: null };
     if (params.restored === false) where['restoredAt'] = null;
     if (params.search) where['title'] = { contains: params.search };
