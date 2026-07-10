@@ -74,7 +74,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.',
           'Rewind: load more past 200 runs, expandable + copyable error messages, and pull-to-refresh on mobile (Logs too).',
           'Filters and tabs are remembered across visits; Vault shows a load-error retry and an unsaved-changes warning (Command Center warns too).',
-          'Task Manager gained a sticky jump bar with expand/collapse-all; Observatory swipes with arrow keys on both decks and shows a pending-sync chip with Apply now.',
+          'Task Manager gained expand/collapse-all controls; Observatory swipes with arrow keys on both decks and shows a pending-sync chip with Apply now.',
           'Wanted List unmonitor runs offer a 12-second Undo; Pruned History shows your all-time reclaimed space; release notes are deep-linkable with copy-link buttons.',
         ],
       },

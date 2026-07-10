@@ -4013,46 +4013,25 @@ export function TaskManagerPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="sticky top-20 z-30 rounded-2xl border border-white/10 bg-[#141018]/85 px-3 py-2 shadow-lg backdrop-blur-xl">
-              <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:thin]">
-                {visibleJobs.map((job) => (
-                  <button
-                    key={`jump-${job.id}`}
-                    type="button"
-                    onClick={() =>
-                      document
-                        .getElementById(`job-${job.id}`)
-                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                    }
-                    className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/60 transition hover:bg-white/10 hover:text-white/90"
-                    title={`Jump to ${job.name}`}
-                  >
-                    {job.name}
-                  </button>
-                ))}
-                <div className="ml-auto flex shrink-0 items-center gap-2 pl-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedCards(
-                        Object.fromEntries(
-                          visibleJobs.map((job) => [job.id, true]),
-                        ),
-                      )
-                    }
-                    className="whitespace-nowrap rounded-full border border-[#facc15]/25 bg-[#facc15]/10 px-3 py-1 text-xs font-semibold text-[#fde68a] transition hover:bg-[#facc15]/20"
-                  >
-                    Expand all
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedCards({})}
-                    className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/60 transition hover:bg-white/10"
-                  >
-                    Collapse all
-                  </button>
-                </div>
-              </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedCards(
+                    Object.fromEntries(visibleJobs.map((job) => [job.id, true])),
+                  )
+                }
+                className="whitespace-nowrap rounded-full border border-[#facc15]/25 bg-[#facc15]/10 px-3 py-1 text-xs font-semibold text-[#fde68a] transition hover:bg-[#facc15]/20"
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpandedCards({})}
+                className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/60 transition hover:bg-white/10"
+              >
+                Collapse all
+              </button>
             </div>
             {/* skipcq: JS-R1005 - This renderer intentionally composes multiple job-specific states to keep behavior stable. */}
             {visibleJobs.map((job) => {
