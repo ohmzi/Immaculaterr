@@ -72,7 +72,7 @@
   - `Rotten Tomatoes Upcoming Movies + TV Shows` scrapes fixed Rotten Tomatoes movie and TV pages, uses saved Movies and TV toggles with separate Movie Top 20 and TV Top 10 counts, and lets Run Now use those saved settings directly.
   - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads, including season-aware Sonarr monitoring cleanup.
 
-- **Cutting Room (Beta): prunes the media nobody will ever watch**
+- **Cutting Room: prunes the media nobody will ever watch**
   - Scans your selected Plex libraries plus Radarr/Sonarr (and Tautulli when connected) and scores every item on real watch history, time in library, ratings with vote confidence (popular and highly-regarded titles are never counted as "low rated"), and who requested it.
   - A six-step wizard: pick factors and protections, choose libraries, scan once, tune "how low a bar" instantly, set a space target with auto-select, review every candidate with plain-language reason chips, then prune with a typed confirmation.
   - Pruning deletes files through Radarr/Sonarr but keeps each entry unmonitored and tagged `deleted-by-immaculaterr`; Pruned History offers one-click Restore that re-monitors and re-downloads.

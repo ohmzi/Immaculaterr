@@ -39,12 +39,12 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.10-beta-3',
     popupHighlights: [
-      'Cutting Room (Beta): a new page that finds and prunes the media nobody will ever watch — with dry-runs, typed confirmations, and one-click restore.',
+      'Cutting Room: a new page that finds and prunes the media nobody will ever watch — with dry-runs, typed confirmations, and one-click restore.',
       'Tautulli is now a first-class optional integration with a setup-wizard step and a Vault card.',
     ],
     sections: [
       {
-        title: 'Cutting Room (Beta)',
+        title: 'Cutting Room',
         bullets: [
           'Six-step wizard: pick factors and protections, choose Plex libraries, scan once, tune the bar instantly, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.',
           'Scoring blends real watch history (Plex, server history, Tautulli), time in library, vote-confident ratings, personal Plex star-ratings, and request provenance.',

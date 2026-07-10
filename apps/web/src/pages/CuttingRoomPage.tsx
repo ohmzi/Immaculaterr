@@ -358,7 +358,7 @@ export function CuttingRoomPage() {
           alt=""
           className="h-full w-full object-cover object-center opacity-80"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-400/25 via-purple-900/45 to-zinc-950/70" />
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-400/25 via-red-900/45 to-zinc-950/70" />
         <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
@@ -369,13 +369,10 @@ export function CuttingRoomPage() {
             <Scissors className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
           </div>
           <div>
-            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter drop-shadow-2xl flex items-center gap-3">
+            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter drop-shadow-2xl">
               Cutting Room
-              <span className="px-2 py-1 rounded-lg text-[11px] font-bold tracking-widest bg-[#facc15]/15 text-[#fde68a] border border-[#facc15]/25">
-                BETA
-              </span>
             </h1>
-            <p className="text-purple-200/70 font-medium">
+            <p className="text-red-200/70 font-medium">
               Find and prune the media{' '}
               <span className="text-[#facc15] font-bold">nobody will ever watch</span>.
             </p>

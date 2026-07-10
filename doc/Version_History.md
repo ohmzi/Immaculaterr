@@ -4,7 +4,7 @@ This file tracks notable changes by version.
 
 ## 1.7.10-beta-3
 
-- Cutting Room (Beta) — a new page that finds and prunes the media nobody will ever watch:
+- Cutting Room — a new page that finds and prunes the media nobody will ever watch:
   - Six-step wizard: pick factors and protections, choose Plex libraries, scan once, tune the bar instantly, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.
   - Scoring blends real watch history (Plex, server history, Tautulli), time in library, vote-confident ratings, personal Plex star-ratings, and request provenance; watchlists, continue-watching, recent requests, and Immaculaterr's own collections are always protected.
   - Pruning deletes files through Radarr/Sonarr but keeps entries unmonitored and tagged `deleted-by-immaculaterr`; Pruned History offers one-click Restore, and a full dry-run mode rehearses everything without touching files.
