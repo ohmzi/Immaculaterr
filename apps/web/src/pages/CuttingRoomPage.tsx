@@ -397,8 +397,8 @@ export function CuttingRoomPage() {
                 APP_PRESSABLE_CLASS,
                 'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition',
                 tab === t.key
-                  ? 'bg-[#facc15]/15 text-[#fde68a] border-[#facc15]/25'
-                  : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+                  ? 'bg-[#facc15]/20 text-[#fde68a] border-[#facc15]/30'
+                  : 'bg-white/10 text-white border-white/15 hover:bg-white/15',
               ].join(' ')}
             >
               <t.icon className="h-4 w-4" />
