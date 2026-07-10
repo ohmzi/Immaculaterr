@@ -12,14 +12,7 @@ import {
 } from 'react';
 import { AnimatePresence, motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  BarChart3,
-  Loader2,
-  Save,
-  LogIn,
-  LockKeyhole,
-  Info,
-} from 'lucide-react';
+import { BarChart3, CircleAlert, Info, Loader2, LockKeyhole, LogIn, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   getPublicSettings,
@@ -3243,7 +3236,34 @@ export const SettingsPage = ({
           {extraContent ? <div className="mb-8 space-y-6">{extraContent}</div> : null}
 
           {showCards ? (
-            !settingsHydrated ? (
+            settingsQuery.error && !settingsHydrated ? (
+              <div className="space-y-6">
+                <div className={`${cardClass} border-red-500/25`}>
+                  <div className="flex items-start gap-3">
+                    <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-white">
+                        Couldn&apos;t load your integrations
+                      </div>
+                      <div className="mt-1 text-sm text-white/70">
+                        {(settingsQuery.error as Error).message}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void settingsQuery.refetch()}
+                        disabled={settingsQuery.isFetching}
+                        className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/10 disabled:opacity-50"
+                      >
+                        {settingsQuery.isFetching ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : null}
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : !settingsHydrated ? (
               <div className="space-y-6">
                 <div className={cardClass}>
                   <div className="flex items-center gap-3 text-white/80">
