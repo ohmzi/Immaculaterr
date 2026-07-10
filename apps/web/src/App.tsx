@@ -12,6 +12,7 @@ import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { VaultPage } from '@/pages/VaultPage';
 import { CommandCenterPage } from '@/pages/CommandCenterPage';
+import { CuttingRoomPage } from '@/pages/CuttingRoomPage';
 import { FaqPage } from '@/pages/FaqPage';
 import { SetupPage } from '@/pages/SetupPage';
 import { SetupTrueNasPage } from '@/pages/SetupTrueNasPage';
@@ -67,6 +68,16 @@ const App = () => {
             <Route path="app" element={<Navigate to="/" replace />} />
             <Route path="vault" element={<VaultPage />} />
             <Route path="command-center" element={<CommandCenterPage />} />
+            <Route path="cutting-room" element={<CuttingRoomPage />} />
+            <Route path="cutting-room/history" element={<CuttingRoomPage />} />
+            <Route path="cutting-room/wanted" element={<CuttingRoomPage />} />
+            <Route path="cutting-room/duplicates" element={<CuttingRoomPage />} />
+            <Route path="cutting-room/large-files" element={<CuttingRoomPage />} />
+            {/* Legacy routes from before the Cutting Room rename */}
+            <Route path="curation" element={<Navigate to="/cutting-room" replace />} />
+            <Route path="curation/history" element={<Navigate to="/cutting-room/history" replace />} />
+            <Route path="curation/wanted" element={<Navigate to="/cutting-room/wanted" replace />} />
+            <Route path="curation/duplicates" element={<Navigate to="/cutting-room/duplicates" replace />} />
             <Route path="faq" element={<FaqPage />} />
             <Route path="setup" element={<SetupPage />} />
             <Route path="setup/truenas" element={<SetupTrueNasPage />} />

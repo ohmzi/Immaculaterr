@@ -2905,6 +2905,385 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'cutting-room',
+      title: 'Cutting Room',
+      items: [
+        {
+          id: 'cutting-room-overview',
+          question: 'What does Cutting Room do?',
+          answer: (
+            <>
+              <p>
+                The Cutting Room finds the movies and shows nobody on your server is ever going to watch
+                and helps you prune them safely. It scans your selected Plex libraries plus
+                Radarr/Sonarr (and Tautulli when connected), scores every item, and walks you
+                through review before anything is touched.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Scan → score → set the bar → pick a space target → review → prune.</li>
+                <li>
+                  Pruning deletes files through Radarr/Sonarr but{' '}
+                  <span className="font-semibold text-white/85">keeps the entry</span> —
+                  unmonitored and tagged{' '}
+                  <span className="font-semibold text-white/85">deleted-by-immaculaterr</span>.
+                </li>
+                <li>
+                  Everything lands in Pruned History with one-click Restore
+                  (re-monitors, removes the tag, and triggers a search to re-download).
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-core',
+          question: 'How is the score built?',
+          answer: (
+            <>
+              <p>
+                The core signal is always{' '}
+                <span className="font-semibold text-white/85">
+                  never watched by anyone × time in your library
+                </span>
+                : +25 points per year unwatched, capped at 3 years (+75). Watch history is the
+                union of Plex view counts, the server&apos;s all-account play history, imported
+                history, and Tautulli when connected. Each factor you enable adds points on top,
+                and every candidate shows its reasons as chips (e.g.{' '}
+                <span className="font-semibold text-white/85">
+                  never watched · 3.2y in library · rated 4.4
+                </span>
+                ) so nothing is a black box.
+              </p>
+              <p>
+                The one exception is the{' '}
+                <span className="font-semibold text-white/85">Oversized files</span> card: it is
+                not a scoring signal but a different flow entirely (replace huge files with
+                smaller copies), so selecting it runs alone — the other factors and protections
+                switch off while it is active.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-low-ratings',
+          question: 'How does the Low ratings factor work?',
+          answer: (
+            <>
+              <p>
+                It only applies to never-watched items and asks &ldquo;was this ever going to be
+                good?&rdquo;. The aggregate rating is a{' '}
+                <span className="font-semibold text-white/85">blend of every available source</span>{' '}
+                — Radarr&apos;s IMDb and TMDB ratings (movies), Sonarr&apos;s rating (shows), and
+                Plex&apos;s audience rating — averaged together, with Plex&apos;s critic rating as
+                a last resort.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Highly-regarded titles are exempt:
+                  </span>{' '}
+                  if <em>any</em> source rates the title 7.5★ or higher, it scores zero low-rating
+                  points — full stop. A beloved film with a lukewarm Plex audience score can no
+                  longer be dragged into &ldquo;low rated&rdquo; by the blend. This applies to
+                  movies and shows alike.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Points only start below the bar:
+                  </span>{' '}
+                  ratings of 6.0★+ (movies) or 6.2★+ (shows) score nothing at all. Below that,
+                  points = (6.0 − rating) × 10 for movies, capped at 25 (shows: (6.2 − rating) ×
+                  8, cap 20). Examples for movies: 5.5★ → +5, 5.0★ → +10, 4.0★ → +20, 3.0★ →
+                  capped +25.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Vote confidence:</span> before
+                  scoring, the rating is shrunk toward the 6.0/6.2 bar based on vote count — a
+                  4.2★ with 50 votes scores only ~3 points (too little evidence) while a 4.2★
+                  with 5,000 votes scores ~17. Obscure-but-decent titles are not punished.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Your own Plex rating wins:</span>{' '}
+                  rate something 4★ or lower yourself → +30 points; rate it 8★ or higher → the
+                  item is protected from pruning entirely, regardless of what critics say.
+                </li>
+                <li>No rating found anywhere → +5 (unknown quality is a mild signal).</li>
+                <li>
+                  The reason chips show exactly what was used, e.g.{' '}
+                  <span className="font-semibold text-white/85">rated 4.2 · 48k votes</span> or{' '}
+                  <span className="font-semibold text-white/85">you rated it 2★</span>.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-who-wanted-it',
+          question: 'How does the "Who wanted it" factor work?',
+          answer: (
+            <>
+              <p>
+                It reads the Radarr/Sonarr tags on each never-watched item to judge how much
+                anyone actually wanted it:
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">guest</span> tag (guest requests)
+                  → +20 points.
+                </li>
+                <li>
+                  List-import tags (<span className="font-semibold text-white/85">imdb</span>,{' '}
+                  <span className="font-semibold text-white/85">trakt</span>,{' '}
+                  <span className="font-semibold text-white/85">list-import</span>) → +10 — bulk
+                  imports nobody asked for personally.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">change-of-taste</span> tag → +40 —
+                  you already marked it as no longer your thing.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-unmonitored',
+          question: 'How does the Unmonitored factor work?',
+          answer: (
+            <p>
+              If you already unmonitored the item in Radarr (+10) or Sonarr (+12), you told the
+              system you stopped caring about it — a strong hint it&apos;s safe to prune once
+              it&apos;s also never been watched. Items not tracked by any arr at all get +8.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-ended-shows',
+          question: 'How does the Ended shows factor work?',
+          answer: (
+            <p>
+              A show that finished airing (or was cancelled) and that nobody ever started gets +8
+              points — it is complete, nothing new is coming, and it still never earned a single
+              play. Monitored, still-airing shows are always protected regardless of this factor.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-abandoned',
+          question: 'How does the Abandoned factor work?',
+          answer: (
+            <p>
+              For items someone <em>did</em> start: if 25% or less was watched and nothing was
+              played for over a year, it counts as abandoned — scored 40 points plus 10 per year
+              in the library, and placed in Tier 3. For shows this uses episodes watched vs.
+              total; for movies, resume position vs. runtime.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-watched-long-ago',
+          question: 'How does the Watched long ago factor work (and why is it off by default)?',
+          answer: (
+            <p>
+              It targets items fully watched 18+ months ago (flat 25 points, Tier 4). It is off
+              by default because it carries the highest regret risk — favorites and rewatchables
+              live here. Turn it on only when you need maximum space back, and review Tier 4
+              carefully before pruning.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-tiers',
+          question: 'What do the tiers and the "how low a bar" slider mean?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Tier 1</span> — never watched, 18+
+                months in the library, score ≥ 60. The safest deletions.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Tier 2</span> — never watched, 6+
+                months in the library.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Tier 3</span> — abandoned partials,
+                plus younger never-watched items (lower confidence).
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Tier 4</span> — watched, but long
+                ago (rewatch risk — only with the factor enabled).
+              </li>
+              <li>
+                The slider filters the already-scanned results instantly — no re-scan. Counts and
+                reclaimable space update live as you move it.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'cutting-room-protections',
+          question: 'What is always protected from pruning?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Anything watched within your recency window (default 12 months).</li>
+              <li>Anything added within the grace period (default 90 days).</li>
+              <li>Libraries you deselect, and Radarr/Sonarr tags you mark protected.</li>
+              <li>Monitored, still-airing shows.</li>
+              <li>Items on any user&apos;s Plex Watchlist or in Continue Watching.</li>
+              <li>Recent Overseerr/Jellyseerr requests.</li>
+              <li>Anything you personally rated 8★ or higher in Plex.</li>
+              <li>
+                Items tagged{' '}
+                <span className="font-semibold text-white/85">deleted-by-immaculaterr</span> —
+                the default protected-tag pill — so already-pruned entries are never
+                re-processed. You can remove the pill or add your own tags.
+              </li>
+              <li>Items featured in Immaculaterr&apos;s own recommendation collections.</li>
+              <li>
+                At prune time every item is re-checked — anything watched since the scan is
+                skipped automatically.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'cutting-room-auto-select',
+          question: 'How does "Auto-select best value" pick items?',
+          answer: (
+            <p>
+              You set a space target (e.g. 500 GB) and it greedily picks the candidates with the
+              best score-per-gigabyte until the target is reached — the most confidently-prunable
+              space for the fewest regrets. You can still add or remove anything by hand in the
+              review step afterwards.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-prune-safety',
+          question: 'What safety rails does pruning have?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Dry run</span> rehearses everything
+                and reports the exact would-delete list without touching a single file.
+              </li>
+              <li>A typed confirmation (item count or PRUNE) arms the real run.</li>
+              <li>Deletion happens in small waves with a Stop button between waves.</li>
+              <li>Per-run caps (default 500 items / 5 TB) prevent one-click catastrophes.</li>
+              <li>
+                Files are deleted through Radarr/Sonarr, so their Recycle Bin is honored when
+                configured — the confirm panel tells you whether it&apos;s on.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'cutting-room-pruned-tag-restore',
+          question: 'What does the deleted-by-immaculaterr tag do, and how does Restore work?',
+          answer: (
+            <p>
+              Pruned items keep their Radarr/Sonarr entry: unmonitored, files deleted, and tagged{' '}
+              <span className="font-semibold text-white/85">deleted-by-immaculaterr</span> — a
+              permanent, visible record inside the arr itself. The Pruned History tab lists every
+              pruned item; Restore re-monitors the entry, removes the tag, and triggers a search
+              so the item re-downloads automatically. Deletion becomes reversible in practice.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-duplicates',
+          question: 'What is the Duplicates tab?',
+          answer: (
+            <p>
+              Movies Plex reports with more than one version (multiple files
+              for the same title). Cleanup keeps exactly one copy per movie —
+              your choice of the largest (best quality) or smallest (most
+              space) — and deletes the extra versions through Plex, which
+              requires Plex&apos;s &ldquo;Allow media deletion&rdquo; server
+              setting. Dry-run rehearses everything first, and a typed
+              confirmation arms the real cleanup.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-wanted-list',
+          question: 'What is the Wanted List tab?',
+          answer: (
+            <p>
+              Monitored Radarr/Sonarr entries that have never downloaded anything — a queue of
+              future downloads you may no longer want. Unmonitor them (keeps the entries) or
+              remove them entirely; either way{' '}
+              <span className="font-semibold text-white/85">no files are ever touched</span>, and
+              every change is recorded in Pruned History.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-large-files',
+          question: 'What is the Large Files tab?',
+          answer: (
+            <>
+              <p>
+                It finds movies and individual episodes whose files exceed a size threshold you
+                pick (default 10 GB per file) and replaces them with smaller copies: the
+                oversized file is deleted, the item is re-monitored, a{' '}
+                <span className="font-semibold text-white/85">size-reduction</span> tag is added
+                in Radarr/Sonarr, and a fresh search is triggered so a leaner copy downloads
+                automatically. It runs in two places: pick the{' '}
+                <span className="font-semibold text-white/85">Oversized files</span> card in the
+                Prune Wizard (it runs alone — libraries, size bar, target, review, then a
+                confirm step), or use the Large Files tab directly for a quick pass.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Episodes are surgically precise:
+                  </span>{' '}
+                  only the oversized episodes themselves are set to monitored, plus their seasons
+                  and the show — never the whole series or untouched episodes. If S02E05 and
+                  S04E01 are oversized, exactly those two episodes, seasons 2 and 4, and the show
+                  get re-monitored; everything else keeps its current monitoring.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Size-capped quality profile:
+                  </span>{' '}
+                  every replaced item is switched to a dedicated profile — movies use{' '}
+                  <span className="font-semibold text-white/85">
+                    Immaculaterr 10GB Movie Cap
+                  </span>{' '}
+                  (releases over 10 GB are rejected outright) and shows use{' '}
+                  <span className="font-semibold text-white/85">
+                    Immaculaterr 3GB Episode Cap
+                  </span>{' '}
+                  (over 3 GB rejected, 1–2 GB preferred). The profiles and their size-rule
+                  custom formats are created in Radarr/Sonarr on the first real run and reused
+                  on every run after, so the re-download and all future upgrades stay small.
+                  One caveat for switched shows: releases are judged by total size, so
+                  full-season packs bigger than the cap are skipped in favor of per-episode
+                  grabs.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Dry-run first:</span> rehearse
+                  the whole replacement without deleting anything; the real run needs a typed
+                  confirmation (dry-runs never create profiles — they only report what would
+                  happen).
+                </li>
+                <li>
+                  Replacements appear in Pruned History as{' '}
+                  <span className="font-semibold text-white/85">replaced for size</span> — no
+                  Restore button because Radarr/Sonarr re-download them automatically.
+                </li>
+                <li>
+                  Tip: make sure your quality profile&apos;s size limits would actually grab a
+                  smaller release, or the search may fetch another giant file.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+      ],
+    },
+    {
       id: 'glossary',
       title: 'Glossary',
       items: [

@@ -52,6 +52,7 @@ type WizardStep =
   | 'radarr'
   | 'sonarr'
   | 'seerr'
+  | 'tautulli'
   | 'google'
   | 'openai'
   | 'importHistory'
@@ -67,6 +68,7 @@ const STEP_ORDER: WizardStep[] = [
   'radarr',
   'sonarr',
   'seerr',
+  'tautulli',
   'google',
   'openai',
   'importHistory',
@@ -99,6 +101,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     'radarr',
     'sonarr',
     'seerr',
+    'tautulli',
     'google',
     'openai',
     'importHistory',
@@ -159,6 +162,10 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   // Seerr state
   const [seerrBaseUrl, setSeerrBaseUrl] = useState('http://localhost:5055');
   const [seerrApiKey, setSeerrApiKey] = useState('');
+  const [tautulliBaseUrl, setTautulliBaseUrl] = useState(
+    'http://localhost:8181',
+  );
+  const [tautulliApiKey, setTautulliApiKey] = useState('');
 
   // Google state
   const [googleSearchEngineId, setGoogleSearchEngineId] = useState('');
@@ -208,7 +215,7 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
 
   const buildIntegrationSecretEnvelope = useCallback(
     async (params: {
-      service: 'tmdb' | 'seerr';
+      service: 'tmdb' | 'seerr' | 'tautulli';
       secretField: 'apiKey';
       value: string;
     }) => {
@@ -726,6 +733,51 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
   });
 
+  const testTautulliWithSecretCompatibility = useCallback(
+    async (params: { baseUrl: string; apiKey: string }) => {
+      const normalizedBaseUrl = params.baseUrl.trim();
+      const normalizedApiKey = params.apiKey.trim();
+      const webCryptoFallbackError =
+        'WebCrypto is not available in this browser.';
+      const compatibilityHint = buildWebCryptoCompatibilityHint();
+
+      try {
+        const apiKeyEnvelope = await buildIntegrationSecretEnvelope({
+          service: 'tautulli',
+          secretField: 'apiKey',
+          value: normalizedApiKey,
+        });
+        await testSavedIntegration('tautulli', {
+          baseUrl: normalizedBaseUrl,
+          apiKeyEnvelope,
+        });
+        return;
+      } catch (error) {
+        if (!isWebCryptoUnavailableError(error)) throw error;
+      }
+
+      try {
+        await testSavedIntegration('tautulli', {
+          baseUrl: normalizedBaseUrl,
+          apiKey: normalizedApiKey,
+        });
+      } catch (fallbackError) {
+        if (
+          fallbackError instanceof ApiError &&
+          String(fallbackError.message ?? '')
+            .toLowerCase()
+            .includes('plaintext secret transport is disabled')
+        ) {
+          throw new Error(
+            `${webCryptoFallbackError} ${compatibilityHint} If needed, set SECRETS_TRANSPORT_ALLOW_PLAINTEXT=true on the API as a compatibility fallback.`,
+          );
+        }
+        throw fallbackError;
+      }
+    },
+    [buildIntegrationSecretEnvelope],
+  );
+
   const saveAndValidateSeerr = useMutation({
     mutationFn: async () => {
       const baseUrl = seerrBaseUrl.trim();
@@ -768,6 +820,51 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     },
     onError: (error: Error) => {
       toast.error(error?.message ?? 'Couldn’t connect to Seerr.');
+    },
+  });
+
+  const saveAndValidateTautulli = useMutation({
+    mutationFn: async () => {
+      const baseUrl = tautulliBaseUrl.trim();
+      const apiKey = tautulliApiKey.trim();
+      if (!baseUrl) throw new Error('Please enter Tautulli URL');
+      if (!apiKey) throw new Error('Please enter Tautulli API key');
+
+      toast.info('Validating Tautulli credentials...');
+      try {
+        await testTautulliWithSecretCompatibility({ baseUrl, apiKey });
+      } catch (error) {
+        const rawMessage = String((error as Error)?.message ?? '').trim();
+        const msg = rawMessage.toLowerCase();
+        if (
+          msg.includes('http 401') ||
+          msg.includes('http 403') ||
+          msg.includes('unauthorized')
+        ) {
+          throw new Error('Tautulli credentials are incorrect.');
+        }
+        if (rawMessage) {
+          throw new Error(rawMessage);
+        }
+        throw new Error('Couldn’t connect to Tautulli.');
+      }
+
+      await putSettingsWithSecretsCompatibility({
+        settings: {
+          tautulli: { enabled: true, baseUrl },
+        },
+        secretsPatch: {
+          tautulli: { apiKey },
+        },
+      });
+      toast.success('Connected to Tautulli.');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      handleNext();
+    },
+    onError: (error: Error) => {
+      toast.error(error?.message ?? 'Couldn’t connect to Tautulli.');
     },
   });
 
@@ -881,6 +978,21 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   const handleSeerrApiKeyChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setSeerrApiKey(event.target.value);
   }, []);
+  const submitTautulliStep = useCallback(() => {
+    saveAndValidateTautulli.mutate();
+  }, [saveAndValidateTautulli]);
+  const handleTautulliBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setTautulliBaseUrl(event.target.value);
+    },
+    [],
+  );
+  const handleTautulliApiKeyChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setTautulliApiKey(event.target.value);
+    },
+    [],
+  );
   const submitGoogleStep = useCallback(() => {
     saveOptionalService.mutate('google');
   }, [saveOptionalService]);
@@ -1758,6 +1870,97 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
                     value={seerrApiKey}
                     onChange={handleSeerrApiKeyChange}
                     placeholder="Enter Seerr API key"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
+                  />
+                </div>
+              </div>
+            </WizardSection>
+          </WizardShell>
+        );
+
+      case 'tautulli':
+        return (
+          <WizardShell
+            step={currentStep}
+            title={
+              <>
+                <span className="text-yellow-400">Tautulli</span> Configuration
+              </>
+            }
+            subtitle="Optional: connect Tautulli so Cutting Room knows exactly what every user has watched."
+            progress={{
+              stepNumber: coreStepNumber,
+              stepTotal: coreStepTotal,
+              percent: coreProgressPct,
+            }}
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  className="h-12 flex-1 rounded-xl text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  Skip
+                </Button>
+                <Button
+                  onClick={submitTautulliStep}
+                  disabled={
+                    !tautulliBaseUrl.trim() ||
+                    !tautulliApiKey.trim() ||
+                    saveAndValidateTautulli.isPending
+                  }
+                  className="h-12 flex-1 rounded-xl bg-white text-black hover:bg-zinc-100"
+                >
+                  {saveAndValidateTautulli.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Validating...
+                    </>
+                  ) : (
+                    <>
+                      Save & Continue <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <WizardSection>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="tautulliBaseUrl"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Tautulli URL
+                  </Label>
+                  <Input
+                    id="tautulliBaseUrl"
+                    value={tautulliBaseUrl}
+                    onChange={handleTautulliBaseUrlChange}
+                    placeholder="http://localhost:8181"
+                    className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="tautulliApiKey"
+                    className="text-xs font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Tautulli API Key
+                  </Label>
+                  <Input
+                    id="tautulliApiKey"
+                    type="password"
+                    value={tautulliApiKey}
+                    onChange={handleTautulliApiKeyChange}
+                    placeholder="Settings → Web Interface → API key"
                     className="h-12 rounded-xl border-white/10 bg-black/20 text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-yellow-500/30"
                   />
                 </div>

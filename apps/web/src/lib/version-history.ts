@@ -37,6 +37,35 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.10-beta-3',
+    popupHighlights: [
+      'Cutting Room (Beta): a new page that finds and prunes the media nobody will ever watch — with dry-runs, typed confirmations, and one-click restore.',
+      'Tautulli is now a first-class optional integration with a setup-wizard step and a Vault card.',
+    ],
+    sections: [
+      {
+        title: 'Cutting Room (Beta)',
+        bullets: [
+          'Six-step wizard: pick factors and protections, choose Plex libraries, scan once, tune the bar instantly, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.',
+          'Scoring blends real watch history (Plex, server history, Tautulli), time in library, vote-confident ratings, personal Plex star-ratings, and request provenance.',
+          'Watchlists, continue-watching, recent requests, protected tags, and Immaculaterr collections are always protected; every item is re-checked at prune time.',
+          'Pruning deletes files through Radarr/Sonarr but keeps entries unmonitored and tagged deleted-by-immaculaterr; Pruned History offers one-click Restore.',
+          'Companion tabs: Wanted List cleaner (stop future downloads without touching files), Duplicates cleaner (keep one version per movie), and Large Files replacer (swap oversized movie/episode files for smaller copies automatically).',
+          'Large Files: files over a threshold you pick (default 10 GB) are deleted, re-monitored with surgical precision (episodes: only the affected episodes, their seasons, and the show), tagged size-reduction, and re-searched so leaner copies download automatically — available as an exclusive Oversized files card in the wizard or as its own tab.',
+          'Replaced items switch to auto-created size-capped quality profiles (created once, reused after): movies reject releases over ~10 GB; episodes reject over 3 GB and prefer 1–2 GB — so re-downloads and future upgrades stay small.',
+          'Smarter Low ratings factor: points only start below 6.0 (movies) / 6.2 (shows), and any title rated 7.5+ by any source is exempt — popular and highly-regarded titles are never flagged as low rated.',
+        ],
+      },
+      {
+        title: 'Tautulli integration',
+        bullets: [
+          'Optional step in the setup wizard and a Vault card with connection testing.',
+          'The Cutting Room offers a shortcut to Vault when Tautulli is not configured, or continues with Plex data only.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.10-beta-2',
     popupHighlights: [
       'Confirm Monitored now keeps Radarr movies monitored unless Plex verifies them as playable and Radarr confirms a file already exists.',

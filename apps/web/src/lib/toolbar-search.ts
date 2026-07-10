@@ -3,7 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 
 import { listJobs } from '@/api/jobs';
 
-export type ToolbarSearchArea = 'Command Center' | 'Task Manager' | 'Vault';
+export type ToolbarSearchArea =
+  | 'Command Center'
+  | 'Task Manager'
+  | 'Vault'
+  | 'Cutting Room';
 
 export type ToolbarSearchTarget = {
   id: string;
@@ -139,6 +143,13 @@ export const VAULT_SEARCH_TARGETS: ToolbarSearchTarget[] = [
     hash: 'vault-seerr',
   }),
   createToolbarSearchTarget({
+    id: 'vault-tautulli',
+    title: 'Tautulli',
+    area: 'Vault',
+    route: '/vault',
+    hash: 'vault-tautulli',
+  }),
+  createToolbarSearchTarget({
     id: 'vault-google',
     title: 'Google Search',
     area: 'Vault',
@@ -151,6 +162,51 @@ export const VAULT_SEARCH_TARGETS: ToolbarSearchTarget[] = [
     area: 'Vault',
     route: '/vault',
     hash: 'vault-openai',
+  }),
+];
+
+export const CUTTING_ROOM_SEARCH_TARGETS: ToolbarSearchTarget[] = [
+  createToolbarSearchTarget({
+    id: 'cutting-room-wizard',
+    title: 'Cutting Room — Prune Wizard',
+    area: 'Cutting Room',
+    route: '/cutting-room',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-history',
+    title: 'Cutting Room — Pruned History',
+    area: 'Cutting Room',
+    route: '/cutting-room/history',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-wanted',
+    title: 'Cutting Room — Wanted List',
+    area: 'Cutting Room',
+    route: '/cutting-room/wanted',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-free-space',
+    title: 'Free up space',
+    area: 'Cutting Room',
+    route: '/cutting-room',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-large-files',
+    title: 'Cutting Room — Large Files',
+    area: 'Cutting Room',
+    route: '/cutting-room/large-files',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-duplicates',
+    title: 'Cutting Room — Duplicates',
+    area: 'Cutting Room',
+    route: '/cutting-room/duplicates',
+    hash: '',
   }),
 ];
 
@@ -195,7 +251,12 @@ export function useToolbarSearchTargets() {
   );
 
   const targets = useMemo(
-    () => [...COMMAND_CENTER_SEARCH_TARGETS, ...taskTargets, ...VAULT_SEARCH_TARGETS],
+    () => [
+      ...COMMAND_CENTER_SEARCH_TARGETS,
+      ...taskTargets,
+      ...VAULT_SEARCH_TARGETS,
+      ...CUTTING_ROOM_SEARCH_TARGETS,
+    ],
     [taskTargets],
   );
 

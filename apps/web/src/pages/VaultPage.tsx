@@ -13,6 +13,7 @@ import {
 import { AnimatePresence, motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  BarChart3,
   Loader2,
   Save,
   LogIn,
@@ -68,6 +69,7 @@ type IntegrationId =
   | 'sonarr'
   | 'tmdb'
   | 'seerr'
+  | 'tautulli'
   | 'google'
   | 'openai';
 
@@ -315,30 +317,36 @@ export const SettingsPage = ({
     const radarrBaseUrlSaved = readString(settings, 'radarr.baseUrl');
     const sonarrBaseUrlSaved = readString(settings, 'sonarr.baseUrl');
     const seerrBaseUrlSaved = readString(settings, 'seerr.baseUrl');
+    const tautulliBaseUrlSaved = readString(settings, 'tautulli.baseUrl');
     const googleSearchEngineIdSaved = readString(settings, 'google.searchEngineId');
 
     if (plexBaseUrlSaved) setPlexBaseUrl(plexBaseUrlSaved);
     if (radarrBaseUrlSaved) setRadarrBaseUrl(radarrBaseUrlSaved);
     if (sonarrBaseUrlSaved) setSonarrBaseUrl(sonarrBaseUrlSaved);
     if (seerrBaseUrlSaved) setSeerrBaseUrl(seerrBaseUrlSaved);
+    if (tautulliBaseUrlSaved) setTautulliBaseUrl(tautulliBaseUrlSaved);
     if (googleSearchEngineIdSaved) setGoogleSearchEngineId(googleSearchEngineIdSaved);
 
     // Prefer explicit enabled flags from settings. Fallback to secrets-present for legacy configs.
     const radarrEnabledSaved = readBool(settings, 'radarr.enabled');
     const sonarrEnabledSaved = readBool(settings, 'sonarr.enabled');
     const seerrEnabledSaved = readBool(settings, 'seerr.enabled');
+    const tautulliEnabledSaved = readBool(settings, 'tautulli.enabled');
     const googleEnabledSaved = readBool(settings, 'google.enabled');
     const openAiEnabledSaved = readBool(settings, 'openai.enabled');
 
     const nextRadarrEnabled = radarrEnabledSaved ?? Boolean(secrets.radarr);
     const nextSonarrEnabled = sonarrEnabledSaved ?? Boolean(secrets.sonarr);
     const nextSeerrEnabled = seerrEnabledSaved ?? Boolean(secrets.seerr);
+    const nextTautulliEnabled =
+      tautulliEnabledSaved ?? Boolean(secrets.tautulli);
     const nextGoogleEnabled = googleEnabledSaved ?? Boolean(secrets.google);
     const nextOpenAiEnabled = openAiEnabledSaved ?? Boolean(secrets.openai);
 
     setRadarrEnabled(nextRadarrEnabled);
     setSonarrEnabled(nextSonarrEnabled);
     setSeerrEnabled(nextSeerrEnabled);
+    setTautulliEnabled(nextTautulliEnabled);
     setGoogleEnabled(nextGoogleEnabled);
     setOpenAiEnabled(nextOpenAiEnabled);
 
@@ -359,6 +367,10 @@ export const SettingsPage = ({
       setSonarrTestOk(nextSonarrEnabled && Boolean(secrets.sonarr) ? true : null);
       setSeerrTestOk(
         nextSeerrEnabled && Boolean(secrets.seerr) ? true : null,
+      );
+      setTautulliTouched(false);
+      setTautulliTestOk(
+        nextTautulliEnabled && Boolean(secrets.tautulli) ? true : null,
       );
       setGoogleTestOk(
         nextGoogleEnabled && Boolean(secrets.google) && Boolean(googleSearchEngineIdSaved) ? true : null,
@@ -482,6 +494,11 @@ export const SettingsPage = ({
   const [seerrBaseUrl, setSeerrBaseUrl] = useState('http://localhost:5055');
   const [seerrApiKey, setSeerrApiKey] = useState('');
 
+  const [tautulliBaseUrl, setTautulliBaseUrl] = useState(
+    'http://localhost:8181',
+  );
+  const [tautulliApiKey, setTautulliApiKey] = useState('');
+
   const [tmdbApiKey, setTmdbApiKey] = useState('');
 
   const [googleSearchEngineId, setGoogleSearchEngineId] = useState('');
@@ -495,7 +512,15 @@ export const SettingsPage = ({
   );
 
   const buildSecretEnvelope = useCallback(async (params: {
-    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
+    service:
+      | 'plex'
+      | 'radarr'
+      | 'sonarr'
+      | 'tmdb'
+      | 'seerr'
+      | 'tautulli'
+      | 'google'
+      | 'openai';
     secretField: 'token' | 'apiKey';
     value: string;
   }) => {
@@ -556,7 +581,15 @@ export const SettingsPage = ({
   }, []);
 
   const buildIntegrationSecretPayload = useCallback(async (params: {
-    service: 'plex' | 'radarr' | 'sonarr' | 'tmdb' | 'seerr' | 'google' | 'openai';
+    service:
+      | 'plex'
+      | 'radarr'
+      | 'sonarr'
+      | 'tmdb'
+      | 'seerr'
+      | 'tautulli'
+      | 'google'
+      | 'openai';
     secretField: 'token' | 'apiKey';
     rawSecret: string;
     secretRef: string;
@@ -586,6 +619,7 @@ export const SettingsPage = ({
   const [radarrEnabled, setRadarrEnabled] = useState(false);
   const [sonarrEnabled, setSonarrEnabled] = useState(false);
   const [seerrEnabled, setSeerrEnabled] = useState(false);
+  const [tautulliEnabled, setTautulliEnabled] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [openAiEnabled, setOpenAiEnabled] = useState(false);
 
@@ -601,6 +635,7 @@ export const SettingsPage = ({
   const [radarrTouched, setRadarrTouched] = useState(false);
   const [sonarrTouched, setSonarrTouched] = useState(false);
   const [seerrTouched, setSeerrTouched] = useState(false);
+  const [tautulliTouched, setTautulliTouched] = useState(false);
   const [googleTouched, setGoogleTouched] = useState(false);
   const [openAiTouched, setOpenAiTouched] = useState(false);
 
@@ -609,6 +644,7 @@ export const SettingsPage = ({
   const [radarrTestOk, setRadarrTestOk] = useState<boolean | null>(null);
   const [sonarrTestOk, setSonarrTestOk] = useState<boolean | null>(null);
   const [seerrTestOk, setSeerrTestOk] = useState<boolean | null>(null);
+  const [tautulliTestOk, setTautulliTestOk] = useState<boolean | null>(null);
   const [googleTestOk, setGoogleTestOk] = useState<boolean | null>(null);
   const [openAiTestOk, setOpenAiTestOk] = useState<boolean | null>(null);
 
@@ -617,6 +653,7 @@ export const SettingsPage = ({
   const [radarrIsTesting, setRadarrIsTesting] = useState(false);
   const [sonarrIsTesting, setSonarrIsTesting] = useState(false);
   const [seerrIsTesting, setSeerrIsTesting] = useState(false);
+  const [tautulliIsTesting, setTautulliIsTesting] = useState(false);
   const [googleIsTesting, setGoogleIsTesting] = useState(false);
   const [openAiIsTesting, setOpenAiIsTesting] = useState(false);
   const [arrInstanceIsTestingById, setArrInstanceIsTestingById] = useState<
@@ -631,6 +668,7 @@ export const SettingsPage = ({
   const radarrTestRunId = useRef(0);
   const sonarrTestRunId = useRef(0);
   const seerrTestRunId = useRef(0);
+  const tautulliTestRunId = useRef(0);
   const googleTestRunId = useRef(0);
   const openAiTestRunId = useRef(0);
 
@@ -795,6 +833,10 @@ export const SettingsPage = ({
       const curRadarrBaseUrl = readString(currentSettings, 'radarr.baseUrl');
       const curSonarrBaseUrl = readString(currentSettings, 'sonarr.baseUrl');
       const curSeerrBaseUrl = readString(currentSettings, 'seerr.baseUrl');
+      const curTautulliBaseUrl = readString(
+        currentSettings,
+        'tautulli.baseUrl',
+      );
       const curGoogleSearchEngineId = readString(currentSettings, 'google.searchEngineId');
 
       const curRadarrEnabled =
@@ -803,6 +845,9 @@ export const SettingsPage = ({
         readBool(currentSettings, 'sonarr.enabled') ?? Boolean(secretsPresent.sonarr);
       const curSeerrEnabled =
         readBool(currentSettings, 'seerr.enabled') ?? Boolean(secretsPresent.seerr);
+      const curTautulliEnabled =
+        readBool(currentSettings, 'tautulli.enabled') ??
+        Boolean(secretsPresent.tautulli);
       const curGoogleEnabled =
         readBool(currentSettings, 'google.enabled') ?? Boolean(secretsPresent.google);
       const curOpenAiEnabled =
@@ -811,11 +856,13 @@ export const SettingsPage = ({
       const nextRadarrBaseUrl = radarrBaseUrl.trim();
       const nextSonarrBaseUrl = sonarrBaseUrl.trim();
       const nextSeerrBaseUrl = seerrBaseUrl.trim();
+      const nextTautulliBaseUrl = tautulliBaseUrl.trim();
       const nextGoogleSearchEngineId = googleSearchEngineId.trim();
 
       const radarrEnabledChanged = radarrEnabled !== curRadarrEnabled;
       const sonarrEnabledChanged = sonarrEnabled !== curSonarrEnabled;
       const seerrEnabledChanged = seerrEnabled !== curSeerrEnabled;
+      const tautulliEnabledChanged = tautulliEnabled !== curTautulliEnabled;
       const googleEnabledChanged = googleEnabled !== curGoogleEnabled;
       const openAiEnabledChanged = openAiEnabled !== curOpenAiEnabled;
 
@@ -827,6 +874,10 @@ export const SettingsPage = ({
         seerrEnabled &&
         Boolean(nextSeerrBaseUrl) &&
         nextSeerrBaseUrl !== curSeerrBaseUrl;
+      const tautulliBaseChanged =
+        tautulliEnabled &&
+        Boolean(nextTautulliBaseUrl) &&
+        nextTautulliBaseUrl !== curTautulliBaseUrl;
       const googleIdChanged =
         googleEnabled &&
         Boolean(nextGoogleSearchEngineId) &&
@@ -846,6 +897,13 @@ export const SettingsPage = ({
       if (seerrEnabledChanged) seerrSettings.enabled = seerrEnabled;
       if (seerrBaseChanged) seerrSettings.baseUrl = nextSeerrBaseUrl;
       if (Object.keys(seerrSettings).length) settingsPatch.seerr = seerrSettings;
+
+      const tautulliSettings: Record<string, unknown> = {};
+      if (tautulliEnabledChanged) tautulliSettings.enabled = tautulliEnabled;
+      if (tautulliBaseChanged) tautulliSettings.baseUrl = nextTautulliBaseUrl;
+      if (Object.keys(tautulliSettings).length) {
+        settingsPatch.tautulli = tautulliSettings;
+      }
 
       const googleSettings: Record<string, unknown> = {};
       if (googleEnabledChanged) googleSettings.enabled = googleEnabled;
@@ -883,6 +941,13 @@ export const SettingsPage = ({
         seerrEnabled && Boolean(seerrKeyTrimmed);
       if (seerrKeyChanged) {
         secretsPatch.seerr = { apiKey: seerrKeyTrimmed };
+      }
+
+      const tautulliKeyTrimmed = tautulliApiKey.trim();
+      const tautulliKeyChanged =
+        tautulliEnabled && Boolean(tautulliKeyTrimmed);
+      if (tautulliKeyChanged) {
+        secretsPatch.tautulli = { apiKey: tautulliKeyTrimmed };
       }
 
       const googleKeyTrimmed = googleApiKey.trim();
@@ -981,6 +1046,32 @@ export const SettingsPage = ({
         });
       }
 
+      // Tautulli: validate if baseUrl/apiKey changed (and enabled)
+      const tautulliBecameEnabled = tautulliEnabled && !curTautulliEnabled;
+      if (
+        tautulliEnabled &&
+        (tautulliBecameEnabled || tautulliBaseChanged || tautulliKeyChanged)
+      ) {
+        if (!nextTautulliBaseUrl) {
+          throw new Error('Please enter Tautulli Base URL');
+        }
+        if (!tautulliKeyChanged && !secretsPresent.tautulli) {
+          throw new Error('Please enter Tautulli API Key');
+        }
+        const secretPayload = await buildIntegrationSecretPayload({
+          service: 'tautulli',
+          secretField: 'apiKey',
+          rawSecret: tautulliKeyTrimmed,
+          secretRef: secretRefs.tautulli ?? '',
+        });
+        await callIntegrationTest('tautulli', {
+          baseUrl: nextTautulliBaseUrl,
+          ...secretPayload,
+        }).catch(() => {
+          throw new Error('Tautulli credentials are incorrect.');
+        });
+      }
+
       // Google: validate if searchEngineId/apiKey changed (and enabled)
       const googleBecameEnabled = googleEnabled && !curGoogleEnabled;
       if (googleEnabled && (googleBecameEnabled || googleIdChanged || googleKeyChanged)) {
@@ -1056,6 +1147,7 @@ export const SettingsPage = ({
       setRadarrApiKey('');
       setSonarrApiKey('');
       setSeerrApiKey('');
+      setTautulliApiKey('');
       setTmdbApiKey('');
       setGoogleApiKey('');
       setOpenAiApiKey('');
@@ -1253,7 +1345,7 @@ export const SettingsPage = ({
 
   const integrationEnabledMutation = useMutation({
     mutationFn: async (params: {
-      integration: 'radarr' | 'sonarr' | 'seerr' | 'google' | 'openai';
+      integration: 'radarr' | 'sonarr' | 'seerr' | 'tautulli' | 'google' | 'openai';
       enabled: boolean;
     }) =>
       putSettings({
@@ -1572,6 +1664,91 @@ export const SettingsPage = ({
   ]);
 
   // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
+  const testTautulliConnection = useCallback(async (
+    mode: TestMode = 'manual',
+  ): Promise<boolean | null> => {
+    const toastId =
+      mode === 'manual'
+        ? toast.loading('Testing Tautulli connection...')
+        : undefined;
+    const startedAt = Date.now();
+    const showError = (message: string, opts?: { immediate?: boolean }) => {
+      if (mode === 'background') return;
+      const doToast = () => {
+        if (toastId) toast.error(message, { id: toastId });
+        else toast.error(message);
+      };
+      if (opts?.immediate) {
+        doToast();
+        return;
+      }
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
+    };
+    const showSuccess = (message: string) => {
+      if (!toastId) return;
+      const doToast = () => toast.success(message, { id: toastId });
+      const remaining = Math.max(0, 1000 - (Date.now() - startedAt));
+      if (remaining) setTimeout(doToast, remaining);
+      else doToast();
+    };
+
+    try {
+      const baseUrl = tautulliBaseUrl.trim();
+      const apiKey = tautulliApiKey.trim();
+
+      if (!baseUrl) {
+        showError('Please enter Tautulli Base URL', { immediate: true });
+        return null;
+      }
+      if (!secretsPresent.tautulli && !apiKey) {
+        showError('Please enter Tautulli API Key', { immediate: true });
+        return null;
+      }
+
+      const secretPayload = await buildIntegrationSecretPayload({
+        service: 'tautulli',
+        secretField: 'apiKey',
+        rawSecret: apiKey,
+        secretRef: secretRefs.tautulli ?? '',
+      });
+      await callIntegrationTest('tautulli', { baseUrl, ...secretPayload });
+      if (mode === 'manual') showSuccess('Connected to Tautulli.');
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes('http 401') ||
+        lower.includes('http 403') ||
+        lower.includes('unauthorized') ||
+        lower.includes('invalid apikey')
+      ) {
+        showError('Tautulli API key is incorrect.');
+      } else if (
+        lower.includes('timeout') ||
+        lower.includes('econnrefused') ||
+        lower.includes('enotfound') ||
+        lower.includes('failed to fetch') ||
+        lower.includes('fetch failed')
+      ) {
+        showError('Couldn’t reach Tautulli. Check the URL.');
+      } else {
+        showError('Couldn’t connect to Tautulli. Check the URL and API key.');
+      }
+      return false;
+    }
+  }, [
+    buildIntegrationSecretPayload,
+    callIntegrationTest,
+    secretRefs.tautulli,
+    secretsPresent.tautulli,
+    tautulliApiKey,
+    tautulliBaseUrl,
+  ]);
+
+  // skipcq: JS-R1005 - Connection test handles transport, retries, and UX states.
   const testTmdbConnection = useCallback(async (mode: TestMode = 'manual'): Promise<boolean | null> => {
     const toastId = mode === 'manual' ? toast.loading('Testing TMDB connection...') : undefined;
     const startedAt = Date.now();
@@ -1867,6 +2044,27 @@ export const SettingsPage = ({
     return typeof result === 'boolean' ? result : null;
   }, [testSeerrConnection]);
 
+  const runTautulliTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
+    const runId = ++tautulliTestRunId.current;
+    const startedAt = Date.now();
+    setTautulliIsTesting(true);
+    const result = await testTautulliConnection(mode);
+    if (tautulliTestRunId.current !== runId) return null;
+
+    if (typeof result === 'boolean') {
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, 1000 - elapsed);
+      if (remaining) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+        if (tautulliTestRunId.current !== runId) return null;
+      }
+    }
+
+    setTautulliIsTesting(false);
+    if (typeof result === 'boolean') setTautulliTestOk(result);
+    return typeof result === 'boolean' ? result : null;
+  }, [testTautulliConnection]);
+
   const runGoogleTest = useCallback(async (mode: TestMode): Promise<boolean | null> => {
     const runId = ++googleTestRunId.current;
     const startedAt = Date.now();
@@ -2147,6 +2345,7 @@ export const SettingsPage = ({
           | 'radarr'
           | 'sonarr'
           | 'seerr'
+          | 'tautulli'
           | 'google'
           | 'openai';
         label: string;
@@ -2161,6 +2360,7 @@ export const SettingsPage = ({
       if (radarrEnabled) tasks.push({ key: 'radarr', label: 'Radarr', run: () => runRadarrTest('background'), disableOnFail: true });
       if (sonarrEnabled) tasks.push({ key: 'sonarr', label: 'Sonarr', run: () => runSonarrTest('background'), disableOnFail: true });
       if (seerrEnabled) tasks.push({ key: 'seerr', label: 'Seerr', run: () => runSeerrTest('background'), disableOnFail: true });
+      if (tautulliEnabled) tasks.push({ key: 'tautulli', label: 'Tautulli', run: () => runTautulliTest('background'), disableOnFail: true });
       if (googleEnabled) tasks.push({ key: 'google', label: 'Google', run: () => runGoogleTest('background'), disableOnFail: true });
       if (openAiEnabled) tasks.push({ key: 'openai', label: 'OpenAI', run: () => runOpenAiTest('background'), disableOnFail: true });
 
@@ -2197,6 +2397,9 @@ export const SettingsPage = ({
           } else if (r.key === 'seerr') {
             setSeerrEnabled(false);
             disablePatch.seerr = { enabled: false };
+          } else if (r.key === 'tautulli') {
+            setTautulliEnabled(false);
+            disablePatch.tautulli = { enabled: false };
           } else if (r.key === 'google') {
             setGoogleEnabled(false);
             disablePatch.google = { enabled: false };
@@ -2232,6 +2435,7 @@ export const SettingsPage = ({
     radarrEnabled,
     sonarrEnabled,
     seerrEnabled,
+    tautulliEnabled,
     googleEnabled,
     openAiEnabled,
     queryClient,
@@ -2240,6 +2444,7 @@ export const SettingsPage = ({
     runPlexTest,
     runRadarrTest,
     runSeerrTest,
+    runTautulliTest,
     runSonarrTest,
     testTmdbConnection,
   ]);
@@ -2343,6 +2548,8 @@ export const SettingsPage = ({
     sonarrTouched || Boolean(sonarrApiKey.trim());
   const seerrNeedsTest =
     seerrTouched || Boolean(seerrApiKey.trim());
+  const tautulliNeedsTest =
+    tautulliTouched || Boolean(tautulliApiKey.trim());
   const googleNeedsTest =
     googleTouched || Boolean(googleApiKey.trim());
   const openAiNeedsTest =
@@ -2397,6 +2604,17 @@ export const SettingsPage = ({
         : seerrTestOk === false
           ? 'inactive'
           : seerrNeedsTest
+            ? 'test'
+            : 'inactive';
+  const tautulliStatus: StatusPillVariant = !tautulliEnabled
+    ? 'inactive'
+    : tautulliIsTesting
+      ? 'testing'
+      : tautulliTestOk === true
+        ? 'active'
+        : tautulliTestOk === false
+          ? 'inactive'
+          : tautulliNeedsTest
             ? 'test'
             : 'inactive';
   const googleStatus: StatusPillVariant = !googleEnabled
@@ -2458,6 +2676,11 @@ export const SettingsPage = ({
   const markSeerrEdited = useCallback(() => {
     setSeerrTouched(true);
     setSeerrTestOk(null);
+  }, []);
+
+  const markTautulliEdited = useCallback(() => {
+    setTautulliTouched(true);
+    setTautulliTestOk(null);
   }, []);
 
   const markGoogleEdited = useCallback(() => {
@@ -2683,6 +2906,14 @@ export const SettingsPage = ({
     [markSeerrEdited],
   );
 
+  const handleTautulliBaseUrlChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      markTautulliEdited();
+      setTautulliBaseUrl(event.target.value);
+    },
+    [markTautulliEdited],
+  );
+
   const handleGoogleSearchEngineIdChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       markGoogleEdited();
@@ -2711,6 +2942,10 @@ export const SettingsPage = ({
     runAsyncTask(runSeerrTest('manual'));
   }, [runSeerrTest]);
 
+  const handleTautulliManualTest = useCallback(() => {
+    runAsyncTask(runTautulliTest('manual'));
+  }, [runTautulliTest]);
+
   const handleGoogleManualTest = useCallback(() => {
     runAsyncTask(runGoogleTest('manual'));
   }, [runGoogleTest]);
@@ -2720,7 +2955,7 @@ export const SettingsPage = ({
   }, [runOpenAiTest]);
 
   const persistIntegrationEnabledState = useCallback((params: {
-    integration: 'radarr' | 'sonarr' | 'seerr' | 'google' | 'openai';
+    integration: 'radarr' | 'sonarr' | 'seerr' | 'tautulli' | 'google' | 'openai';
     enabled: boolean;
     restoreEnabledState: () => void;
     serviceName: string;
@@ -2830,6 +3065,37 @@ export const SettingsPage = ({
     secretsPresent.seerr,
   ]);
 
+  const handleTautulliToggle = useCallback(() => {
+    const previousEnabled = tautulliEnabled;
+    const nextEnabled = !tautulliEnabled;
+    setTautulliEnabled(nextEnabled);
+    setTautulliTestOk(null);
+    tautulliTestRunId.current += 1;
+    setTautulliIsTesting(false);
+
+    persistIntegrationEnabledState({
+      integration: 'tautulli',
+      enabled: nextEnabled,
+      restoreEnabledState: () => {
+        setTautulliEnabled(previousEnabled);
+      },
+      serviceName: 'Tautulli',
+    });
+
+    const usesSavedCreds =
+      Boolean(secretsPresent.tautulli) && !tautulliApiKey.trim();
+    if (nextEnabled && usesSavedCreds && !tautulliTouched) {
+      runAsyncTask(runTautulliTest('auto'));
+    }
+  }, [
+    tautulliApiKey,
+    tautulliEnabled,
+    tautulliTouched,
+    persistIntegrationEnabledState,
+    runTautulliTest,
+    secretsPresent.tautulli,
+  ]);
+
   const shouldAutoTestGoogle = useCallback(() => {
     const usesSavedCreds = Boolean(secretsPresent.google) && !googleApiKey.trim();
     if (!usesSavedCreds || googleTouched) return false;
@@ -2898,6 +3164,12 @@ export const SettingsPage = ({
     if (!seerrEnabled || !apiKey) return;
     runAsyncTask(runSeerrTest('auto'));
   }, [seerrApiKey, seerrEnabled, runSeerrTest]);
+
+  const handleTautulliApiKeyBlur = useCallback(() => {
+    const apiKey = tautulliApiKey.trim();
+    if (!tautulliEnabled || !apiKey) return;
+    runAsyncTask(runTautulliTest('auto'));
+  }, [tautulliApiKey, tautulliEnabled, runTautulliTest]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -4042,6 +4314,134 @@ export const SettingsPage = ({
                                 secretsPresent.seerr
                                   ? 'Saved (enter new to replace)'
                                   : 'Enter Seerr API key'
+                              }
+                              className={inputClass}
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Tautulli Settings */}
+              <div id="vault-tautulli" className="relative scroll-mt-24">
+                {renderVaultCardFlash('vault-tautulli')}
+                <div className={`${cardClass} group`}>
+                  <div className={cardHeaderClass}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-amber-400">
+                        <span className="transition-[filter] duration-300 will-change-[filter] group-hover:drop-shadow-[0_0_18px_currentColor] group-focus-within:drop-shadow-[0_0_18px_currentColor] group-active:drop-shadow-[0_0_18px_currentColor]">
+                          <BarChart3 className="w-7 h-7" />
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h2 className={cardTitleClass}>Tautulli</h2>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="Tautulli API key help"
+                              className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                            >
+                              <Info className="w-4 h-4" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            align="start"
+                            className="w-72 bg-[#0F0B15] border-white/10 text-white shadow-2xl"
+                          >
+                            <div className="space-y-2 text-sm text-white/80">
+                              <div>
+                                Tautulli records every play by every user —
+                                Cutting Room uses it to know what&rsquo;s
+                                truly never been watched.
+                              </div>
+                              <div>
+                                Find the API key in Tautulli → Settings → Web
+                                Interface → API.
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                      <button
+                        type="button"
+                        disabled={
+                          !tautulliEnabled ||
+                          tautulliStatus === 'testing' ||
+                          (tautulliStatus === 'inactive' &&
+                            tautulliTestOk !== false)
+                        }
+                        onClick={handleTautulliManualTest}
+                        className={statusPillClass(tautulliStatus)}
+                        aria-label={`Tautulli status: ${statusLabel(tautulliStatus)}`}
+                      >
+                        {tautulliStatus === 'testing' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <span
+                            className={`h-2 w-2 rounded-full ${statusDotClass(tautulliStatus)}`}
+                          />
+                        )}
+                        {statusLabel(tautulliStatus)}
+                      </button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={tautulliEnabled}
+                        onClick={handleTautulliToggle}
+                        disabled={
+                          integrationEnabledMutation.isPending &&
+                          integrationEnabledMutation.variables?.integration ===
+                            'tautulli'
+                        }
+                        className={toggleTrackClass(tautulliEnabled)}
+                        aria-label="Toggle Tautulli"
+                      >
+                        <span className={toggleThumbClass(tautulliEnabled)} />
+                      </button>
+                    </div>
+                  </div>
+                  <AnimatePresence initial={false}>
+                    {tautulliEnabled && (
+                      <motion.div
+                        initial={
+                          allowCardExpandAnimations.current
+                            ? { height: 0, opacity: 0 }
+                            : false
+                        }
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <div className={labelClass}>Base URL</div>
+                            <input
+                              type="text"
+                              value={tautulliBaseUrl}
+                              onChange={handleTautulliBaseUrlChange}
+                              placeholder="http://localhost:8181"
+                              className={inputClass}
+                            />
+                          </div>
+                          <div>
+                            <div className={labelClass}>API Key</div>
+                            <MaskedSecretInput
+                              value={tautulliApiKey}
+                              setValue={setTautulliApiKey}
+                              hasSavedValue={Boolean(secretsPresent.tautulli)}
+                              onEditStart={markTautulliEdited}
+                              onBlur={handleTautulliApiKeyBlur}
+                              placeholder={
+                                secretsPresent.tautulli
+                                  ? 'Saved (enter new to replace)'
+                                  : 'Enter Tautulli API key'
                               }
                               className={inputClass}
                             />

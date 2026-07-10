@@ -311,6 +311,37 @@ function getProgressPlan(jobId: string): ProgressPlan | null {
     };
   }
 
+  // Cutting room scan: arr → plex → watch truth → protections → scoring → persist
+  if (id === 'cuttingRoomAnalyze') {
+    return {
+      total: 6,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'arr_scan') return 1;
+        if (stepId === 'plex_scan') return 2;
+        if (stepId === 'watch_truth') return 3;
+        if (stepId === 'protections') return 4;
+        if (stepId === 'scoring') return 5;
+        if (stepId === 'persisting' || stepId === 'done') return 6;
+        return null;
+      },
+    };
+  }
+
+  // Cutting room prune: freshness → tag → waves
+  if (id === 'cuttingRoomPrune') {
+    return {
+      total: 3,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'freshness') return 1;
+        if (stepId === 'tagging') return 2;
+        if (stepId === 'pruning' || stepId === 'done') return 3;
+        return null;
+      },
+    };
+  }
+
   // Cleanup job: scan → delete/unmonitor → watchlist
   if (id === 'mediaAddedCleanup') {
     return {
