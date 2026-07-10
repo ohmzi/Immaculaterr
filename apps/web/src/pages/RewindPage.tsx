@@ -9,6 +9,7 @@ import {
   Loader2,
   Pause,
   Play,
+  Copy as CopyIcon,
   RotateCcw,
   Trash2,
   X,
@@ -27,6 +28,7 @@ import {
 } from '@/api/jobs';
 import { toast } from 'sonner';
 
+import { copyToClipboard } from '@/lib/clipboard';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -309,6 +311,9 @@ export const RewindPage = () => {
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [expandedErrorRunIds, setExpandedErrorRunIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -915,8 +920,29 @@ export const RewindPage = () => {
                                 </div>
                               </div>
                               {errorPreview ? (
-                                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono break-words [overflow-wrap:anywhere]">
-                                  {errorPreview}
+                                <div
+                                  className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono break-words [overflow-wrap:anywhere]"
+                                  onClick={(e) => {
+                                    if (errorText === errorPreview) return;
+                                    e.preventDefault();
+                                    setExpandedErrorRunIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(run.id)) next.delete(run.id);
+                                      else next.add(run.id);
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  {expandedErrorRunIds.has(run.id)
+                                    ? errorText
+                                    : errorPreview}
+                                  {errorText !== errorPreview ? (
+                                    <span className="ml-1 text-red-100/60 underline decoration-dotted">
+                                      {expandedErrorRunIds.has(run.id)
+                                        ? 'less'
+                                        : 'more'}
+                                    </span>
+                                  ) : null}
                                 </div>
                               ) : pendingNote ? (
                                 <div className="mt-3 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/85 font-mono break-words [overflow-wrap:anywhere]">
@@ -1014,7 +1040,58 @@ export const RewindPage = () => {
                                       const msg =
                                         issueSummary(run) || describeBlockedReason(run);
                                       if (!msg) return '';
-                                      return msg.length > 56 ? `${msg.slice(0, 56)}…` : msg;
+                                      const expanded = expandedErrorRunIds.has(run.id);
+                                      const needsExpand = msg.length > 56;
+                                      return (
+                                        <div className="flex items-start gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setExpandedErrorRunIds((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(run.id)) next.delete(run.id);
+                                                else next.add(run.id);
+                                                return next;
+                                              })
+                                            }
+                                            disabled={!needsExpand}
+                                            className={[
+                                              'min-w-0 text-left break-words [overflow-wrap:anywhere]',
+                                              needsExpand
+                                                ? 'cursor-pointer underline decoration-dotted underline-offset-2 hover:text-red-100'
+                                                : 'cursor-default',
+                                            ].join(' ')}
+                                            title={
+                                              needsExpand
+                                                ? expanded
+                                                  ? 'Collapse error'
+                                                  : 'Show full error'
+                                                : undefined
+                                            }
+                                          >
+                                            {expanded || !needsExpand
+                                              ? msg
+                                              : `${msg.slice(0, 56)}…`}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              void copyToClipboard(msg)
+                                                .then(() =>
+                                                  toast.success('Error copied'),
+                                                )
+                                                .catch(() =>
+                                                  toast.error('Copy failed'),
+                                                );
+                                            }}
+                                            className="shrink-0 rounded p-0.5 text-red-200/60 transition hover:text-red-100"
+                                            aria-label="Copy full error"
+                                            title="Copy full error"
+                                          >
+                                            <CopyIcon className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      );
                                     })()}
                                   </td>
                                 </tr>
