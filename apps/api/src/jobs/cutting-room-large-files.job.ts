@@ -575,6 +575,7 @@ export class CuttingRoomLargeFilesJob {
           episodeIds: number[];
           seasonNumbers: Set<number>;
         }> = [];
+        const seenFileIds = new Set<number>();
         for (const item of list) {
           const file = files.find((f) => f.path === item.arrPath);
           if (!file) {
@@ -584,6 +585,9 @@ export class CuttingRoomLargeFilesJob {
             );
             continue;
           }
+          // Double episodes share one file — delete and count it exactly once.
+          if (seenFileIds.has(file.id)) continue;
+          seenFileIds.add(file.id);
           const fileEpisodes = episodes.filter(
             (e) => e.episodeFileId === file.id,
           );

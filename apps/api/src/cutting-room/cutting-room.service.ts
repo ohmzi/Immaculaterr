@@ -171,6 +171,51 @@ const CANDIDATE_SELECT = {
   pruneError: true,
 } as const;
 
+export type LargeFileListItem = {
+  kind: 'movie' | 'episode';
+  title: string;
+  showTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  sizeBytes: number;
+  path: string | null;
+  arrInstanceId: string | null;
+  movieId: number | null;
+  plexRatingKey: string | null;
+};
+
+/**
+ * A single file can back several Plex episodes (double episodes, specials).
+ * Collapse those to one row per file so sizes are not double-counted and the
+ * replacement job deletes each file exactly once.
+ */
+export function dedupeEpisodesByFile(
+  items: LargeFileListItem[],
+): LargeFileListItem[] {
+  const out: LargeFileListItem[] = [];
+  const byPath = new Map<string, { item: LargeFileListItem; extra: number }>();
+  for (const item of items) {
+    if (item.kind !== 'episode' || !item.path) {
+      out.push(item);
+      continue;
+    }
+    const existing = byPath.get(item.path);
+    if (!existing) {
+      byPath.set(item.path, { item: { ...item }, extra: 0 });
+    } else {
+      existing.extra += 1;
+    }
+  }
+  for (const { item, extra } of byPath.values()) {
+    out.push(
+      extra > 0
+        ? { ...item, title: `${item.title} (+${extra} more in this file)` }
+        : item,
+    );
+  }
+  return out;
+}
+
 @Injectable()
 export class CuttingRoomService {
   constructor(
@@ -605,6 +650,7 @@ export class CuttingRoomService {
     const mediaType = opts?.mediaType ?? 'both';
     const sectionKeys = (opts?.sectionKeys ?? []).filter((k) => k.length > 0);
     const instanceIds = (opts?.instanceIds ?? []).filter((k) => k.length > 0);
+    const warnings: string[] = [];
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(userId);
     const baseUrl =
@@ -643,23 +689,14 @@ export class CuttingRoomService {
           };
         }
       } catch {
-        movieLocationFilter = null; // Plex unreachable — include all movies.
+        movieLocationFilter = null;
+        warnings.push(
+          'Plex library folders could not be checked — movies from all libraries are listed.',
+        );
       }
     }
 
-    type LargeItem = {
-      kind: 'movie' | 'episode';
-      title: string;
-      showTitle: string | null;
-      seasonNumber: number | null;
-      episodeNumber: number | null;
-      sizeBytes: number;
-      path: string | null;
-      arrInstanceId: string | null;
-      movieId: number | null;
-      plexRatingKey: string | null;
-    };
-    const items: LargeItem[] = [];
+    const items: LargeFileListItem[] = [];
 
     // Movies straight from Radarr (movieFile.size is authoritative).
     const instances =
@@ -736,12 +773,17 @@ export class CuttingRoomService {
           });
         }
       } catch {
-        // Instance offline — skip.
+        warnings.push(
+          `Radarr instance "${instance.name ?? instance.id}" could not be scanned — its movies are not listed.`,
+        );
       }
     }
 
     // Episodes from Plex (sizes live on the parts; Sonarr resolution happens
     // at execution time).
+    if ((!baseUrl || !token) && mediaType !== 'movie') {
+      warnings.push('Plex is not configured — episodes were not scanned.');
+    }
     if (baseUrl && token && mediaType !== 'movie') {
       const sections = await this.plexServer.getSections({ baseUrl, token });
       for (const section of sections) {
@@ -771,16 +813,20 @@ export class CuttingRoomService {
             });
           }
         } catch {
-          // Section scan failed — skip it rather than the whole listing.
+          warnings.push(
+            `Plex library "${section.title ?? section.key}" could not be scanned — its episodes are not listed.`,
+          );
         }
       }
     }
 
-    items.sort((a, b) => b.sizeBytes - a.sizeBytes);
+    const deduped = dedupeEpisodesByFile(items);
+    deduped.sort((a, b) => b.sizeBytes - a.sizeBytes);
     return {
-      total: items.length,
-      totalBytes: items.reduce((sum, i) => sum + i.sizeBytes, 0),
-      items,
+      total: deduped.length,
+      totalBytes: deduped.reduce((sum, i) => sum + i.sizeBytes, 0),
+      items: deduped,
+      warnings,
     };
   }
 

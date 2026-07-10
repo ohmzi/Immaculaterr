@@ -3474,17 +3474,25 @@ export class PlexServerService {
       const ratingKey = toStringSafe(item.ratingKey).trim();
       if (!ratingKey) continue;
       const media = parsePlexMediaVersions(item.Media);
+      // An episode can carry several versions; the replaceable file is the
+      // largest single version, so size it alone rather than summing them.
       let sizeBytes = 0;
       let file: string | null = null;
       for (const version of media) {
+        let versionBytes = 0;
+        let versionFile: string | null = null;
         for (const part of version.parts) {
           if (typeof part.size === 'number' && part.size > 0) {
-            sizeBytes += part.size;
+            versionBytes += part.size;
           }
-          if (!file && part.file) file = part.file;
+          if (!versionFile && part.file) versionFile = part.file;
+        }
+        if (versionBytes > sizeBytes) {
+          sizeBytes = versionBytes;
+          file = versionFile;
         }
       }
-      if (sizeBytes < thresholdBytes) continue;
+      if (sizeBytes < thresholdBytes || !file) continue;
       out.push({
         ratingKey,
         librarySectionKey,
