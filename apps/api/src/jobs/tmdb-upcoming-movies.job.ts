@@ -11,6 +11,7 @@ import {
 import type { JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import { truncateErrorMessage } from '../log.utils';
 
 type TmdbUpcomingFilter = {
   id: string;
@@ -515,164 +516,235 @@ export class TmdbUpcomingMoviesJob {
       return matched;
     };
 
-    for (let index = 0; index < activeFilters.length; index += 1) {
-      const filter = activeFilters[index];
-      await setProgress(
-        'discover',
-        `Processing filter set ${index + 1} of ${activeFilters.length}…`,
-        {
-          current: index + 1,
-          total: activeFilters.length,
-          usingDefaultBaseline,
-        },
-      );
-
-      const genreIds = filter.genres
-        .map((value) => Number.parseInt(value, 10))
-        .filter((value) => Number.isFinite(value) && value > 0)
-        .map((value) => Math.trunc(value));
-      const allocationForFilter = perFilterAllocation.get(filter.id) ?? 0;
-      if (allocationForFilter <= 0) {
-        rankedMatchedTmdbIdsByFilter.set(filter.id, []);
-        matchedTitlesByFilter.set(filter.id, []);
-        skippedPlexTitlesByFilter.set(filter.id, []);
-        perFilterStats.push({
-          id: filter.id,
-          discovered: 0,
-          matchedAfterCertification: 0,
-          matchedAfterPlex: 0,
-          skippedInPlex: 0,
-          allocatedLimit: 0,
-          selectedUnique: 0,
-        });
-        continue;
-      }
-      const discoverBudget = computeDiscoverFetchBudget(allocationForFilter);
-      const discoverRequestBase = {
-        apiKey: tmdbApiKey,
-        fromDate: windowStart,
-        toDate: windowEnd,
-        genreIds,
-        languages: filter.languages,
-        minScore: filter.scoreMin,
-        maxScore: filter.scoreMax,
-      };
-      const certificationSet = new Set(
-        filter.certifications.map((entry) => entry.trim()).filter(Boolean),
-      );
-      const unseenMatchedByTmdbId = new Map<
-        number,
-        TmdbUpcomingMovieDiscoverCandidate
-      >();
-      const skippedPlexTitles: string[] = [];
-      let discoveredCount = 0;
-      let matchedAfterCertificationCount = 0;
-      let skippedInPlexCount = 0;
-      let pageCursor = 1;
-      let pageLimit = discoverBudget.maxPages;
-      let expandedToMax = false;
-
-      while (pageCursor <= pageLimit) {
-        const remainingPages = pageLimit - pageCursor + 1;
-        const chunkPages = Math.max(
-          1,
-          Math.min(DISCOVER_CHUNK_PAGES, remainingPages),
+    let discoveringFilterId: string | null = null;
+    try {
+      for (let index = 0; index < activeFilters.length; index += 1) {
+        const filter = activeFilters[index];
+        discoveringFilterId = filter.id;
+        await setProgress(
+          'discover',
+          `Processing filter set ${index + 1} of ${activeFilters.length}…`,
+          {
+            current: index + 1,
+            total: activeFilters.length,
+            usingDefaultBaseline,
+          },
         );
-        const chunkMaxItems = Math.min(
-          DISCOVER_MAX_ITEMS,
-          chunkPages * DISCOVER_PAGE_SIZE,
-        );
-        const discoveredChunk = await this.tmdb.discoverUpcomingMovies({
-          ...discoverRequestBase,
-          maxItems: chunkMaxItems,
-          maxPages: chunkPages,
-          startPage: pageCursor,
-        });
-        if (!discoveredChunk.length) break;
 
-        discoveredCount += discoveredChunk.length;
-        const matchedChunk = await applyCertificationFilter(
-          discoveredChunk,
-          certificationSet,
-        );
-        matchedAfterCertificationCount += matchedChunk.length;
-        for (const candidate of matchedChunk) {
-          if (plexExistingTmdbIds.has(candidate.tmdbId)) {
-            skippedInPlexCount += 1;
-            skippedPlexTitles.push(candidate.title);
-            continue;
-          }
-          if (!unseenMatchedByTmdbId.has(candidate.tmdbId)) {
-            unseenMatchedByTmdbId.set(candidate.tmdbId, candidate);
-          }
-        }
-        if (unseenMatchedByTmdbId.size >= allocationForFilter) {
-          break;
-        }
-
-        pageCursor += chunkPages;
-        if (
-          pageCursor > pageLimit &&
-          !expandedToMax &&
-          pageLimit < DISCOVER_MAX_PAGES &&
-          unseenMatchedByTmdbId.size < allocationForFilter
-        ) {
-          expandedToMax = true;
-          pageLimit = DISCOVER_MAX_PAGES;
-        }
-      }
-
-      totalDiscovered += discoveredCount;
-      totalMatchedAfterCertification += matchedAfterCertificationCount;
-      totalSkippedInPlex += skippedInPlexCount;
-
-      const rankedMatched = Array.from(unseenMatchedByTmdbId.values()).sort(
-        compareCandidatesByPriority,
-      );
-      totalMatchedAfterPlex += rankedMatched.length;
-      rankedMatchedTmdbIdsByFilter.set(
-        filter.id,
-        rankedMatched.map((entry) => entry.tmdbId),
-      );
-      matchedTitlesByFilter.set(
-        filter.id,
-        normalizeTitleList(rankedMatched.map((entry) => entry.title)),
-      );
-      skippedPlexTitlesByFilter.set(
-        filter.id,
-        normalizeTitleList(skippedPlexTitles),
-      );
-      perFilterStats.push({
-        id: filter.id,
-        discovered: discoveredCount,
-        matchedAfterCertification: matchedAfterCertificationCount,
-        matchedAfterPlex: rankedMatched.length,
-        skippedInPlex: skippedInPlexCount,
-        allocatedLimit: allocationForFilter,
-        selectedUnique: 0,
-      });
-
-      for (const candidate of rankedMatched) {
-        const existing = mergedCandidates.get(candidate.tmdbId);
-        if (!existing) {
-          mergedCandidates.set(candidate.tmdbId, {
-            ...candidate,
-            matchedFilters: [filter.id],
+        const genreIds = filter.genres
+          .map((value) => Number.parseInt(value, 10))
+          .filter((value) => Number.isFinite(value) && value > 0)
+          .map((value) => Math.trunc(value));
+        const allocationForFilter = perFilterAllocation.get(filter.id) ?? 0;
+        if (allocationForFilter <= 0) {
+          rankedMatchedTmdbIdsByFilter.set(filter.id, []);
+          matchedTitlesByFilter.set(filter.id, []);
+          skippedPlexTitlesByFilter.set(filter.id, []);
+          perFilterStats.push({
+            id: filter.id,
+            discovered: 0,
+            matchedAfterCertification: 0,
+            matchedAfterPlex: 0,
+            skippedInPlex: 0,
+            allocatedLimit: 0,
+            selectedUnique: 0,
           });
           continue;
         }
-        if (!existing.matchedFilters.includes(filter.id)) {
-          existing.matchedFilters.push(filter.id);
-        }
-        const existingPopularity = existing.popularity ?? 0;
-        const candidatePopularity = candidate.popularity ?? 0;
-        if (candidatePopularity > existingPopularity) {
-          mergedCandidates.set(candidate.tmdbId, {
-            ...candidate,
-            matchedFilters: existing.matchedFilters,
+        const discoverBudget = computeDiscoverFetchBudget(allocationForFilter);
+        const discoverRequestBase = {
+          apiKey: tmdbApiKey,
+          fromDate: windowStart,
+          toDate: windowEnd,
+          genreIds,
+          languages: filter.languages,
+          minScore: filter.scoreMin,
+          maxScore: filter.scoreMax,
+        };
+        const certificationSet = new Set(
+          filter.certifications.map((entry) => entry.trim()).filter(Boolean),
+        );
+        const unseenMatchedByTmdbId = new Map<
+          number,
+          TmdbUpcomingMovieDiscoverCandidate
+        >();
+        const skippedPlexTitles: string[] = [];
+        let discoveredCount = 0;
+        let matchedAfterCertificationCount = 0;
+        let skippedInPlexCount = 0;
+        let pageCursor = 1;
+        let pageLimit = discoverBudget.maxPages;
+        let expandedToMax = false;
+
+        while (pageCursor <= pageLimit) {
+          const remainingPages = pageLimit - pageCursor + 1;
+          const chunkPages = Math.max(
+            1,
+            Math.min(DISCOVER_CHUNK_PAGES, remainingPages),
+          );
+          const chunkMaxItems = Math.min(
+            DISCOVER_MAX_ITEMS,
+            chunkPages * DISCOVER_PAGE_SIZE,
+          );
+          const discoveredChunk = await this.tmdb.discoverUpcomingMovies({
+            ...discoverRequestBase,
+            maxItems: chunkMaxItems,
+            maxPages: chunkPages,
+            startPage: pageCursor,
           });
+          if (!discoveredChunk.length) break;
+
+          discoveredCount += discoveredChunk.length;
+          const matchedChunk = await applyCertificationFilter(
+            discoveredChunk,
+            certificationSet,
+          );
+          matchedAfterCertificationCount += matchedChunk.length;
+          for (const candidate of matchedChunk) {
+            if (plexExistingTmdbIds.has(candidate.tmdbId)) {
+              skippedInPlexCount += 1;
+              skippedPlexTitles.push(candidate.title);
+              continue;
+            }
+            if (!unseenMatchedByTmdbId.has(candidate.tmdbId)) {
+              unseenMatchedByTmdbId.set(candidate.tmdbId, candidate);
+            }
+          }
+          if (unseenMatchedByTmdbId.size >= allocationForFilter) {
+            break;
+          }
+
+          pageCursor += chunkPages;
+          if (
+            pageCursor > pageLimit &&
+            !expandedToMax &&
+            pageLimit < DISCOVER_MAX_PAGES &&
+            unseenMatchedByTmdbId.size < allocationForFilter
+          ) {
+            expandedToMax = true;
+            pageLimit = DISCOVER_MAX_PAGES;
+          }
+        }
+
+        totalDiscovered += discoveredCount;
+        totalMatchedAfterCertification += matchedAfterCertificationCount;
+        totalSkippedInPlex += skippedInPlexCount;
+
+        const rankedMatched = Array.from(unseenMatchedByTmdbId.values()).sort(
+          compareCandidatesByPriority,
+        );
+        totalMatchedAfterPlex += rankedMatched.length;
+        rankedMatchedTmdbIdsByFilter.set(
+          filter.id,
+          rankedMatched.map((entry) => entry.tmdbId),
+        );
+        matchedTitlesByFilter.set(
+          filter.id,
+          normalizeTitleList(rankedMatched.map((entry) => entry.title)),
+        );
+        skippedPlexTitlesByFilter.set(
+          filter.id,
+          normalizeTitleList(skippedPlexTitles),
+        );
+        perFilterStats.push({
+          id: filter.id,
+          discovered: discoveredCount,
+          matchedAfterCertification: matchedAfterCertificationCount,
+          matchedAfterPlex: rankedMatched.length,
+          skippedInPlex: skippedInPlexCount,
+          allocatedLimit: allocationForFilter,
+          selectedUnique: 0,
+        });
+
+        for (const candidate of rankedMatched) {
+          const existing = mergedCandidates.get(candidate.tmdbId);
+          if (!existing) {
+            mergedCandidates.set(candidate.tmdbId, {
+              ...candidate,
+              matchedFilters: [filter.id],
+            });
+            continue;
+          }
+          if (!existing.matchedFilters.includes(filter.id)) {
+            existing.matchedFilters.push(filter.id);
+          }
+          const existingPopularity = existing.popularity ?? 0;
+          const candidatePopularity = candidate.popularity ?? 0;
+          if (candidatePopularity > existingPopularity) {
+            mergedCandidates.set(candidate.tmdbId, {
+              ...candidate,
+              matchedFilters: existing.matchedFilters,
+            });
+          }
         }
       }
+    } catch (err) {
+      // A TMDB fetch/parse failure aborts discovery: report the task as
+      // failed (which fails the whole run) and log shareable, secret-free
+      // diagnostics for bug reports.
+      const reason = truncateErrorMessage(err);
+      await ctx.error('tmdbUpcomingMovies: TMDB discovery failed', {
+        error: reason,
+        endpoint: 'api.themoviedb.org/3/discover/movie',
+        window: `${windowStart}..${windowEnd}`,
+        filterId: discoveringFilterId,
+        filtersTotal: activeFilters.length,
+      });
+      const failureReport: JobReportV1 = {
+        template: 'jobReportV1',
+        version: 1,
+        jobId: ctx.jobId,
+        dryRun: ctx.dryRun,
+        trigger: ctx.trigger,
+        headline: 'TMDB Upcoming Movies failed during discovery',
+        sections: [],
+        tasks: [
+          { id: 'queue_wait', title: 'Queue wait', status: 'success' },
+          {
+            id: 'discover',
+            title: 'Discover upcoming movies',
+            status: 'failed',
+            facts: [
+              {
+                label: 'Endpoint',
+                value: 'api.themoviedb.org/3/discover/movie',
+              },
+              { label: 'Window', value: `${windowStart} → ${windowEnd}` },
+              {
+                label: 'Failed while processing filter set',
+                value: discoveringFilterId ?? 'unknown',
+              },
+              { label: 'Error', value: reason },
+            ],
+            issues: [issue('error', `TMDB discovery failed: ${reason}`)],
+          },
+          {
+            id: 'destination',
+            title: normalized.routeViaSeerr
+              ? 'Send to Seerr'
+              : 'Send to Radarr',
+            status: 'skipped',
+          },
+        ],
+        issues: [
+          ...reportIssues,
+          issue(
+            'error',
+            `TMDB discovery failed — nothing was sent this run. (${reason})`,
+          ),
+          issue(
+            'warn',
+            "If this keeps happening, share this run's logs when reporting the issue — API keys are redacted automatically.",
+          ),
+        ],
+        raw: {
+          discoveryError: reason,
+          failedFilterId: discoveringFilterId,
+          windowStart,
+          windowEnd,
+        },
+      };
+      return { summary: failureReport as unknown as JsonObject };
     }
 
     const rankedCandidates = Array.from(mergedCandidates.values()).sort(

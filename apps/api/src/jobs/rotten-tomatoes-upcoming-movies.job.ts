@@ -1117,6 +1117,19 @@ export class RottenTomatoesUpcomingMoviesJob {
           'Rotten Tomatoes movie discovery failed: all movie sources failed or no usable movie cards were parsed.',
         ),
       );
+      // One structured, secret-free diagnostic line users can paste into a
+      // bug report: which source URLs failed, how, and what parsed.
+      await ctx.error('rottenTomatoesUpcomingMovies: movie discovery failed', {
+        sources: sourceStats.map((stat) => ({
+          url: stat.url,
+          failed: stat.failed,
+          error: stat.error,
+          discoveredEntries: stat.discoveredEntries,
+          parseableEntries: stat.parseableEntries,
+        })),
+        parsedTotal: scrapedMovies.length,
+        dedupedTotal: dedupedMovies.length,
+      });
       return {
         sourceStats,
         dedupedMovies,
@@ -1533,6 +1546,18 @@ export class RottenTomatoesUpcomingMoviesJob {
           'Rotten Tomatoes TV discovery failed: all TV sources failed or no score-qualified TV cards were parsed.',
         ),
       );
+      await ctx.error('rottenTomatoesUpcomingMovies: TV discovery failed', {
+        sources: sourceStats.map((stat) => ({
+          url: stat.url,
+          failed: stat.failed,
+          error: stat.error,
+          discoveredEntries: stat.discoveredEntries,
+          parseableEntries: stat.parseableEntries,
+        })),
+        parsedTotal: scrapedShows.length,
+        dedupedTotal: dedupedShows.length,
+        scoreFilteredOut,
+      });
       return {
         sourceStats,
         dedupedShows,
@@ -1896,7 +1921,13 @@ export class RottenTomatoesUpcomingMoviesJob {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          Accept: 'text/html,application/xhtml+xml',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          // A browser-like UA avoids the bot-blocking some CDNs apply to
+          // default runtime user agents.
+          'User-Agent':
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         },
         signal: controller.signal,
       });
