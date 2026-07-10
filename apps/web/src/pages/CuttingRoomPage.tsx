@@ -350,7 +350,7 @@ export function CuttingRoomPage() {
   const [tab, setTab] = useState<TabKey>(initialTab);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, amber-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
