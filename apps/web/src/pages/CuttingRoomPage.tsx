@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ChangeEvent,
-} from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -238,12 +232,44 @@ function lfItemKey(item: LargeFileItem): string {
   return `${item.kind}|${item.path ?? item.plexRatingKey ?? `${item.title}:${item.sizeBytes}`}`;
 }
 
+/**
+ * Shift-click range selection. Remembers the last row clicked (the anchor);
+ * a shift-click returns the whole [anchor..index] span — in either direction —
+ * so the caller can apply the clicked row's new state to everything between.
+ * The anchor resets whenever the backing list changes.
+ */
+function useShiftRangeSelect(items: readonly unknown[]) {
+  const stateRef = useRef<{
+    items: readonly unknown[];
+    anchor: number | null;
+  }>({ items, anchor: null });
+  return (index: number, shiftKey: boolean): [number, number] => {
+    if (stateRef.current.items !== items) {
+      stateRef.current = { items, anchor: null };
+    }
+    const anchor = shiftKey ? stateRef.current.anchor : null;
+    stateRef.current.anchor = index;
+    if (anchor === null) return [index, index];
+    return anchor <= index ? [anchor, index] : [index, anchor];
+  };
+}
+
+const SHIFT_RANGE_HINT = 'Tip: click one row, then shift-click another to select everything in between.';
+
 function LargeFilesTable(props: {
   items: LargeFileItem[];
   selectedKeys: Set<string>;
-  onToggle: (key: string) => void;
+  onSelect: (keys: string[], selected: boolean) => void;
 }) {
-  const { items, selectedKeys, onToggle } = props;
+  const { items, selectedKeys, onSelect } = props;
+  const rangeFor = useShiftRangeSelect(items);
+  const handleRowClick = (index: number, shiftKey: boolean) => {
+    const nextSelected = !selectedKeys.has(lfItemKey(items[index]));
+    const [from, to] = rangeFor(index, shiftKey);
+    const keys: string[] = [];
+    for (let i = from; i <= to; i += 1) keys.push(lfItemKey(items[i]));
+    onSelect(keys, nextSelected);
+  };
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -256,7 +282,7 @@ function LargeFilesTable(props: {
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => {
+          {items.map((item, index) => {
             const key = lfItemKey(item);
             return (
               <tr key={key} className="border-t border-white/5">
@@ -264,9 +290,14 @@ function LargeFilesTable(props: {
                   <input
                     type="checkbox"
                     checked={selectedKeys.has(key)}
-                    onChange={() => onToggle(key)}
+                    onClick={(e) => handleRowClick(index, e.shiftKey)}
+                    onChange={() => undefined}
+                    onMouseDown={(e) => {
+                      if (e.shiftKey) e.preventDefault();
+                    }}
                     className="h-4 w-4 accent-[#facc15]"
                     aria-label={`Select ${item.title}`}
+                    title={SHIFT_RANGE_HINT}
                   />
                 </td>
                 <td
@@ -1520,6 +1551,7 @@ function ReviewStep(props: {
   });
   const total = candidatesQuery.data?.total ?? 0;
   const items = candidatesQuery.data?.items ?? [];
+  const rangeFor = useShiftRangeSelect(items);
 
   const patchSelection = useMutation({
     mutationFn: (body: {
@@ -1649,13 +1681,17 @@ function ReviewStep(props: {
               </tr>
             </thead>
             <tbody>
-              {items.map((c) => (
+              {items.map((c, index) => (
                 <CandidateRow
                   key={c.id}
                   candidate={c}
-                  onToggle={(selected) =>
-                    patchSelection.mutate({ ids: [c.id], selected })
-                  }
+                  onToggle={(selected, shiftKey) => {
+                    const [from, to] = rangeFor(index, shiftKey);
+                    patchSelection.mutate({
+                      ids: items.slice(from, to + 1).map((row) => row.id),
+                      selected,
+                    });
+                  }}
                 />
               ))}
               {items.length === 0 ? (
@@ -1726,7 +1762,7 @@ function ReviewStep(props: {
 
 function CandidateRow(props: {
   candidate: CuttingRoomCandidate;
-  onToggle: (selected: boolean) => void;
+  onToggle: (selected: boolean, shiftKey: boolean) => void;
 }) {
   const { candidate: c, onToggle } = props;
   const tier = TIER_LABELS[c.tier];
@@ -1736,9 +1772,14 @@ function CandidateRow(props: {
         <input
           type="checkbox"
           checked={c.selected}
-          onChange={() => onToggle(!c.selected)}
+          onClick={(e) => onToggle(!c.selected, e.shiftKey)}
+          onChange={() => undefined}
+          onMouseDown={(e) => {
+            if (e.shiftKey) e.preventDefault();
+          }}
           className="h-4 w-4 accent-[#facc15]"
           aria-label={`Select ${c.title}`}
+          title={SHIFT_RANGE_HINT}
         />
       </td>
       <td className="p-3">
@@ -2246,10 +2287,12 @@ function LargeFilesReviewStep(props: {
   );
   const allSelected = selectedCount === items.length && items.length > 0;
 
-  const toggle = (key: string) => {
+  const applySelection = (keys: string[], selected: boolean) => {
     const next = new Set(selectedKeys);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    for (const key of keys) {
+      if (selected) next.add(key);
+      else next.delete(key);
+    }
     setSelectedKeys(next);
   };
 
@@ -2259,7 +2302,10 @@ function LargeFilesReviewStep(props: {
         <div className="text-sm text-white/70">
           Tick the files to replace —{' '}
           <span className="font-bold text-white">{selectedCount}</span> of{' '}
-          {items.length} selected.
+          {items.length} selected.{' '}
+          <span className="text-white/40">
+            Click one, then shift-click another to select the whole range.
+          </span>
         </div>
         <button
           type="button"
@@ -2286,7 +2332,7 @@ function LargeFilesReviewStep(props: {
           <LargeFilesTable
             items={items}
             selectedKeys={selectedKeys}
-            onToggle={toggle}
+            onSelect={applySelection}
           />
         </div>
       )}
@@ -2817,6 +2863,7 @@ function WantedTab() {
   });
   const total = wantedQuery.data?.total ?? 0;
   const items = wantedQuery.data?.items ?? [];
+  const rangeFor = useShiftRangeSelect(items);
 
   const targetCount = useAll ? total : selectedIds.size;
 
@@ -2944,7 +2991,7 @@ function WantedTab() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const checked = useAll || selectedIds.has(item.arrId);
                 return (
                   <tr key={item.arrId} className="border-t border-white/5">
@@ -2953,16 +3000,25 @@ function WantedTab() {
                         type="checkbox"
                         checked={checked}
                         disabled={useAll}
-                        onChange={() =>
+                        onClick={(e) => {
+                          const nextSelected = !selectedIds.has(item.arrId);
+                          const [from, to] = rangeFor(index, e.shiftKey);
                           setSelectedIds((prev) => {
                             const next = new Set(prev);
-                            if (next.has(item.arrId)) next.delete(item.arrId);
-                            else next.add(item.arrId);
+                            for (let i = from; i <= to; i += 1) {
+                              if (nextSelected) next.add(items[i].arrId);
+                              else next.delete(items[i].arrId);
+                            }
                             return next;
-                          })
-                        }
+                          });
+                        }}
+                        onChange={() => undefined}
+                        onMouseDown={(e) => {
+                          if (e.shiftKey) e.preventDefault();
+                        }}
                         className="h-4 w-4 accent-[#facc15]"
                         aria-label={`Select ${item.title}`}
+                        title={SHIFT_RANGE_HINT}
                       />
                     </td>
                     <td className="p-3 font-semibold text-white">
@@ -3099,6 +3155,7 @@ function DuplicatesTab() {
     queryFn: () => listDuplicates(),
   });
   const groups = duplicatesQuery.data?.groups ?? [];
+  const rangeFor = useShiftRangeSelect(groups);
   const totalWaste = duplicatesQuery.data?.wasteBytes ?? 0;
 
   const runQuery = useQuery({
@@ -3222,7 +3279,7 @@ function DuplicatesTab() {
               </tr>
             </thead>
             <tbody>
-              {groups.map((group) => {
+              {groups.map((group, index) => {
                 const checked = selectedKeys.has(group.ratingKey);
                 const largest = Math.max(
                   ...group.versions.map((v) => v.sizeBytes),
@@ -3233,15 +3290,24 @@ function DuplicatesTab() {
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() =>
+                        onClick={(e) => {
+                          const nextSelected = !selectedKeys.has(
+                            group.ratingKey,
+                          );
+                          const [from, to] = rangeFor(index, e.shiftKey);
                           setSelectedKeys((prev) => {
                             const next = new Set(prev);
-                            if (next.has(group.ratingKey))
-                              next.delete(group.ratingKey);
-                            else next.add(group.ratingKey);
+                            for (let i = from; i <= to; i += 1) {
+                              if (nextSelected) next.add(groups[i].ratingKey);
+                              else next.delete(groups[i].ratingKey);
+                            }
                             return next;
-                          })
-                        }
+                          });
+                        }}
+                        onChange={() => undefined}
+                        onMouseDown={(e) => {
+                          if (e.shiftKey) e.preventDefault();
+                        }}
                         className="h-4 w-4 accent-[#facc15]"
                         aria-label={`Select ${group.title}`}
                       />
@@ -3510,11 +3576,13 @@ function LargeFilesTab() {
         <LargeFilesTable
           items={items}
           selectedKeys={selectedKeys}
-          onToggle={(key) =>
+          onSelect={(keys, selected) =>
             setSelectedKeys((prev) => {
               const next = new Set(prev);
-              if (next.has(key)) next.delete(key);
-              else next.add(key);
+              for (const key of keys) {
+                if (selected) next.add(key);
+                else next.delete(key);
+              }
               return next;
             })
           }
