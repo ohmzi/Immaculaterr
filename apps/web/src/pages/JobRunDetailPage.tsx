@@ -470,9 +470,14 @@ export function JobRunDetailPage() {
   const isPendingOrRunning =
     isRunning || runQuery.data?.run?.status === 'PENDING';
 
+  const [logSearch, setLogSearch] = useState('');
+  const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warn' | 'error'>(
+    'all',
+  );
+  const [logTake, setLogTake] = useState(1000);
   const logsQuery = useQuery({
-    queryKey: ['jobRunLogs', runId],
-    queryFn: () => getRunLogs({ runId, take: 1000 }),
+    queryKey: ['jobRunLogs', runId, logTake],
+    queryFn: () => getRunLogs({ runId, take: logTake }),
     enabled: Boolean(runId),
     refetchInterval: isPendingOrRunning ? 2000 : false,
     refetchOnWindowFocus: false,
@@ -652,7 +657,22 @@ export function JobRunDetailPage() {
     [runSummaryJson],
   );
   const logsJsonPreview = useMemo(() => buildJsonPreview(logsJson, 3), [logsJson]);
-  const visibleLogs = logs;
+  const visibleLogs = useMemo(() => {
+    const q = logSearch.trim().toLowerCase();
+    return logs.filter((line) => {
+      if (logLevel !== 'all') {
+        const lvl = String(line.level ?? '').toLowerCase();
+        const matchesLevel =
+          logLevel === 'warn' ? lvl === 'warn' || lvl === 'warning' : lvl === logLevel;
+        if (!matchesLevel) return false;
+      }
+      if (!q) return true;
+      return (
+        (line.message ?? '').toLowerCase().includes(q) ||
+        JSON.stringify(line.context ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [logs, logSearch, logLevel]);
   const logStats = useMemo(() => {
     const counts = { error: 0, warn: 0 };
     for (const l of visibleLogs) {
@@ -2724,15 +2744,61 @@ export function JobRunDetailPage() {
 
                 {/* Logs Card */}
                 <div className={cardClass}>
-                  <div className="text-sm text-white/70 mb-4">
-                    {(() => {
-                      if (logsQuery.isLoading) return 'Loading…';
-                      const parts: string[] = [];
-                      if (logStats.error) parts.push(`${logStats.error} errors`);
-                      if (logStats.warn) parts.push(`${logStats.warn} warnings`);
-                      if (isRunning) parts.push('updating');
-                      return parts.length ? parts.join(' • ') : 'Logs';
-                    })()}
+                  <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="text-sm text-white/70">
+                      {(() => {
+                        if (logsQuery.isLoading) return 'Loading…';
+                        const parts: string[] = [];
+                        if (logStats.error) parts.push(`${logStats.error} errors`);
+                        if (logStats.warn) parts.push(`${logStats.warn} warnings`);
+                        if (isRunning) parts.push('updating');
+                        return parts.length ? parts.join(' • ') : 'Logs';
+                      })()}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(
+                        [
+                          ['all', 'All'],
+                          ['info', 'Info'],
+                          ['warn', 'Warn'],
+                          ['error', 'Error'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setLogLevel(value)}
+                          className={[
+                            'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                            logLevel === value
+                              ? 'border-white/25 bg-white/15 text-white'
+                              : 'border-white/10 bg-white/5 text-white/55 hover:bg-white/10',
+                          ].join(' ')}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <input
+                        type="search"
+                        value={logSearch}
+                        onChange={(e) => setLogSearch(e.target.value)}
+                        placeholder="Search logs…"
+                        aria-label="Search run logs"
+                        className="w-44 rounded-full border border-white/15 bg-black/30 px-3 py-1.5 text-xs text-white placeholder:text-white/35 focus:border-white/30 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void copyToClipboard(runId)
+                            .then(() => toast.success('Run ID copied'))
+                            .catch(() => toast.error('Copy failed'));
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-white/60 transition hover:bg-white/10 hover:text-white/90"
+                        title={`Copy run ID (${runId})`}
+                      >
+                        <Copy className="h-3 w-3" /> Run ID
+                      </button>
+                    </div>
                   </div>
 
                   {logsQuery.error ? (
@@ -2852,6 +2918,22 @@ export function JobRunDetailPage() {
                   ) : (
                     <div className="text-sm text-white/70">No logs yet.</div>
                   )}
+
+                  {logs.length >= logTake ? (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setLogTake((prev) => prev + 1000)}
+                        disabled={logsQuery.isFetching}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+                      >
+                        {logsQuery.isFetching ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                        Load 1000 more lines
+                      </button>
+                    </div>
+                  ) : null}
 
                   {/* Raw Response (inline) */}
                   <div className="mt-5">
