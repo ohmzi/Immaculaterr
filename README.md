@@ -72,6 +72,13 @@
   - `Rotten Tomatoes Upcoming Movies + TV Shows` scrapes fixed Rotten Tomatoes movie and TV pages, uses saved Movies and TV toggles with separate Movie Top 20 and TV Top 10 counts, and lets Run Now use those saved settings directly.
   - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads, including season-aware Sonarr monitoring cleanup.
 
+- **Cutting Room (Beta): prunes the media nobody will ever watch**
+  - Scans your selected Plex libraries plus Radarr/Sonarr (and Tautulli when connected) and scores every item on real watch history, time in library, ratings with vote confidence (popular and highly-regarded titles are never counted as "low rated"), and who requested it.
+  - A six-step wizard: pick factors and protections, choose libraries, scan once, tune "how low a bar" instantly, set a space target with auto-select, review every candidate with plain-language reason chips, then prune with a typed confirmation.
+  - Pruning deletes files through Radarr/Sonarr but keeps each entry unmonitored and tagged `deleted-by-immaculaterr`; Pruned History offers one-click Restore that re-monitors and re-downloads.
+  - Watchlists, continue-watching, recent requests, your own high-rated titles, and Immaculaterr's managed collections are always protected; a full dry-run mode rehearses everything without touching a file.
+  - Companion tabs: a Wanted List cleaner (unmonitor never-downloaded entries without touching files), a Duplicates cleaner (keep one version per movie), and a Large Files replacer (delete oversized movie/episode files, re-monitor exactly the affected items, tag them `size-reduction`, switch them to auto-created size-capped quality profiles — movies ~10 GB max, episodes 3 GB max preferring 1–2 GB — and re-search for smaller copies automatically) — also available as an exclusive "Oversized files" card inside the wizard.
+
 - **Supports history imports from day one**
   - Netflix CSV import creates dedicated Netflix import collections and feeds the main recommendation system.
   - Plex watch-history import does the same without needing a CSV.

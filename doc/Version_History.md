@@ -2,6 +2,17 @@
 
 This file tracks notable changes by version.
 
+## 1.7.10-beta-3
+
+- Cutting Room (Beta) — a new page that finds and prunes the media nobody will ever watch:
+  - Six-step wizard: pick factors and protections, choose Plex libraries, scan once, tune the bar instantly, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.
+  - Scoring blends real watch history (Plex, server history, Tautulli), time in library, vote-confident ratings, personal Plex star-ratings, and request provenance; watchlists, continue-watching, recent requests, and Immaculaterr's own collections are always protected.
+  - Pruning deletes files through Radarr/Sonarr but keeps entries unmonitored and tagged `deleted-by-immaculaterr`; Pruned History offers one-click Restore, and a full dry-run mode rehearses everything without touching files.
+  - Companion tabs: Wanted List cleaner (unmonitor never-downloaded entries; no files touched), Duplicates cleaner (keep one version per movie), and Large Files replacer.
+  - Large Files: movie/episode files over a threshold you pick (default 10 GB) are deleted, re-monitored with surgical precision (episodes: only the affected episodes, their seasons, and the show — never the whole series), tagged `size-reduction`, and re-searched so smaller copies download automatically; recorded in Pruned History as "replaced for size". Available as an exclusive "Oversized files" card in the Prune Wizard (libraries → size bar → target → review → confirm) or as its own tab. Replaced items are switched to auto-created size-capped quality profiles (created on the first real run, reused after): "Immaculaterr 10GB Movie Cap" rejects movie releases over ~10 GB; "Immaculaterr 3GB Episode Cap" rejects episode releases over 3 GB and prefers 1–2 GB — so the re-download and all future upgrades stay small.
+  - Smarter Low ratings factor: points only start below 6.0 (movies) / 6.2 (shows) with vote-confidence shrinkage toward that bar, and any title rated 7.5+ by any single source is exempt — popular and highly-regarded titles are never flagged as low rated.
+- Tautulli is now a first-class optional integration: setup-wizard step, Vault card with connection testing, and a Cutting Room gate dialog that deep-links to Vault when it is not configured.
+
 ## 1.7.10-beta-2
 
 - What's new since 1.7.9:
