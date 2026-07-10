@@ -454,6 +454,8 @@ export function ObservatoryPage() {
   const [watchedUndoState, setWatchedUndoState] = useState<WatchedUndoState>(null);
 
   const pendingApplyRef = useRef(false);
+  const [hasPendingApply, setHasPendingApply] = useState(false);
+  const [hasPendingWatchedApply, setHasPendingWatchedApply] = useState(false);
   const applyTimerRef = useRef<number | null>(null);
   const deckKeyRef = useRef<string | null>(null);
   const swipeTopCardRef = useRef<((dir: 'left' | 'right') => void) | null>(null);
@@ -945,6 +947,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       pendingApplyRef.current = true;
+      setHasPendingApply(true);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -1011,6 +1014,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       watchedPendingApplyRef.current = true;
+      setHasPendingWatchedApply(true);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -1072,6 +1076,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       pendingApplyRef.current = false;
+      setHasPendingApply(false);
       setUndoState(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste'] }),
@@ -1089,6 +1094,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       watchedPendingApplyRef.current = false;
+      setHasPendingWatchedApply(false);
       setWatchedUndoState(null);
       await Promise.all([
         queryClient.invalidateQueries({
@@ -1351,7 +1357,6 @@ export function ObservatoryPage() {
       if (e.repeat) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      if (activeCollectionTab !== 'immaculate') return;
 
       const t = e.target as HTMLElement | null;
       if (t) {
@@ -1534,6 +1539,42 @@ export function ObservatoryPage() {
               </button>
             ))}
           </div>
+
+          {(activeCollectionTab === 'immaculate' && hasPendingApply) ||
+          (activeCollectionTab === 'latestWatched' && hasPendingWatchedApply) ? (
+            <div className="mb-6 flex items-center justify-center">
+              <div className="flex items-center gap-3 rounded-full border border-[#facc15]/25 bg-[#facc15]/10 px-4 py-2 text-xs font-semibold text-[#fde68a]">
+                <span>
+                  Decisions recorded — they sync to Plex automatically in the
+                  background.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeCollectionTab === 'immaculate') {
+                      applyMutation.mutate({
+                        mediaType: mediaTab,
+                        librarySectionKey: activeLibraryKey,
+                      });
+                    } else {
+                      applyWatchedMutation.mutate({
+                        mediaType: mediaTab,
+                        librarySectionKey: activeLibraryKey,
+                      });
+                    }
+                  }}
+                  disabled={
+                    applyMutation.isPending || applyWatchedMutation.isPending
+                  }
+                  className="rounded-full border border-[#facc15]/35 bg-[#facc15]/20 px-3 py-1 font-bold text-[#facc15] transition hover:bg-[#facc15]/30 disabled:opacity-50"
+                >
+                  {applyMutation.isPending || applyWatchedMutation.isPending
+                    ? 'Applying…'
+                    : 'Apply now'}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="min-h-[300px]">
             <AnimatePresence mode="wait">
