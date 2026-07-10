@@ -21,7 +21,7 @@ This file tracks notable changes by version.
   - Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.
   - Rewind: load more past 200 runs, expandable and copyable errors, and mobile pull-to-refresh (Logs too).
   - Filters and tabs are remembered across visits; the Vault shows a retry on load failure and warns about unsaved changes (Command Center warns too).
-  - Task Manager expand/collapse-all controls; Observatory arrow-key swiping on both decks plus a pending-sync chip with Apply now.
+  - Observatory arrow-key swiping on both decks plus a pending-sync chip with Apply now.
   - Wanted List unmonitor runs offer a 12-second Undo; Pruned History shows all-time reclaimed space; release notes are deep-linkable.
 - Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), and refreshing qs.
 
