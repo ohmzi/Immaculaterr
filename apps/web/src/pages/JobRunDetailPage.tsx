@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CircleAlert, Copy, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
+import { cancelRun, getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -816,8 +816,27 @@ export function JobRunDetailPage() {
               <div className="grid gap-6 min-w-0">
                 {/* Run Details Card */}
                 <div className={cardClass}>
-                  <div className="mb-3 text-sm font-medium text-white/85">
-                    Summary
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-white/85">Summary</div>
+                    {run.status === 'PENDING' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void cancelRun(run.id)
+                            .then(() => {
+                              toast.success('Queued run cancelled');
+                              void runQuery.refetch();
+                            })
+                            .catch((err: unknown) =>
+                              toast.error((err as Error).message),
+                            );
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-100 transition hover:bg-red-500/20"
+                        title="Cancel this queued run before it starts"
+                      >
+                        Cancel run
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="text-sm text-white/70 mb-4 space-y-1">

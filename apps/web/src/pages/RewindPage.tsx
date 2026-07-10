@@ -7,18 +7,26 @@ import {
   ChevronRight,
   CircleAlert,
   Loader2,
+  Pause,
+  Play,
   RotateCcw,
   Trash2,
+  X,
 } from 'lucide-react';
 
 import {
+  cancelRun,
   clearRuns,
   getQueueSnapshot,
   listJobs,
   listRuns,
+  pauseQueue,
+  resumeQueue,
   type JobQueueRun,
   type JobRun,
 } from '@/api/jobs';
+import { toast } from 'sonner';
+
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   APP_BG_DARK_WASH_CLASS,
@@ -425,6 +433,27 @@ export const RewindPage = () => {
       setClearAllOpen(false);
     },
   });
+
+  const cancelRunMutation = useMutation({
+    mutationFn: (runId: string) => cancelRun(runId),
+    onSuccess: async () => {
+      toast.success('Queued run cancelled');
+      await queryClient.invalidateQueries({ queryKey: ['jobRuns', 'rewind'] });
+      await queryClient.invalidateQueries({ queryKey: ['jobQueue', 'rewind'] });
+    },
+    onError: (err) => toast.error((err as Error).message),
+  });
+
+  const queuePaused = queueQuery.data?.paused === true;
+  const queueToggleMutation = useMutation({
+    mutationFn: async () =>
+      queuePaused ? resumeQueue() : pauseQueue('Paused from Rewind'),
+    onSuccess: async () => {
+      toast.success(queuePaused ? 'Queue resumed' : 'Queue paused');
+      await queryClient.invalidateQueries({ queryKey: ['jobQueue', 'rewind'] });
+    },
+    onError: (err) => toast.error((err as Error).message),
+  });
   const closeClearAllDialog = useCallback(() => {
     setClearAllOpen(false);
   }, []);
@@ -710,11 +739,21 @@ export const RewindPage = () => {
                       <CircleAlert className="mt-0.5 h-5 w-5 text-sky-200" />
                       <div className="min-w-0 text-sm text-sky-100/90">
                         {queueQuery.data?.paused ? (
-                          <div>
-                            Queue is paused.
-                            {queueQuery.data.pauseReason
-                              ? ` ${queueQuery.data.pauseReason}`
-                              : ''}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>
+                              Queue is paused.
+                              {queueQuery.data.pauseReason
+                                ? ` ${queueQuery.data.pauseReason}`
+                                : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => queueToggleMutation.mutate()}
+                              disabled={queueToggleMutation.isPending}
+                              className="rounded-full border border-sky-300/30 bg-sky-400/15 px-3 py-1 text-xs font-bold text-sky-50 transition hover:bg-sky-400/25"
+                            >
+                              Resume
+                            </button>
                           </div>
                         ) : null}
                         {queueQuery.data?.activeRun?.redacted ? (
@@ -737,6 +776,33 @@ export const RewindPage = () => {
                         {`${filtered.length.toLocaleString()} shown`}
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => queueToggleMutation.mutate()}
+                      disabled={queueToggleMutation.isPending}
+                      className={[
+                        'inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation',
+                        'w-full sm:w-auto border',
+                        queuePaused
+                          ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15'
+                          : 'border-white/15 bg-white/5 text-white/75 hover:bg-white/10',
+                      ].join(' ')}
+                      title={
+                        queuePaused
+                          ? 'Resume the job queue'
+                          : 'Pause the job queue — queued runs wait until you resume'
+                      }
+                    >
+                      {queueToggleMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : queuePaused ? (
+                        <Play className="h-4 w-4" />
+                      ) : (
+                        <Pause className="h-4 w-4" />
+                      )}
+                      {queuePaused ? 'Resume queue' : 'Pause queue'}
+                    </button>
 
                     <button
                       type="button"
@@ -831,6 +897,20 @@ export const RewindPage = () => {
                                   >
                                     {run.status}
                                   </span>
+                                  {run.status === 'PENDING' ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        cancelRunMutation.mutate(run.id);
+                                      }}
+                                      disabled={cancelRunMutation.isPending}
+                                      className="inline-flex items-center gap-1 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-100 transition hover:bg-red-500/20"
+                                      title="Cancel this queued run"
+                                    >
+                                      <X className="h-3 w-3" /> Cancel
+                                    </button>
+                                  ) : null}
                                   <ChevronRight className="h-4 w-4 text-white/40 transition-transform group-hover:translate-x-0.5 group-active:translate-x-0.5" />
                                 </div>
                               </div>
@@ -909,6 +989,19 @@ export const RewindPage = () => {
                                     >
                                       {run.status}
                                     </span>
+                                    {run.status === 'PENDING' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          cancelRunMutation.mutate(run.id)
+                                        }
+                                        disabled={cancelRunMutation.isPending}
+                                        className="ml-2 inline-flex items-center gap-1 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-100 transition hover:bg-red-500/20"
+                                        title="Cancel this queued run"
+                                      >
+                                        <X className="h-3 w-3" /> Cancel
+                                      </button>
+                                    ) : null}
                                   </td>
                                   <td className="px-3 py-3 text-white/60">
                                     {modeLabel(run)}
