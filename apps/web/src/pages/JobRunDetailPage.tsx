@@ -18,6 +18,7 @@ import {
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
 import { decodeHtmlEntities } from '@/lib/utils';
+import { RelativeTime } from '@/components/RelativeTime';
 import { copyToClipboard } from '@/lib/clipboard';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -822,20 +823,20 @@ export function JobRunDetailPage() {
                   <div className="text-sm text-white/70 mb-4 space-y-1">
                     <div>
                       <span className="text-white/80 font-semibold">Queued:</span>{' '}
-                      {new Date(run.queuedAt || run.startedAt).toLocaleString()}
+                      <RelativeTime value={run.queuedAt || run.startedAt} />
                     </div>
                     {run.executionStartedAt ? (
                       <div>
                         <span className="text-white/80 font-semibold">
                           Started:
                         </span>{' '}
-                        {new Date(run.executionStartedAt).toLocaleString()}
+                        <RelativeTime value={run.executionStartedAt} />
                       </div>
                     ) : null}
                     {run.finishedAt ? (
                       <div>
                         <span className="text-white/80 font-semibold">Finished:</span>{' '}
-                        {new Date(run.finishedAt).toLocaleString()}
+                        <RelativeTime value={run.finishedAt} />
                       </div>
                     ) : null}
                     {seedContext ? (

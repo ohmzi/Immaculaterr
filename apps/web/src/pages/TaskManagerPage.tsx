@@ -66,6 +66,7 @@ import {
   type TaskManagerFeatureCardId,
 } from '@/lib/faq-feature-links';
 import { useSafeNavigate } from '@/lib/navigation';
+import { RelativeTime } from '@/components/RelativeTime';
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -6785,9 +6786,16 @@ export function TaskManagerPage() {
                                   className="w-full flex items-center justify-between bg-[#1a1625] border border-white/10 rounded-xl px-4 py-3 h-[42px] hover:bg-[#1a1625]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   <span className="text-sm font-mono text-emerald-400 font-medium">
-                                    {scheduleEnabled && nextRunAt
-                                      ? `${new Date(nextRunAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${formatTimeDisplay(draft.time)}`
-                                      : '—'}
+                                    {scheduleEnabled && nextRunAt ? (
+                                      <>
+                                        {`${new Date(nextRunAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${formatTimeDisplay(draft.time)}`}{' '}
+                                        <span className="text-emerald-300/60 font-sans">
+                                          (<RelativeTime value={nextRunAt} />)
+                                        </span>
+                                      </>
+                                    ) : (
+                                      '—'
+                                    )}
                                   </span>
                                   <ChevronDown
                                     className={cn(

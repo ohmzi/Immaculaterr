@@ -27,6 +27,7 @@ import {
   APP_CARD_ROW_CLASS,
 } from '@/lib/ui-classes';
 import { decodeHtmlEntities } from '@/lib/utils';
+import { RelativeTime } from '@/components/RelativeTime';
 import {
   Select,
   SelectContent,
@@ -797,7 +798,7 @@ export const RewindPage = () => {
                                   </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60 font-mono">
                                     <span className="whitespace-nowrap">
-                                      {new Date(getRunTimestamp(run)).toLocaleString()}
+                                      <RelativeTime value={getRunTimestamp(run)} />
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
@@ -889,7 +890,7 @@ export const RewindPage = () => {
                                       className="font-mono text-xs text-white/80 underline-offset-4 hover:underline"
                                       to={`/rewind/${run.id}`}
                                     >
-                                      {new Date(getRunTimestamp(run)).toLocaleString()}
+                                      <RelativeTime value={getRunTimestamp(run)} />
                                     </Link>
                                   </td>
                                   <td className="px-3 py-3 text-white/85">
