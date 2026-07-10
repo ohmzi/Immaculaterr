@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   ChevronDown,
   ChevronRight,
@@ -64,6 +69,8 @@ const statusPill = (status: string) => {
 };
 
 type RewindRun = JobRun & Partial<JobQueueRun>;
+
+const HISTORY_PAGE_SIZE = 200;
 
 const getRunTimestamp = (run: Pick<JobRun, 'queuedAt' | 'startedAt'>): string => {
   return run.queuedAt || run.startedAt;
@@ -323,9 +330,15 @@ export const RewindPage = () => {
     retry: false,
   });
 
-  const historyQuery = useQuery({
+  const historyQuery = useInfiniteQuery({
     queryKey: ['jobRuns', 'rewind'],
-    queryFn: () => listRuns({ take: 200 }),
+    queryFn: ({ pageParam }) =>
+      listRuns({ take: HISTORY_PAGE_SIZE, skip: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.runs.length < HISTORY_PAGE_SIZE
+        ? undefined
+        : allPages.length * HISTORY_PAGE_SIZE,
     staleTime: 2_000,
     refetchInterval: 3_000,
     refetchOnWindowFocus: false,
@@ -342,7 +355,16 @@ export const RewindPage = () => {
   });
 
   const runs = useMemo(() => {
-    const historyRuns = historyQuery.data?.runs ?? [];
+    // Flatten pages and drop duplicates that appear when new runs shift the
+    // page boundaries between fetches.
+    const seenIds = new Set<string>();
+    const historyRuns = (historyQuery.data?.pages ?? [])
+      .flatMap((page) => page.runs)
+      .filter((run) => {
+        if (seenIds.has(run.id)) return false;
+        seenIds.add(run.id);
+        return true;
+      });
     const liveRunsById = new Map<string, RewindRun>();
 
     const activeRun = queueQuery.data?.activeRun;
@@ -377,7 +399,7 @@ export const RewindPage = () => {
       }
       return right.id.localeCompare(left.id);
     });
-  }, [historyQuery.data?.runs, queueQuery.data?.activeRun, queueQuery.data?.pendingRuns]);
+  }, [historyQuery.data?.pages, queueQuery.data?.activeRun, queueQuery.data?.pendingRuns]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -422,12 +444,15 @@ export const RewindPage = () => {
 
   const clearableRunsCount = useMemo(
     () =>
-      (historyQuery.data?.runs ?? []).filter((run) =>
-        run.status === 'SUCCESS' ||
-        run.status === 'FAILED' ||
-        run.status === 'CANCELLED',
-      ).length,
-    [historyQuery.data?.runs],
+      (historyQuery.data?.pages ?? [])
+        .flatMap((page) => page.runs)
+        .filter(
+          (run) =>
+            run.status === 'SUCCESS' ||
+            run.status === 'FAILED' ||
+            run.status === 'CANCELLED',
+        ).length,
+    [historyQuery.data?.pages],
   );
 
   const clearAllMutation = useMutation({
@@ -1100,6 +1125,22 @@ export const RewindPage = () => {
                           </tbody>
                         </table>
                       </div>
+
+                      {historyQuery.hasNextPage ? (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => void historyQuery.fetchNextPage()}
+                            disabled={historyQuery.isFetchingNextPage}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
+                          >
+                            {historyQuery.isFetchingNextPage ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : null}
+                            Load {HISTORY_PAGE_SIZE} more
+                          </button>
+                        </div>
+                      ) : null}
                     </>
                   ) : (
                     <div className="text-sm text-white/70">No history found.</div>
