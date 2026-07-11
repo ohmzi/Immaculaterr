@@ -725,6 +725,7 @@ model CuttingRoomCandidate {
 
   @@index([snapshotId, selected])
   @@index([snapshotId, tier, score])
+  @@index([snapshotId, addedAt])
   @@index([snapshotId, rootFolderPath])
   @@index([snapshotId, sizeBytes])
 }
@@ -753,6 +754,7 @@ model PruneRecord {
 
   @@index([userId, createdAt])
   @@index([userId, restoredAt])
+  @@index([userId, runId])
   @@index([tmdbId])
   @@index([tvdbId])
 }
