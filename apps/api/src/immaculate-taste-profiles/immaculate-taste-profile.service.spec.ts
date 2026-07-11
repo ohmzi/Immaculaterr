@@ -93,6 +93,7 @@ function makeProfile(
     isDefault: true,
     enabled: true,
     sortOrder: 0,
+    scopeAllUsers: false,
     mediaType: 'both',
     matchMode: 'all',
     genres: '[]',

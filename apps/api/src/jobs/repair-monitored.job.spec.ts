@@ -6,6 +6,7 @@ import {
 import type { JobContext, JsonObject } from './jobs.types';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from '../plex/plex-server.service';
+import type { PlexSectionWithLocations } from '../plex/plex-server.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { SonarrService } from '../sonarr/sonarr.service';
 
@@ -154,7 +155,7 @@ function createJob() {
       { key: '3', title: 'TV Shows', type: 'show' },
     ]),
     getSectionLocations: jest.fn().mockResolvedValue(
-      new Map<string, unknown>([
+      new Map<string, PlexSectionWithLocations>([
         [
           '1',
           {
@@ -367,7 +368,7 @@ describe('RepairMonitoredJob', () => {
   it('live Radarr safety: reports uncovered movie paths without deleting', async () => {
     const { job, plex, radarr } = createJob();
     plex.getSectionLocations.mockResolvedValue(
-      new Map<string, unknown>([
+      new Map<string, PlexSectionWithLocations>([
         [
           '1',
           {

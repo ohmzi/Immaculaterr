@@ -377,7 +377,7 @@ describe('ImportService', () => {
       if (!pendingCall) {
         throw new Error('Expected pending query for plex source');
       }
-      expect(pendingCall[0].where.source).toBe('plex');
+      expect(pendingCall[0].where?.source).toBe('plex');
     });
 
     it('should default to netflix source when called without source', async () => {
@@ -396,7 +396,7 @@ describe('ImportService', () => {
       if (!pendingCall) {
         throw new Error('Expected pending query for netflix source');
       }
-      expect(pendingCall[0].where.source).toBe('netflix');
+      expect(pendingCall[0].where?.source).toBe('netflix');
     });
   });
 
@@ -424,7 +424,12 @@ describe('ImportService', () => {
         .mockResolvedValueOnce([]);
       prisma.importedWatchEntry.updateMany.mockResolvedValue({ count: 1 });
       jest
-        .spyOn(service as never, 'resolveAndDedup' as never)
+        .spyOn(
+          service as unknown as {
+            resolveAndDedup: () => Promise<unknown[]>;
+          },
+          'resolveAndDedup',
+        )
         .mockResolvedValue([]);
     });
 

@@ -84,6 +84,7 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
       seerr as never,
+      {} as never,
       arrInstances as never,
     );
     return {

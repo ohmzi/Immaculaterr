@@ -139,7 +139,7 @@ describe('WebhooksController plex webhook auto-runs', () => {
     );
 
     expect(result.triggered).toBe(false);
-    expect(result.skipped).toEqual({
+    expect((result as { skipped?: Record<string, string> }).skipped).toEqual({
       watchedMovieRecommendations: 'user_toggled_off_by_admin',
       immaculateTastePoints: 'user_toggled_off_by_admin',
     });
@@ -187,7 +187,7 @@ describe('WebhooksController plex webhook auto-runs', () => {
     );
 
     expect(result.triggered).toBe(false);
-    expect(result.skipped).toEqual({
+    expect((result as { skipped?: Record<string, string> }).skipped).toEqual({
       watchedMovieRecommendations: 'polling_only',
       immaculateTastePoints: 'already_processed',
     });
@@ -246,7 +246,7 @@ describe('WebhooksController plex webhook auto-runs', () => {
     );
 
     expect(result.triggered).toBe(false);
-    expect(result.skipped).toEqual({
+    expect((result as { skipped?: Record<string, string> }).skipped).toEqual({
       watchedMovieRecommendations: 'polling_only',
       immaculateTastePoints: 'already_processed',
     });
@@ -293,7 +293,7 @@ describe('WebhooksController plex webhook auto-runs', () => {
     );
 
     expect(result.triggered).toBe(false);
-    expect(result.skipped).toEqual({
+    expect((result as { skipped?: Record<string, string> }).skipped).toEqual({
       watchedMovieRecommendations: 'polling_only',
       immaculateTastePoints: 'disabled',
     });

@@ -16,6 +16,7 @@ describe('security/auth credential envelope policy', () => {
       {} as never,
       credentialEnvelope as never,
       {} as never,
+      {} as never,
     );
 
     service.decryptCredentialEnvelopePayload({ ciphertext: 'x' });
@@ -30,6 +31,7 @@ describe('security/auth credential envelope policy', () => {
 
   it('rejects non-object credential envelopes', () => {
     const service = new AuthService(
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

@@ -25,7 +25,7 @@ describe('security/auth throttle response metadata', () => {
     process.env.AUTH_CAPTCHA_ENABLED = 'true';
     process.env.AUTH_CAPTCHA_AFTER_FAILURES = '2';
 
-    const throttle = new AuthThrottleService();
+    const throttle = new AuthThrottleService({} as never);
     const identity = { username: 'admin', ip: '127.0.0.1' };
 
     const f1 = throttle.recordFailure({

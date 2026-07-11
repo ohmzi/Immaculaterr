@@ -25,6 +25,7 @@ describe('security/session cookie protection', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     return { service, crypto };
