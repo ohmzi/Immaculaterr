@@ -6,6 +6,11 @@ import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { getPublicBasePath } from '@/lib/public-path';
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+} from '@/lib/ui-classes';
 
 // Route-level code splitting: each page loads on first visit instead of
 // shipping the whole app as one bundle.
@@ -36,9 +41,23 @@ const VersionHistoryPage = lazyPage(() => import('@/pages/VersionHistoryPage'), 
 const DebuggerPage = lazyPage(() => import('@/pages/DebuggerPage'), 'DebuggerPage');
 const ProfilePage = lazyPage(() => import('@/pages/ProfilePage'), 'ProfilePage');
 
+// The fallback renders the exact page backdrop (image + washes) so a slow
+// chunk load on mobile looks like the next screen fading in, not a black
+// flash.
 const RouteFallback = () => (
-  <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
-    <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+  <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <div className="pointer-events-none fixed inset-0 z-0">
+      <img
+        src={APP_BG_IMAGE_URL}
+        alt=""
+        className="h-full w-full object-cover object-center opacity-80"
+      />
+      <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+      <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
+    </div>
+    <div className="relative z-10 flex min-h-screen items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+    </div>
   </div>
 );
 
@@ -75,6 +94,10 @@ const App = () => {
     } catch {
       // ignore
     }
+    // Decode the shared page backdrop once at boot; route transitions and
+    // suspense fallbacks then paint it instantly from the image cache.
+    const backdrop = new Image();
+    backdrop.src = APP_BG_IMAGE_URL;
   }, []);
 
   return (
