@@ -16,7 +16,7 @@ This file tracks notable changes by version.
 - Tautulli is now a first-class optional integration: setup-wizard step, Vault card with connection testing, and a Cutting Room gate dialog that deep-links to Vault when it is not configured.
 - Quality of life across the app:
   - Cancel queued runs and pause/resume the job queue from Rewind (and cancel from the run detail page).
-  - Relative timestamps everywhere with exact times on hover; a light/dark/system theme toggle in the Help menu; reduced-motion support.
+  - Relative timestamps everywhere with exact times on hover; reduced-motion support.
   - Search opens with Ctrl/Cmd+K or "/" and now finds pages and FAQ sections; the FAQ has its own search box.
   - Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.
   - Rewind: load more past 200 runs, expandable and copyable errors, and mobile pull-to-refresh (Logs too).

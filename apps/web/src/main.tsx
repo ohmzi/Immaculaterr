@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MotionConfig } from 'motion/react';
 import './index.css';
 import App from './App.tsx';
-import { applyTheme, getInitialTheme } from '@/app/theme';
+import { applyTheme } from '@/app/theme';
 import { Toaster } from '@/components/ui/sonner';
 
 const queryClient = new QueryClient({
@@ -16,8 +16,9 @@ const queryClient = new QueryClient({
   },
 });
 
-// Apply theme before first paint.
-applyTheme(getInitialTheme());
+// The app is designed dark-only (every surface is colour-themed); apply it
+// before first paint regardless of any previously stored preference.
+applyTheme('dark');
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

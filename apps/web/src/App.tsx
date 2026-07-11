@@ -37,8 +37,8 @@ const DebuggerPage = lazyPage(() => import('@/pages/DebuggerPage'), 'DebuggerPag
 const ProfilePage = lazyPage(() => import('@/pages/ProfilePage'), 'ProfilePage');
 
 const RouteFallback = () => (
-  <div className="flex min-h-[60vh] items-center justify-center">
-    <Loader2 className="h-6 w-6 animate-spin text-white/50" />
+  <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+    <Loader2 className="h-6 w-6 animate-spin text-white/40" />
   </div>
 );
 

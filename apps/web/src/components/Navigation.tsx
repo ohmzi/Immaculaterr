@@ -11,7 +11,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { logout, resetDev } from '@/api/auth';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ToolbarSearch } from '@/components/ToolbarSearch';
 import { getUpdates } from '@/api/updates';
@@ -498,10 +497,6 @@ export function Navigation() {
                           >
                             Profile
                           </button>
-
-                          <div className="px-1 py-1">
-                            <ThemeToggle />
-                          </div>
 
                           <button
                             type="button"

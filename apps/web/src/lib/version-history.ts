@@ -69,7 +69,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         title: 'Quality of life across the app',
         bullets: [
           'Cancel queued runs and pause/resume the whole job queue from Rewind; the run detail page can cancel too.',
-          'Relative timestamps everywhere ("3 minutes ago", exact time on hover), a light/dark/system theme toggle in the Help menu, and reduced-motion support.',
+          'Relative timestamps everywhere ("3 minutes ago", exact time on hover) and reduced-motion support.',
           'Search opens with Ctrl/Cmd+K or /, and now finds pages and FAQ sections; the FAQ itself gained a search box.',
           'Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.',
           'Rewind: load more past 200 runs, expandable + copyable error messages, and pull-to-refresh on mobile (Logs too).',
