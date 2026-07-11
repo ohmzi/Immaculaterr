@@ -137,7 +137,7 @@ export function CuttingRoomPage() {
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
-        <div className="container mx-auto px-4 pb-20 max-w-6xl">
+        <div className="container mx-auto px-4 pb-20 max-w-5xl">
         <div className="mb-12">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
