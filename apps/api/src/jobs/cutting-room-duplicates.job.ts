@@ -6,6 +6,7 @@ import {
 } from '../plex/plex-duplicates.service';
 import { metricRow, type JobReportV1 } from './job-report-v1';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import { truncateErrorMessage } from '../log.utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -110,7 +111,7 @@ export class CuttingRoomDuplicatesJob {
       } catch (err) {
         failures += 1;
         await ctx.warn(
-          `duplicates: ${ratingKeys[i]} failed: ${(err as Error)?.message ?? String(err)}`,
+          `duplicates: ${ratingKeys[i]} failed: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -147,17 +148,36 @@ export class CuttingRoomDuplicatesJob {
           ],
         },
       ],
-      tasks: perTitle.slice(0, 50).map((row, index) => ({
-        id: `dup-${index}`,
-        title: `${row.title}: ${verb.toLowerCase()} ${row.removed} version(s)`,
-        status: 'success' as const,
-        facts: [{ label: 'Size', value: formatGb(row.bytes) }],
-      })),
+      tasks: [
+        {
+          id: 'cleanup',
+          title: 'Clean duplicate versions',
+          // If every selected movie failed, the run must fail loudly.
+          status:
+            failures > 0 && perTitle.length === 0
+              ? ('failed' as const)
+              : ('success' as const),
+          facts: [
+            { label: verb, value: `${removedTotal} version(s)` },
+            { label: 'Failed', value: `${failures} item(s)` },
+            { label: 'Freed', value: formatGb(freedBytes) },
+          ],
+        },
+        ...perTitle.slice(0, 50).map((row, index) => ({
+          id: `dup-${index}`,
+          title: `${row.title}: ${verb.toLowerCase()} ${row.removed} version(s)`,
+          status: 'success' as const,
+          facts: [{ label: 'Size', value: formatGb(row.bytes) }],
+        })),
+      ],
       issues:
         failures > 0
           ? [
               {
-                level: 'warn',
+                level:
+                  perTitle.length === 0
+                    ? ('error' as const)
+                    : ('warn' as const),
                 message: `${failures} item(s) failed — check Plex "Allow media deletion" and the logs.`,
               },
             ]
