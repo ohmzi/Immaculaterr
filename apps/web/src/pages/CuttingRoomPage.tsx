@@ -685,7 +685,14 @@ function FactorsStep(props: {
   onNext: (largeFilesMode: boolean) => void;
 }) {
   const { rules, saving, onSave, onNext } = props;
-  const [factors, setFactors] = useState(rules.factors);
+  // Factor cards always open unselected: what you pick applies to THIS scan
+  // (saved on Continue), but a previous visit's choices never come back
+  // pre-ticked.
+  const [factors, setFactors] = useState<CuttingRoomRules['factors']>(() =>
+    Object.fromEntries(
+      Object.keys(rules.factors).map((key) => [key, false]),
+    ) as CuttingRoomRules['factors'],
+  );
   const [recency, setRecency] = useState(rules.recencyWindowDays);
   const [grace, setGrace] = useState(rules.graceDays);
   const [protectedTags, setProtectedTags] = useState<string[]>(
