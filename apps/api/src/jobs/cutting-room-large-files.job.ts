@@ -14,6 +14,7 @@ import {
   buildSizePreferenceFormat,
 } from '../cutting-room/size-capped-profile';
 import { derivePathMap, translatePath } from './repair-monitored.job';
+import { truncateErrorMessage } from '../log.utils';
 import { metricRow, type JobReportV1 } from './job-report-v1';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 
@@ -133,8 +134,12 @@ export class CuttingRoomLargeFilesJob {
         if (resolved?.baseUrl && resolved?.apiKey) {
           creds = { baseUrl: resolved.baseUrl, apiKey: resolved.apiKey };
         }
-      } catch {
+      } catch (err) {
         creds = null;
+        await ctx.error(
+          'large-files: could not resolve Radarr instance — its movies were not replaced',
+          { instanceId, items: list.length, error: truncateErrorMessage(err) },
+        );
       }
       if (!creds) {
         failed += list.length;
@@ -151,8 +156,12 @@ export class CuttingRoomLargeFilesJob {
           tagId = (await this.radarr.createTag({ ...creds, label: tagLabel }))
             .id;
         }
-      } catch {
+      } catch (err) {
         tagId = null;
+        await ctx.warn(
+          'large-files: size-reduction tag could not be ensured — items are replaced without the tag',
+          { instanceId, error: truncateErrorMessage(err) },
+        );
       }
       let movieProfile: {
         id: number | null;
@@ -174,11 +183,14 @@ export class CuttingRoomLargeFilesJob {
       } catch (err) {
         movieProfile = null;
         await ctx.warn(
-          `large-files: size-capped profile for ${instanceId} failed: ${(err as Error)?.message ?? String(err)}`,
+          `large-files: size-capped profile for ${instanceId} failed: ${truncateErrorMessage(err)}`,
         );
       }
 
+      // Without fresh file ids nothing can be deleted safely — treat the
+      // whole instance batch as failed instead of faking replacements.
       const fresh = new Map<number, { movieFileId: number }>();
+      let freshLoaded = false;
       try {
         for (const movie of await this.radarr.listMovies(creds)) {
           fresh.set(movie.id, {
@@ -186,8 +198,16 @@ export class CuttingRoomLargeFilesJob {
               typeof movie.movieFileId === 'number' ? movie.movieFileId : 0,
           });
         }
-      } catch {
-        // fall through; per-item failures recorded below
+        freshLoaded = true;
+      } catch (err) {
+        await ctx.error(
+          'large-files: Radarr movie listing failed — its items were not replaced',
+          { instanceId, items: list.length, error: truncateErrorMessage(err) },
+        );
+      }
+      if (!freshLoaded && !ctx.dryRun) {
+        failed += list.length;
+        continue;
       }
 
       const movieIds = list.map((item) => item.movieId as number);
@@ -203,7 +223,7 @@ export class CuttingRoomLargeFilesJob {
           });
         } catch (err) {
           await ctx.warn(
-            `large-files: bulk monitor/tag failed for ${instanceId}: ${(err as Error)?.message ?? String(err)}`,
+            `large-files: bulk monitor/tag failed for ${instanceId}: ${truncateErrorMessage(err)}`,
           );
         }
       }
@@ -224,12 +244,18 @@ export class CuttingRoomLargeFilesJob {
         }
         try {
           const fileId = fresh.get(item.movieId as number)?.movieFileId ?? 0;
-          if (fileId > 0) {
-            await this.radarr.deleteMovieFile({
-              ...creds,
-              movieFileId: fileId,
-            });
+          if (fileId <= 0) {
+            failed += 1;
+            await ctx.warn(
+              `large-files: ${item.title} skipped — Radarr no longer reports a movie file for it`,
+              { movieId: item.movieId, instanceId },
+            );
+            continue;
           }
+          await this.radarr.deleteMovieFile({
+            ...creds,
+            movieFileId: fileId,
+          });
           searchIds.push(item.movieId as number);
           replaced += 1;
           freedBytes += item.sizeBytes;
@@ -251,7 +277,7 @@ export class CuttingRoomLargeFilesJob {
         } catch (err) {
           failed += 1;
           await ctx.warn(
-            `large-files: ${item.title} failed: ${(err as Error)?.message ?? String(err)}`,
+            `large-files: ${item.title} failed: ${truncateErrorMessage(err)}`,
           );
         }
       }
@@ -260,7 +286,7 @@ export class CuttingRoomLargeFilesJob {
           await this.radarr.searchMovies({ ...creds, movieIds: searchIds });
         } catch (err) {
           await ctx.warn(
-            `large-files: Radarr search failed: ${(err as Error)?.message ?? String(err)}`,
+            `large-files: Radarr search failed: ${truncateErrorMessage(err)}`,
           );
         }
       }
@@ -329,12 +355,40 @@ export class CuttingRoomLargeFilesJob {
           ],
         },
       ],
-      tasks: detail.slice(0, 50).map((row, index) => ({
-        id: `large-${index}`,
-        title: `${verb}: ${row.title}`,
-        status: 'success' as const,
-        facts: [{ label: 'Size', value: formatGb(row.bytes) }],
-      })),
+      tasks: [
+        {
+          id: 'replace',
+          title: 'Replace oversized files',
+          // Honest status: if nothing was replaced and anything failed, the
+          // run itself must fail rather than reporting success.
+          status:
+            failed > 0 && replaced === 0
+              ? ('failed' as const)
+              : ('success' as const),
+          facts: [
+            { label: verb, value: `${replaced} file(s)` },
+            { label: 'Failed', value: `${failed} item(s)` },
+            { label: 'Freed', value: formatGb(freedBytes) },
+          ],
+          ...(failed > 0 && replaced === 0
+            ? {
+                issues: [
+                  {
+                    level: 'error' as const,
+                    message:
+                      'No files were replaced — every selected item failed. See the run logs for the failing endpoint details.',
+                  },
+                ],
+              }
+            : {}),
+        },
+        ...detail.slice(0, 50).map((row, index) => ({
+          id: `large-${index}`,
+          title: `${verb}: ${row.title}`,
+          status: 'success' as const,
+          facts: [{ label: 'Size', value: formatGb(row.bytes) }],
+        })),
+      ],
       issues:
         failed > 0
           ? [
@@ -502,8 +556,12 @@ export class CuttingRoomLargeFilesJob {
           tagId = (await this.sonarr.createTag({ ...creds, label: tagLabel }))
             .id;
         }
-      } catch {
+      } catch (err) {
         tagId = null;
+        await ctx.warn(
+          'large-files: size-reduction tag could not be ensured — items are replaced without the tag',
+          { app: 'sonarr', error: truncateErrorMessage(err) },
+        );
       }
 
       let episodeProfile: {
@@ -526,7 +584,7 @@ export class CuttingRoomLargeFilesJob {
       } catch (err) {
         episodeProfile = null;
         await ctx.warn(
-          `large-files: size-capped Sonarr profile failed: ${(err as Error)?.message ?? String(err)}`,
+          `large-files: size-capped Sonarr profile failed: ${truncateErrorMessage(err)}`,
         );
       }
 
@@ -631,7 +689,7 @@ export class CuttingRoomLargeFilesJob {
             await this.sonarr.updateSeries({ ...creds, series: updated });
           } catch (err) {
             await ctx.warn(
-              `large-files: monitor/tag series "${show.title}" failed: ${(err as Error)?.message ?? String(err)}`,
+              `large-files: monitor/tag series "${show.title}" failed: ${truncateErrorMessage(err)}`,
             );
           }
         }
@@ -692,7 +750,7 @@ export class CuttingRoomLargeFilesJob {
           } catch (err) {
             failed += 1;
             await ctx.warn(
-              `large-files: ${entry.item.title} failed: ${(err as Error)?.message ?? String(err)}`,
+              `large-files: ${entry.item.title} failed: ${truncateErrorMessage(err)}`,
             );
           }
         }
@@ -704,14 +762,14 @@ export class CuttingRoomLargeFilesJob {
             });
           } catch (err) {
             await ctx.warn(
-              `large-files: Sonarr search failed for "${show.title}": ${(err as Error)?.message ?? String(err)}`,
+              `large-files: Sonarr search failed for "${show.title}": ${truncateErrorMessage(err)}`,
             );
           }
         }
       }
     } catch (err) {
       await ctx.warn(
-        `large-files: episode pass failed: ${(err as Error)?.message ?? String(err)}`,
+        `large-files: episode pass failed: ${truncateErrorMessage(err)}`,
       );
       failed += episodeItems.length - replaced;
     }
