@@ -102,7 +102,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr test failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr test failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -111,7 +111,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr test failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr test failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -167,7 +167,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr list episodes failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr list episodes failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -176,7 +176,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr list episodes failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr list episodes failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -211,7 +211,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr update episode failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr update episode failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -219,7 +219,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr update episode failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr update episode failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -252,7 +252,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr update series failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr update series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -260,7 +260,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr update series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr update series failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -296,7 +296,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr search monitored failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr search monitored failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -304,7 +304,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr search monitored failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr search monitored failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -380,7 +380,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr lookup series failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr lookup series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -389,7 +389,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr lookup series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr lookup series failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -464,12 +464,12 @@ export class SonarrService {
       }
 
       throw new BadGatewayException(
-        `Sonarr add series failed: HTTP ${res.status} ${body}`.trim(),
+        `Sonarr add series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
       );
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr add series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr add series failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -503,7 +503,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr list episode files failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr list episode files failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -547,7 +547,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr list episode files failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr list episode files failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -581,7 +581,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr delete episode file failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr delete episode file failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -589,7 +589,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr delete episode file failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr delete episode file failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -623,7 +623,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr list episode history failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr list episode history failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -656,7 +656,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr list episode history failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr list episode history failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -689,7 +689,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr mark history failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr mark history failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -697,7 +697,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr mark history failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr mark history failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -735,7 +735,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr episode search failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr episode search failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -743,7 +743,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr episode search failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr episode search failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -780,7 +780,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr create tag failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr create tag failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -796,7 +796,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr create tag failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr create tag failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -846,7 +846,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr series editor update failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr series editor update failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -854,7 +854,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr series editor update failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr series editor update failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -1000,7 +1000,7 @@ export class SonarrService {
       if (!res.ok && res.status !== 404) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr delete series failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr delete series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -1008,7 +1008,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr delete series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr delete series failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -1046,7 +1046,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr bulk delete episode files failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr bulk delete episode files failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -1054,7 +1054,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr bulk delete episode files failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr bulk delete episode files failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -1092,7 +1092,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr series search failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr series search failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -1100,7 +1100,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr series search failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr series search failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -1130,7 +1130,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr disk space failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr disk space failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -1156,7 +1156,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr disk space failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr disk space failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -1186,7 +1186,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr media management config failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr media management config failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -1199,7 +1199,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr media management config failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr media management config failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);

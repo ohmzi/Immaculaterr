@@ -87,7 +87,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr test failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr test failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -96,7 +96,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr test failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr test failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -150,7 +150,7 @@ export class RadarrService {
         if (res.status === 404) return null;
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr get movie failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr get movie failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -159,7 +159,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr get movie failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr get movie failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -220,7 +220,7 @@ export class RadarrService {
         }
 
         throw new BadGatewayException(
-          `Radarr update movie failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr update movie failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -228,7 +228,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr update movie failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr update movie failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -304,7 +304,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr lookup movies failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr lookup movies failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -313,7 +313,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr lookup movies failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr lookup movies failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -392,12 +392,12 @@ export class RadarrService {
       }
 
       throw new BadGatewayException(
-        `Radarr add movie failed: HTTP ${res.status} ${body}`.trim(),
+        `Radarr add movie failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
       );
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr add movie failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr add movie failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -433,7 +433,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr search monitored failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr search monitored failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -441,7 +441,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr search monitored failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr search monitored failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -472,7 +472,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr delete movie file failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr delete movie file failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -480,7 +480,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr delete movie file failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr delete movie file failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -514,7 +514,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr list movie history failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr list movie history failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -547,7 +547,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr list movie history failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr list movie history failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -580,7 +580,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr mark history failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr mark history failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -588,7 +588,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr mark history failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr mark history failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -626,7 +626,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr movie search failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr movie search failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -634,7 +634,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr movie search failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr movie search failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -671,7 +671,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr create tag failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr create tag failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -687,7 +687,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr create tag failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr create tag failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -744,7 +744,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr movie editor update failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr movie editor update failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -752,7 +752,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr movie editor update failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr movie editor update failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -898,7 +898,7 @@ export class RadarrService {
       if (!res.ok && res.status !== 404) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr delete movie failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr delete movie failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -906,7 +906,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr delete movie failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr delete movie failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -936,7 +936,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr disk space failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr disk space failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -962,7 +962,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr disk space failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr disk space failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -992,7 +992,7 @@ export class RadarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Radarr media management config failed: HTTP ${res.status} ${body}`.trim(),
+          `Radarr media management config failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -1005,7 +1005,7 @@ export class RadarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Radarr media management config failed: ${(err as Error)?.message ?? String(err)}`,
+        `Radarr media management config failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);

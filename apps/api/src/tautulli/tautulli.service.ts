@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { fetchWithTransientRetry } from '../http.utils';
 
 type TautulliEnvelope = {
@@ -232,7 +233,7 @@ export class TautulliService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Tautulli ${label} failed: ${(err as Error)?.message ?? String(err)}`,
+        `Tautulli ${label} failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
