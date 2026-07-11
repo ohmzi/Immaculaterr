@@ -52,6 +52,7 @@ const RouteFallback = () => (
         alt=""
         className="h-full w-full object-cover object-center opacity-80"
       />
+      <div className="absolute inset-0 bg-gradient-to-br from-amber-400/25 via-purple-900/45 to-zinc-950/70" />
       <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
       <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
     </div>
@@ -98,6 +99,28 @@ const App = () => {
     // suspense fallbacks then paint it instantly from the image cache.
     const backdrop = new Image();
     backdrop.src = APP_BG_IMAGE_URL;
+
+    // Prefetch every page chunk once the first screen has settled. With the
+    // modules already in cache, navigation never suspends, so React swaps
+    // screens in one paint with no fallback frame at all.
+    const prefetch = window.setTimeout(() => {
+      void Promise.allSettled([
+        import('@/pages/DashboardPage'),
+        import('@/pages/ObservatoryPage'),
+        import('@/pages/TaskManagerPage'),
+        import('@/pages/RewindPage'),
+        import('@/pages/LogsPage'),
+        import('@/pages/JobRunDetailPage'),
+        import('@/pages/VaultPage'),
+        import('@/pages/CommandCenterPage'),
+        import('@/pages/CuttingRoomPage'),
+        import('@/pages/FaqPage'),
+        import('@/pages/SetupPage'),
+        import('@/pages/VersionHistoryPage'),
+        import('@/pages/ProfilePage'),
+      ]);
+    }, 2_000);
+    return () => window.clearTimeout(prefetch);
   }, []);
 
   return (
