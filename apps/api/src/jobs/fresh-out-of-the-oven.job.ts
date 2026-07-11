@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { SWEEP_ORDER, sortSweepUsers } from './refresher-sweep.utils';
@@ -450,7 +451,7 @@ export class FreshOutOfTheOvenJob {
           );
         } catch (err) {
           usersSkipped += 1;
-          const message = (err as Error)?.message ?? String(err);
+          const message = truncateErrorMessage(err);
           await ctx.warn(
             'freshOutOfTheOven: skipping user (failed to resolve accessible libraries)',
             {
@@ -520,7 +521,7 @@ export class FreshOutOfTheOvenJob {
         }
       } catch (err) {
         usersSkipped += 1;
-        const message = (err as Error)?.message ?? String(err);
+        const message = truncateErrorMessage(err);
         await ctx.warn(
           'freshOutOfTheOven: skipping user after lookup failure',
           {
@@ -690,7 +691,7 @@ export class FreshOutOfTheOvenJob {
         });
       } catch (err) {
         usersFailed += 1;
-        const message = (err as Error)?.message ?? String(err);
+        const message = truncateErrorMessage(err);
         await ctx.warn('freshOutOfTheOven: failed user refresh', {
           plexUserId: user.id,
           plexUserTitle: user.plexAccountTitle,
@@ -898,7 +899,7 @@ export class FreshOutOfTheOvenJob {
         await params.ctx.warn(
           'freshOutOfTheOven: shared-user discovery failed (admin will still run)',
           {
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         return [];
@@ -1094,7 +1095,7 @@ export class FreshOutOfTheOvenJob {
             librarySectionKey: section.key,
             library: section.title,
             tmdbId,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         if (existingCacheRow && existingRowIsRecent) {
@@ -1322,7 +1323,7 @@ export class FreshOutOfTheOvenJob {
             library: section.title,
             tvdbId,
             tmdbId,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         if (existingCacheRow && existingRowIsRecent) {

@@ -452,7 +452,7 @@ export class TmdbUpcomingMoviesJob {
           }
         }
       } catch (err) {
-        plexPrecheckError = (err as Error)?.message ?? String(err);
+        plexPrecheckError = truncateErrorMessage(err);
         reportIssues.push(
           issue(
             'warn',
@@ -1307,7 +1307,7 @@ export class TmdbUpcomingMoviesJob {
         pickNumber(settings, 'radarr.defaultTagId') ??
         pickNumber(settings, 'radarr.tagId'),
     }).catch((err) => ({
-      error: (err as Error)?.message ?? String(err),
+      error: truncateErrorMessage(err),
     }));
 
     if ('error' in defaults) {
@@ -1368,7 +1368,7 @@ export class TmdbUpcomingMoviesJob {
           await ctx.warn('tmdbUpcomingMovies: Radarr add failed (continuing)', {
             tmdbId: activeEntry.tmdbId,
             title: activeEntry.title,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           });
           break;
         }

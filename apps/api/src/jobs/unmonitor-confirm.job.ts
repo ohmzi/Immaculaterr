@@ -931,7 +931,7 @@ export class UnmonitorConfirmJob {
           } catch (err) {
             updateFailures += 1;
             pushCappedItem(updateFailureEpisodeLabels, label);
-            const message = (err as Error)?.message ?? String(err);
+            const message = truncateErrorMessage(err);
             await ctx.warn(
               'sonarr: failed to re-monitor episode (continuing)',
               {
@@ -980,7 +980,7 @@ export class UnmonitorConfirmJob {
               );
             }
           } catch (err) {
-            const message = (err as Error)?.message ?? String(err);
+            const message = truncateErrorMessage(err);
 
             updateFailures += attemptedRemonitorEpisodes.length;
             for (const attempted of attemptedRemonitorEpisodes) {

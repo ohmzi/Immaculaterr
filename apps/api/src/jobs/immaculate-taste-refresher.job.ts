@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { PrismaService } from '../db/prisma.service';
 import { PlexCuratedCollectionsService } from '../plex/plex-curated-collections.service';
 import {
@@ -1085,7 +1086,7 @@ export class ImmaculateTasteRefresherJob {
               collectionHubOrder: movieCollectionHubOrder,
             });
           } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
+            const msg = truncateErrorMessage(err);
             await ctx.warn('immaculateTasteRefresher: rebuild failed (movie)', {
               library: sec.title,
               movieSectionKey: sec.key,
@@ -1569,7 +1570,7 @@ export class ImmaculateTasteRefresherJob {
               collectionHubOrder: tvCollectionHubOrder,
             });
           } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
+            const msg = truncateErrorMessage(err);
             await ctx.warn('immaculateTasteRefresher: rebuild failed (tv)', {
               library: sec.title,
               tvSectionKey: sec.key,
@@ -1856,7 +1857,7 @@ export class ImmaculateTasteRefresherJob {
           });
         } catch (err) {
           userFailed = true;
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           profileResults.push({
             profileId: sweepProfile.datasetId,
             profileName: sweepProfile.name || null,

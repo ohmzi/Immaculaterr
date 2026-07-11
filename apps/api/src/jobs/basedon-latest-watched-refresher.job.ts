@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { PrismaService } from '../db/prisma.service';
 import { resolvePlexLibrarySelection } from '../plex/plex-library-selection.utils';
 import { PlexServerService } from '../plex/plex-server.service';
@@ -689,7 +690,7 @@ export class BasedonLatestWatchedRefresherJob {
           refresh,
         });
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         usersFailed += 1;
         userSummaries.push({
           plexUserId: user.id,

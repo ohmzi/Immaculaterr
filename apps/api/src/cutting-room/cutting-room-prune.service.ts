@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { PrismaService } from '../db/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { ArrInstanceService } from '../arr-instances/arr-instance.service';
@@ -200,7 +201,7 @@ export class CuttingRoomPruneService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room prune: cannot resolve ${arrType} instance ${id}: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room prune: cannot resolve ${arrType} instance ${id}: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -243,7 +244,7 @@ export class CuttingRoomPruneService {
           }
         } catch (err) {
           await log.warn(
-            `cutting room prune: fresh Plex scan failed for section ${sectionKey}: ${(err as Error)?.message ?? String(err)}`,
+            `cutting room prune: fresh Plex scan failed for section ${sectionKey}: ${truncateErrorMessage(err)}`,
           );
         }
       }
@@ -271,7 +272,7 @@ export class CuttingRoomPruneService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room prune: fresh ${arrType} listing failed for ${instanceId}: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room prune: fresh ${arrType} listing failed for ${instanceId}: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -348,7 +349,7 @@ export class CuttingRoomPruneService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room prune: tag ensure failed for ${instanceId}: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room prune: tag ensure failed for ${instanceId}: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -461,7 +462,7 @@ export class CuttingRoomPruneService {
             }
           } catch (err) {
             await log.warn(
-              `cutting room prune: bulk tag/unmonitor failed for ${instanceId}: ${(err as Error)?.message ?? String(err)}`,
+              `cutting room prune: bulk tag/unmonitor failed for ${instanceId}: ${truncateErrorMessage(err)}`,
             );
           }
         }
@@ -533,7 +534,7 @@ export class CuttingRoomPruneService {
                         episodeFileId: fileId,
                       });
                     } catch (err) {
-                      const message = (err as Error)?.message ?? String(err);
+                      const message = truncateErrorMessage(err);
                       if (!message.includes('404')) throw err;
                     }
                   }
@@ -576,10 +577,10 @@ export class CuttingRoomPruneService {
             await this.markCandidate(
               candidate.id,
               'failed',
-              (err as Error)?.message ?? String(err),
+              truncateErrorMessage(err),
             );
             await log.warn(
-              `cutting room prune: failed ${candidate.title}: ${(err as Error)?.message ?? String(err)}`,
+              `cutting room prune: failed ${candidate.title}: ${truncateErrorMessage(err)}`,
             );
           }
         }
@@ -634,7 +635,7 @@ export class CuttingRoomPruneService {
           await this.markCandidate(
             candidate.id,
             'failed',
-            (err as Error)?.message ?? String(err),
+            truncateErrorMessage(err),
           );
         }
       }

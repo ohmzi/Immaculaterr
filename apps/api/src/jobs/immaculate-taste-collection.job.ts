@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { PrismaService } from '../db/prisma.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
@@ -1137,7 +1138,7 @@ export class ImmaculateTasteCollectionJob {
           ).catch((err) => ({
             status: 'failed' as const,
             requestId: null,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           }));
 
           if (result.status === 'requested') {
@@ -1259,7 +1260,7 @@ export class ImmaculateTasteCollectionJob {
             label: 'radarr: resolve defaults',
             meta: { baseUrl: radarrBaseUrl },
           },
-        ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
+        ).catch((err) => ({ error: truncateErrorMessage(err) }));
 
         if ('error' in defaults) {
           await ctx.warn(
@@ -1385,7 +1386,7 @@ export class ImmaculateTasteCollectionJob {
               radarrLists.failed.push(tmdbMatch.title);
               await ctx.warn('radarr: add failed (continuing)', {
                 title,
-                error: (err as Error)?.message ?? String(err),
+                error: truncateErrorMessage(err),
               });
             }
           }
@@ -1638,7 +1639,7 @@ export class ImmaculateTasteCollectionJob {
             refresher: profileRefresherSummary,
           });
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           const failedRefresherSummary: JsonObject = { error: msg };
           refresherByProfile.push({
             profileId: selection.profile.id,
@@ -1687,7 +1688,7 @@ export class ImmaculateTasteCollectionJob {
             'immaculateTastePoints: default collection refresher done (chained)',
           );
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           await ctx.warn(
             'immaculateTastePoints: default collection refresher failed (continuing)',
             { error: msg },
@@ -2535,7 +2536,7 @@ export class ImmaculateTasteCollectionJob {
           ).catch((err) => ({
             status: 'failed' as const,
             requestId: null,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           }));
 
           if (result.status === 'requested') {
@@ -2653,7 +2654,7 @@ export class ImmaculateTasteCollectionJob {
             label: 'sonarr: resolve defaults',
             meta: { baseUrl: sonarrBaseUrl },
           },
-        ).catch((err) => ({ error: (err as Error)?.message ?? String(err) }));
+        ).catch((err) => ({ error: truncateErrorMessage(err) }));
 
         if ('error' in defaults) {
           await ctx.warn(
@@ -2776,7 +2777,7 @@ export class ImmaculateTasteCollectionJob {
               sonarrLists.failed.push(ids.title);
               await ctx.warn('sonarr: add failed (continuing)', {
                 title,
-                error: (err as Error)?.message ?? String(err),
+                error: truncateErrorMessage(err),
               });
             }
           }
@@ -3040,7 +3041,7 @@ export class ImmaculateTasteCollectionJob {
             },
           );
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           const failedRefresherSummary: JsonObject = { error: msg };
           refresherByProfile.push({
             profileId: selection.profile.id,
@@ -3089,7 +3090,7 @@ export class ImmaculateTasteCollectionJob {
             'immaculateTastePoints(tv): default collection refresher done (chained)',
           );
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           await ctx.warn(
             'immaculateTastePoints(tv): default collection refresher failed (continuing)',
             { error: msg },

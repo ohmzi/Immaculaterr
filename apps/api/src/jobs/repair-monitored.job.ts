@@ -630,7 +630,7 @@ export class RepairMonitoredJob {
           await ctx.warn('plex: refresh movie path failed', {
             sectionKey,
             folder,
-            error: (error as Error)?.message ?? String(error),
+            error: truncateErrorMessage(error),
           });
         }
       }
@@ -673,7 +673,7 @@ export class RepairMonitoredJob {
         await ctx.warn('radarr: delete movie file failed', {
           title: c.title,
           movieFileId: c.movieFileId,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         continue;
       }
@@ -703,7 +703,7 @@ export class RepairMonitoredJob {
         pushCapped(result.blocklistUnavailableSamples, c.title);
         await ctx.warn('radarr: blocklist failed', {
           title: c.title,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
       }
 
@@ -717,7 +717,7 @@ export class RepairMonitoredJob {
       } catch (error) {
         await ctx.warn('radarr: movie search failed', {
           title: c.title,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
       }
 
@@ -843,7 +843,7 @@ export class RepairMonitoredJob {
         cache.set(ratingKey, null);
         await ctx.warn('plex: availability fetch failed', {
           ratingKey,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         return null;
       }
@@ -957,7 +957,7 @@ export class RepairMonitoredJob {
                 result.actionFailures += 1;
                 await ctx.warn('sonarr: unmonitor failed', {
                   label,
-                  error: (error as Error)?.message ?? String(error),
+                  error: truncateErrorMessage(error),
                 });
               }
             }
@@ -1046,7 +1046,7 @@ export class RepairMonitoredJob {
           await ctx.warn('plex: refresh path failed', {
             sectionKey,
             folder,
-            error: (error as Error)?.message ?? String(error),
+            error: truncateErrorMessage(error),
           });
         }
       }
@@ -1119,7 +1119,7 @@ export class RepairMonitoredJob {
         await ctx.warn('sonarr: delete episode file failed', {
           label,
           episodeFileId: c.episodeFileId,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         continue;
       }
@@ -1149,7 +1149,7 @@ export class RepairMonitoredJob {
         pushCapped(result.blocklistUnavailableSamples, label);
         await ctx.warn('sonarr: blocklist failed', {
           label,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
       }
 
@@ -1163,7 +1163,7 @@ export class RepairMonitoredJob {
       } catch (error) {
         await ctx.warn('sonarr: episode search failed', {
           label,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
       }
 

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { PrismaService } from '../db/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { ArrInstanceService } from '../arr-instances/arr-instance.service';
@@ -205,7 +206,7 @@ export class CuttingRoomAnalysisService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room: could not resolve ${arrType} instance "${instanceIdRaw}": ${(err as Error)?.message ?? String(err)}`,
+          `cutting room: could not resolve ${arrType} instance "${instanceIdRaw}": ${truncateErrorMessage(err)}`,
         );
       }
       if (!resolved) continue;
@@ -222,7 +223,7 @@ export class CuttingRoomAnalysisService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room: listing ${arrType} tags failed: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room: listing ${arrType} tags failed: ${truncateErrorMessage(err)}`,
         );
       }
 
@@ -416,7 +417,7 @@ export class CuttingRoomAnalysisService {
       }
     } catch (err) {
       await log.warn(
-        `cutting room: Plex watch history unavailable: ${(err as Error)?.message ?? String(err)}`,
+        `cutting room: Plex watch history unavailable: ${truncateErrorMessage(err)}`,
       );
     }
 
@@ -477,7 +478,7 @@ export class CuttingRoomAnalysisService {
         tautulliUsed = true;
       } catch (err) {
         await log.warn(
-          `cutting room: Tautulli unavailable, continuing with Plex data only: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room: Tautulli unavailable, continuing with Plex data only: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -498,7 +499,7 @@ export class CuttingRoomAnalysisService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room: watchlist unavailable: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room: watchlist unavailable: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -518,7 +519,7 @@ export class CuttingRoomAnalysisService {
         }
       } catch (err) {
         await log.warn(
-          `cutting room: on-deck unavailable: ${(err as Error)?.message ?? String(err)}`,
+          `cutting room: on-deck unavailable: ${truncateErrorMessage(err)}`,
         );
       }
     }
@@ -541,7 +542,7 @@ export class CuttingRoomAnalysisService {
           }
         } catch (err) {
           await log.warn(
-            `cutting room: Seerr requests unavailable: ${(err as Error)?.message ?? String(err)}`,
+            `cutting room: Seerr requests unavailable: ${truncateErrorMessage(err)}`,
           );
         }
       }

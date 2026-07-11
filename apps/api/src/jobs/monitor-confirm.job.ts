@@ -517,7 +517,7 @@ export class MonitorConfirmJob {
         moviePlayabilityCache.set(ratingKey, fallback);
         await ctx.warn('plex: failed verifying Plex movie playability', {
           ratingKey,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         return fallback;
       }
@@ -539,7 +539,7 @@ export class MonitorConfirmJob {
         movieMetadataCache.set(ratingKey, null);
         await ctx.warn('plex: failed loading Plex movie metadata details', {
           ratingKey,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         return null;
       }
@@ -920,7 +920,7 @@ export class MonitorConfirmJob {
           'plex: failed verifying Plex show episode availability',
           {
             showRatingKey,
-            error: (error as Error)?.message ?? String(error),
+            error: truncateErrorMessage(error),
           },
         );
         return fallback;
@@ -1246,7 +1246,7 @@ export class MonitorConfirmJob {
                     title,
                     seriesId: series.id,
                     seasonsUnmonitored: seasonsUpdatedForSeries,
-                    error: (error as Error)?.message ?? String(error),
+                    error: truncateErrorMessage(error),
                   },
                 );
               }
@@ -1361,7 +1361,7 @@ export class MonitorConfirmJob {
                   {
                     title,
                     seriesId: series.id,
-                    error: (error as Error)?.message ?? String(error),
+                    error: truncateErrorMessage(error),
                   },
                 );
               }
