@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react';
-import { Suspense } from 'react';
+import { Suspense, useLayoutEffect } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
@@ -384,6 +384,12 @@ export const AppShell = () => {
 
   const isHomePage = location.pathname === '/';
   const outlet = useOutlet();
+
+  // Jump to the top before paint on every route change: the cross-fade then
+  // blends both pages from their tops instead of from a stale scroll offset.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
   const recoveryInputClass =
     'w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition';
 
@@ -405,18 +411,24 @@ export const AppShell = () => {
       {/* Desktop navigation (same on every screen) */}
       <Navigation />
 
-      {/* Main Content */}
-      <main className={isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}>
-        {/* Cross-fade between screens. The captured outlet element keeps the
-            old page rendering during its exit, and keying by pathname still
-            forces a clean remount per route (previous overlay-state fix). */}
-        <AnimatePresence mode="wait" initial={false}>
+      {/* Main Content — `relative` anchors popLayout's absolute exit pinning. */}
+      <main
+        className={`relative ${isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}`}
+      >
+        {/* True cross-fade: popLayout lifts the outgoing page out of flow so
+            the incoming one renders in place and both overlap mid-fade —
+            there is never a frame without page content. The captured outlet
+            keeps the old page rendering during exit, and keying by pathname
+            still forces a clean remount per route (previous overlay fix).
+            Opacity-only on purpose: transforms would create containing
+            blocks and break the pages' fixed tint layers. */}
+        <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={location.pathname}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.14, ease: 'easeOut' }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <Suspense
               fallback={
