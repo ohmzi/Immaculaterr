@@ -234,6 +234,7 @@ export class CuttingRoomController {
         confirmation: body.confirmation ?? '',
       });
     }
+    if (!body.dryRun) this.cuttingRoom.invalidateFanoutCache(user.id);
     const run = await this.jobsService.runJob({
       jobId: 'cuttingRoomPrune',
       trigger: 'manual',
@@ -284,6 +285,7 @@ export class CuttingRoomController {
 
   @Post('prunes/:id/restore')
   async restore(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    this.cuttingRoom.invalidateFanoutCache(user.id);
     return await this.cuttingRoom.restorePrune(user.id, id);
   }
 
@@ -318,6 +320,7 @@ export class CuttingRoomController {
         );
       }
     }
+    if (!body.dryRun) this.cuttingRoom.invalidateFanoutCache(user.id);
     const run = await this.jobsService.runJob({
       jobId: 'cuttingRoomDuplicates',
       trigger: 'manual',
@@ -383,6 +386,7 @@ export class CuttingRoomController {
         );
       }
     }
+    if (!body.dryRun) this.cuttingRoom.invalidateFanoutCache(user.id);
     const run = await this.jobsService.runJob({
       jobId: 'cuttingRoomLargeFiles',
       trigger: 'manual',

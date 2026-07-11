@@ -218,6 +218,42 @@ export function dedupeEpisodesByFile(
 
 @Injectable()
 export class CuttingRoomService {
+  /**
+   * Short-lived memo for the fan-out GET listings (large files, duplicates,
+   * disk space). These sweep Radarr + Plex on every request; within the TTL
+   * a repeat visit answers instantly. Mutating jobs invalidate by key prefix.
+   */
+  private readonly fanoutCache = new Map<
+    string,
+    { at: number; ttlMs: number; value: Promise<unknown> }
+  >();
+
+  private memoFanout<T>(
+    key: string,
+    ttlMs: number,
+    compute: () => Promise<T>,
+  ): Promise<T> {
+    const now = Date.now();
+    for (const [k, entry] of this.fanoutCache) {
+      if (now - entry.at >= entry.ttlMs) this.fanoutCache.delete(k);
+    }
+    const hit = this.fanoutCache.get(key);
+    if (hit) return hit.value as Promise<T>;
+    const value = compute().catch((err: unknown) => {
+      // Never cache failures.
+      this.fanoutCache.delete(key);
+      throw err;
+    });
+    this.fanoutCache.set(key, { at: now, ttlMs, value });
+    return value;
+  }
+
+  invalidateFanoutCache(userId: string) {
+    for (const key of this.fanoutCache.keys()) {
+      if (key.startsWith(`${userId}|`)) this.fanoutCache.delete(key);
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
@@ -267,6 +303,15 @@ export class CuttingRoomService {
   }
 
   async getDiskSpace(userId: string, type: 'radarr' | 'sonarr') {
+    return await this.memoFanout(`${userId}|diskspace|${type}`, 15_000, () =>
+      this.getDiskSpaceUncached(userId, type),
+    );
+  }
+
+  private async getDiskSpaceUncached(
+    userId: string,
+    type: 'radarr' | 'sonarr',
+  ) {
     const instances = await this.arrInstances.list(userId, type);
     const out: Array<{
       instanceId: string;
@@ -603,6 +648,17 @@ export class CuttingRoomService {
 
   /** Movies with multiple versions across the user's movie libraries. */
   async listDuplicates(userId: string, sectionKey?: string | null) {
+    return await this.memoFanout(
+      `${userId}|duplicates|${sectionKey ?? 'all'}`,
+      60_000,
+      () => this.listDuplicatesUncached(userId, sectionKey),
+    );
+  }
+
+  private async listDuplicatesUncached(
+    userId: string,
+    sectionKey?: string | null,
+  ) {
     const { settings, secrets } =
       await this.settingsService.getInternalSettings(userId);
     const baseUrl =
@@ -639,6 +695,28 @@ export class CuttingRoomService {
 
   /** Movies and episodes whose files exceed the size threshold. */
   async listLargeFiles(
+    userId: string,
+    thresholdBytes: number,
+    opts?: {
+      mediaType?: 'movie' | 'show' | 'both';
+      sectionKeys?: string[];
+      instanceIds?: string[];
+    },
+  ) {
+    const cacheKey = [
+      userId,
+      'large-files',
+      thresholdBytes,
+      opts?.mediaType ?? 'both',
+      (opts?.sectionKeys ?? []).join(','),
+      (opts?.instanceIds ?? []).join(','),
+    ].join('|');
+    return await this.memoFanout(cacheKey, 60_000, () =>
+      this.listLargeFilesUncached(userId, thresholdBytes, opts),
+    );
+  }
+
+  private async listLargeFilesUncached(
     userId: string,
     thresholdBytes: number,
     opts?: {
