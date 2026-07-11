@@ -715,7 +715,7 @@ export class CuttingRoomService {
           { requireConfigured: false },
         );
         if (!resolved?.baseUrl || !resolved?.apiKey) continue;
-        const movies = await this.radarr.listMovies({
+        const movies = await this.radarr.listMoviesCached({
           baseUrl: resolved.baseUrl,
           apiKey: resolved.apiKey,
         });

@@ -132,6 +132,33 @@ export class SonarrService {
     return Array.isArray(data) ? (data as SonarrSeries[]) : [];
   }
 
+  private readonly seriesListCache = new Map<
+    string,
+    { at: number; data: SonarrSeries[] }
+  >();
+
+  /**
+   * listSeries with a short per-process cache keyed by server. Only for
+   * read-only flows that tolerate ~30s staleness — never call after a
+   * mutation you need reflected.
+   */
+  async listSeriesCached(params: {
+    baseUrl: string;
+    apiKey: string;
+    maxAgeMs?: number;
+  }): Promise<SonarrSeries[]> {
+    const maxAgeMs = params.maxAgeMs ?? 30_000;
+    const now = Date.now();
+    for (const [key, entry] of this.seriesListCache) {
+      if (now - entry.at >= maxAgeMs) this.seriesListCache.delete(key);
+    }
+    const hit = this.seriesListCache.get(params.baseUrl);
+    if (hit) return hit.data;
+    const data = await this.listSeries(params);
+    this.seriesListCache.set(params.baseUrl, { at: now, data });
+    return data;
+  }
+
   async listMonitoredSeries(params: {
     baseUrl: string;
     apiKey: string;

@@ -117,6 +117,33 @@ export class RadarrService {
     return Array.isArray(data) ? (data as RadarrMovie[]) : [];
   }
 
+  private readonly moviesListCache = new Map<
+    string,
+    { at: number; data: RadarrMovie[] }
+  >();
+
+  /**
+   * listMovies with a short per-process cache keyed by server. Only for
+   * read-only flows that tolerate ~30s staleness — never call after a
+   * mutation you need reflected.
+   */
+  async listMoviesCached(params: {
+    baseUrl: string;
+    apiKey: string;
+    maxAgeMs?: number;
+  }): Promise<RadarrMovie[]> {
+    const maxAgeMs = params.maxAgeMs ?? 30_000;
+    const now = Date.now();
+    for (const [key, entry] of this.moviesListCache) {
+      if (now - entry.at >= maxAgeMs) this.moviesListCache.delete(key);
+    }
+    const hit = this.moviesListCache.get(params.baseUrl);
+    if (hit) return hit.data;
+    const data = await this.listMovies(params);
+    this.moviesListCache.set(params.baseUrl, { at: now, data });
+    return data;
+  }
+
   async listMonitoredMovies(params: {
     baseUrl: string;
     apiKey: string;
