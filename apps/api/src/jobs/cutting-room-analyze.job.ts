@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { CuttingRoomAnalysisService } from '../cutting-room/cutting-room-analysis.service';
 import { PrismaService } from '../db/prisma.service';
-import { metricRow, type JobReportV1 } from './job-report-v1';
+import { truncateErrorMessage } from '../log.utils';
+import {
+  metricRow,
+  type JobReportV1,
+  simpleFailureReport,
+} from './job-report-v1';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 
 function formatGb(bytes: number): string {
@@ -139,17 +144,33 @@ export class CuttingRoomAnalyzeJob {
 
       return { summary: report as unknown as JsonObject };
     } catch (err) {
+      const reason = truncateErrorMessage(err);
       await this.prisma.cuttingRoomSnapshot
         .update({
           where: { id: snapshotId },
           data: {
             status: 'FAILED',
             finishedAt: new Date(),
-            errorMessage: (err as Error)?.message ?? String(err),
+            errorMessage: reason,
           },
         })
         .catch(() => undefined);
-      throw err;
+      await ctx.error('cuttingRoomAnalyze: analysis failed', {
+        snapshotId,
+        error: reason,
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Cutting Room scan failed',
+          taskId: 'analyze',
+          taskTitle: 'Scan libraries and score candidates',
+          message: `Cutting Room analysis failed: ${reason}`,
+          facts: [{ label: 'Snapshot', value: snapshotId }],
+        }) as unknown as JsonObject,
+      };
     }
   }
 }

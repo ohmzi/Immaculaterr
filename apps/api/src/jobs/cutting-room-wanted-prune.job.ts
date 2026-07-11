@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { CuttingRoomWantedService } from '../cutting-room/cutting-room-wanted.service';
-import { metricRow, type JobReportV1 } from './job-report-v1';
+import {
+  metricRow,
+  type JobReportV1,
+  simpleFailureReport,
+} from './job-report-v1';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import { truncateErrorMessage } from '../log.utils';
 
 /**
  * Unmonitors or removes monitored-but-file-less arr entries. Deletes no files
@@ -52,17 +57,36 @@ export class CuttingRoomWantedPruneJob {
         .catch(() => undefined);
     };
 
-    const summary = await this.wanted.pruneWanted({
-      userId: ctx.userId,
-      runId: ctx.runId,
-      type,
-      instanceId,
-      arrIds,
-      mode,
-      addImportExclusion,
-      dryRun: ctx.dryRun,
-      progress: setProgress,
-    });
+    let summary: Awaited<ReturnType<typeof this.wanted.pruneWanted>>;
+    try {
+      summary = await this.wanted.pruneWanted({
+        userId: ctx.userId,
+        runId: ctx.runId,
+        type,
+        instanceId,
+        arrIds,
+        mode,
+        addImportExclusion,
+        dryRun: ctx.dryRun,
+        progress: setProgress,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error('cuttingRoomWantedPrune: run failed before completing', {
+        error: reason,
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Wanted-list prune failed',
+          taskId: 'wanted',
+          taskTitle: 'Prune wanted-list entries',
+          message: `Prune wanted-list entries failed: ${reason}`,
+        }) as unknown as JsonObject,
+      };
+    }
 
     const verb = ctx.dryRun
       ? mode === 'remove'
@@ -101,12 +125,31 @@ export class CuttingRoomWantedPruneJob {
           ],
         },
       ],
-      tasks: [],
+      tasks: [
+        {
+          id: 'wanted',
+          title: 'Prune wanted-list entries',
+          status:
+            !ctx.dryRun && summary.failed > 0 && summary.changed === 0
+              ? ('failed' as const)
+              : ('success' as const),
+          facts: [
+            {
+              label: ctx.dryRun ? 'Would change' : 'Changed',
+              value: String(summary.changed),
+            },
+            { label: 'Failed', value: String(summary.failed) },
+          ],
+        },
+      ],
       issues:
         summary.failed > 0
           ? [
               {
-                level: 'warn',
+                level:
+                  !ctx.dryRun && summary.changed === 0
+                    ? ('error' as const)
+                    : ('warn' as const),
                 message: `${summary.failed} entries failed — see logs and re-run.`,
               },
             ]

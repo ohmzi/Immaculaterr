@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { CuttingRoomPruneService } from '../cutting-room/cutting-room-prune.service';
-import { metricRow, type JobReportV1 } from './job-report-v1';
+import {
+  metricRow,
+  type JobReportV1,
+  simpleFailureReport,
+} from './job-report-v1';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import { truncateErrorMessage } from '../log.utils';
 
 function formatGb(bytes: number): string {
   return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -53,22 +58,41 @@ export class CuttingRoomPruneJob {
         .catch(() => undefined);
     };
 
-    const summary = await this.prune.runPrune({
-      userId: ctx.userId,
-      snapshotId,
-      runId: ctx.runId,
-      dryRun: ctx.dryRun,
-      waveSize,
-      removeEntry,
-      addImportExclusion,
-      progress: setProgress,
-      log: {
-        info: (message, context) =>
-          ctx.info(message, context as JsonObject | undefined),
-        warn: (message, context) =>
-          ctx.warn(message, context as JsonObject | undefined),
-      },
-    });
+    let summary: Awaited<ReturnType<typeof this.prune.runPrune>>;
+    try {
+      summary = await this.prune.runPrune({
+        userId: ctx.userId,
+        snapshotId,
+        runId: ctx.runId,
+        dryRun: ctx.dryRun,
+        waveSize,
+        removeEntry,
+        addImportExclusion,
+        progress: setProgress,
+        log: {
+          info: (message, context) =>
+            ctx.info(message, context as JsonObject | undefined),
+          warn: (message, context) =>
+            ctx.warn(message, context as JsonObject | undefined),
+        },
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error('cuttingRoomPrune: run failed before completing', {
+        error: reason,
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Cutting Room prune failed',
+          taskId: 'prune',
+          taskTitle: 'Prune selected candidates',
+          message: `Prune selected candidates failed: ${reason}`,
+        }) as unknown as JsonObject,
+      };
+    }
 
     const verb = ctx.dryRun ? 'Would prune' : 'Pruned';
     const report: JobReportV1 = {
@@ -122,22 +146,45 @@ export class CuttingRoomPruneJob {
           ],
         },
       ],
-      tasks: ctx.dryRun
-        ? summary.wouldDelete.slice(0, 50).map((item, index) => ({
-            id: `would-${index}`,
-            title: `Would delete: ${item.title}`,
-            status: 'skipped' as const,
-            facts: [
-              { label: 'Size', value: formatGb(item.sizeBytes) },
-              { label: 'Action', value: item.action },
-            ],
-          }))
-        : [],
+      tasks: [
+        {
+          id: 'prune',
+          title: 'Prune selected candidates',
+          // Total failure (nothing deleted, everything errored) fails the run.
+          status:
+            !ctx.dryRun && summary.failed > 0 && summary.pruned === 0
+              ? ('failed' as const)
+              : ('success' as const),
+          facts: [
+            {
+              label: ctx.dryRun ? 'Would delete' : 'Pruned',
+              value: String(
+                ctx.dryRun ? summary.wouldDelete.length : summary.pruned,
+              ),
+            },
+            { label: 'Failed', value: String(summary.failed) },
+          ],
+        },
+        ...(ctx.dryRun
+          ? summary.wouldDelete.slice(0, 50).map((item, index) => ({
+              id: `would-${index}`,
+              title: `Would delete: ${item.title}`,
+              status: 'skipped' as const,
+              facts: [
+                { label: 'Size', value: formatGb(item.sizeBytes) },
+                { label: 'Action', value: item.action },
+              ],
+            }))
+          : []),
+      ],
       issues:
         summary.failed > 0
           ? [
               {
-                level: 'warn',
+                level:
+                  !ctx.dryRun && summary.pruned === 0
+                    ? ('error' as const)
+                    : ('warn' as const),
                 message: `${summary.failed} item(s) failed — sources kept; see logs and re-run.`,
               },
             ]
