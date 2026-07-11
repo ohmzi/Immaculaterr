@@ -1,6 +1,7 @@
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { motion, useAnimation } from 'motion/react';
 import {
   ArchiveRestore,
   CircleAlert,
@@ -112,6 +113,21 @@ export function CuttingRoomPage() {
           ? 'large-files'
           : 'wizard';
   const [tab, setTab] = useState<TabKey>(initialTab);
+  const titleIconControls = useAnimation();
+  const titleIconGlowControls = useAnimation();
+
+  const handleAnimateTitleIcon = useCallback(() => {
+    titleIconControls.stop();
+    titleIconGlowControls.stop();
+    void titleIconControls.start({
+      scale: [1, 1.06, 1],
+      transition: { duration: 0.55, ease: 'easeOut' },
+    });
+    void titleIconGlowControls.start({
+      opacity: [0, 0.7, 0, 0.55, 0, 0.4, 0],
+      transition: { duration: 1.4, ease: 'easeInOut' },
+    });
+  }, [titleIconControls, titleIconGlowControls]);
 
   return (
     <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
@@ -120,20 +136,47 @@ export function CuttingRoomPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-amber-400/25 via-red-900/45 to-zinc-950/70" />
       </div>
 
-      <div className="relative z-10 container mx-auto max-w-6xl px-4 py-10 md:py-14">
-        <div className="mb-8 flex items-center gap-5">
-          <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20">
-            <Scissors className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
-          </div>
-          <div>
-            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter drop-shadow-2xl">
-              Cutting Room
-            </h1>
-            <p className="text-red-200/70 font-medium">
+      <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <div className="container mx-auto px-4 pb-20 max-w-6xl">
+        <div className="mb-12">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="space-y-6"
+          >
+            <div className="flex items-center gap-5">
+              <motion.button
+                type="button"
+                onClick={handleAnimateTitleIcon}
+                animate={titleIconControls}
+                className="relative group focus:outline-none touch-manipulation"
+                aria-label="Animate Cutting Room icon"
+                title="Animate"
+              >
+                <motion.div
+                  aria-hidden="true"
+                  animate={titleIconGlowControls}
+                  className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
+                />
+                <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
+                <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20 group-hover:rotate-0 transition-transform duration-300 ease-spring">
+                  <Scissors
+                    className="w-8 h-8 md:w-10 md:h-10 text-black"
+                    strokeWidth={2.5}
+                  />
+                </div>
+              </motion.button>
+              <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
+                Cutting Room
+              </h1>
+            </div>
+
+            <p className="text-red-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
               Find and prune the media{' '}
               <span className="text-[#facc15] font-bold">nobody will ever watch</span>.
             </p>
-          </div>
+          </motion.div>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2">
@@ -172,7 +215,8 @@ export function CuttingRoomPage() {
         {tab === 'wanted' ? <WantedTab /> : null}
         {tab === 'duplicates' ? <DuplicatesTab /> : null}
         {tab === 'large-files' ? <LargeFilesTab /> : null}
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
