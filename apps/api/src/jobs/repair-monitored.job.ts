@@ -13,7 +13,8 @@ import {
 } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1, JobReportTask } from './job-report-v1';
-import { issue, metricRow } from './job-report-v1';
+import { issue, metricRow, simpleFailureReport } from './job-report-v1';
+import { truncateErrorMessage } from '../log.utils';
 
 const MAX_REPORTED_ITEMS = 100;
 const SCAN_SETTLE_INITIAL_MS = 5000;
@@ -297,10 +298,31 @@ export class RepairMonitoredJob {
     setProgress({ step: 'plex_discovery', message: 'Discovering Plex…' });
 
     // Shared Plex discovery.
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    let sections: Awaited<ReturnType<PlexServerService['getSections']>>;
+    try {
+      sections = await this.plexServer.getSections({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error('repairMonitored: Plex library discovery failed', {
+        error: reason,
+        endpoint: 'GET {plex}/library/sections',
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Plex library discovery failed — the run did not proceed',
+          taskId: 'plex_discovery',
+          taskTitle: 'Plex library discovery',
+          message: `Plex library discovery failed: ${reason}`,
+          facts: [{ label: 'Endpoint', value: 'GET {plex}/library/sections' }],
+        }) as unknown as JsonObject,
+      };
+    }
     const sectionLocations = await this.plexServer.getSectionLocations({
       baseUrl: plexBaseUrl,
       token: plexToken,
@@ -453,16 +475,32 @@ export class RepairMonitoredJob {
           });
           if (v.playable) return true;
         } catch {
-          // Treat probe errors as "not verified" — never triggers a delete.
+          // Intentional swallow: probe errors mean "not verified", which is
+          // the safe direction — never triggers a delete. Not logged to
+          // avoid per-item spam in large libraries.
         }
       }
       return false;
     };
 
-    const movies = await this.radarr.listMonitoredMovies({
-      baseUrl: radarrBaseUrl,
-      apiKey: radarrApiKey,
-    });
+    let movies: Awaited<ReturnType<RadarrService['listMonitoredMovies']>>;
+    try {
+      movies = await this.radarr.listMonitoredMovies({
+        baseUrl: radarrBaseUrl,
+        apiKey: radarrApiKey,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error(
+        'repairMonitored: Radarr monitored-movie listing failed',
+        {
+          error: reason,
+          endpoint: 'GET {radarr}/api/v3/movie',
+        },
+      );
+      result.fatalError = `Radarr monitored-movie listing failed: ${reason} (GET {radarr}/api/v3/movie)`;
+      return result;
+    }
     result.totalMovies = movies.length;
 
     const candidates: MovieRepairCandidate[] = [];
@@ -713,7 +751,8 @@ export class RepairMonitoredJob {
         });
         if (hit) return true;
       } catch {
-        // ignore and try the next section
+        // Intentional swallow: title lookup is a best-effort fallback across
+        // sections; a miss here only skips one recovery heuristic.
       }
     }
     return false;
@@ -810,10 +849,26 @@ export class RepairMonitoredJob {
       }
     };
 
-    const monitoredSeries = await this.sonarr.listMonitoredSeries({
-      baseUrl: sonarrBaseUrl,
-      apiKey: sonarrApiKey,
-    });
+    let monitoredSeries: Awaited<
+      ReturnType<SonarrService['listMonitoredSeries']>
+    >;
+    try {
+      monitoredSeries = await this.sonarr.listMonitoredSeries({
+        baseUrl: sonarrBaseUrl,
+        apiKey: sonarrApiKey,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error(
+        'repairMonitored: Sonarr monitored-series listing failed',
+        {
+          error: reason,
+          endpoint: 'GET {sonarr}/api/v3/series',
+        },
+      );
+      result.fatalError = `Sonarr monitored-series listing failed: ${reason} (GET {sonarr}/api/v3/series)`;
+      return result;
+    }
     result.totalSeries = monitoredSeries.length;
     setProgress({
       step: 'sonarr_scan',
@@ -1040,8 +1095,12 @@ export class RepairMonitoredJob {
             });
             result.unmonitored += 1;
             pushCapped(result.unmonitoredSamples, label);
-          } catch {
+          } catch (err) {
             result.actionFailures += 1;
+            await ctx.warn('repairMonitored: Sonarr episode unmonitor failed', {
+              series: label,
+              error: truncateErrorMessage(err),
+            });
           }
         }
         continue;
@@ -1142,6 +1201,8 @@ export class RepairMonitoredJob {
           return type.includes('library.update') || t.includes('scan');
         });
       } catch {
+        // Intentional swallow: activity polling is advisory — when Plex
+        // cannot report activities we simply stop waiting for scans.
         return;
       }
       if (!scanning) return;
@@ -1155,6 +1216,7 @@ export class RepairMonitoredJob {
 
 type RadarrResult = {
   configured: boolean;
+  fatalError: string | null;
   totalMovies: number;
   moviesProcessed: number;
   confirmedInPlex: number;
@@ -1182,6 +1244,7 @@ type RadarrResult = {
 function disabledRadarrResult(): RadarrResult {
   return {
     configured: false,
+    fatalError: null,
     totalMovies: 0,
     moviesProcessed: 0,
     confirmedInPlex: 0,
@@ -1209,6 +1272,7 @@ function disabledRadarrResult(): RadarrResult {
 
 type SonarrResult = {
   configured: boolean;
+  fatalError: string | null;
   totalSeries: number;
   seriesProcessed: number;
   episodesChecked: number;
@@ -1240,6 +1304,7 @@ type SonarrResult = {
 function disabledSonarrResult(): SonarrResult {
   return {
     configured: false,
+    fatalError: null,
     totalSeries: 0,
     seriesProcessed: 0,
     episodesChecked: 0,
@@ -1326,7 +1391,10 @@ function buildReport(params: {
     tasks.push({
       id: 'radarr',
       title: 'Radarr: repair movies',
-      status: 'success',
+      status: radarr.fatalError ? 'failed' : 'success',
+      ...(radarr.fatalError
+        ? { issues: [issue('error', radarr.fatalError)] }
+        : {}),
       rows: [
         metricRow({
           label: 'Monitored movies',
@@ -1401,7 +1469,10 @@ function buildReport(params: {
     tasks.push({
       id: 'sonarr',
       title: 'Sonarr: repair episodes',
-      status: 'success',
+      status: sonarr.fatalError ? 'failed' : 'success',
+      ...(sonarr.fatalError
+        ? { issues: [issue('error', sonarr.fatalError)] }
+        : {}),
       rows: [
         metricRow({
           label: 'Monitored series',

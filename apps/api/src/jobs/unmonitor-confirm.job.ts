@@ -9,7 +9,8 @@ import {
 } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
-import { issue, metricRow } from './job-report-v1';
+import { issue, metricRow, simpleFailureReport } from './job-report-v1';
+import { truncateErrorMessage } from '../log.utils';
 
 const MAX_REPORTED_ITEMS = 250;
 const RADARR_PROGRESS_LOG_INTERVAL = 250;
@@ -283,10 +284,31 @@ export class UnmonitorConfirmJob {
       message: 'Discovering Plex libraries…',
     });
 
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    let sections: Awaited<ReturnType<PlexServerService['getSections']>>;
+    try {
+      sections = await this.plexServer.getSections({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error('unmonitorConfirm: Plex library discovery failed', {
+        error: reason,
+        endpoint: 'GET {plex}/library/sections',
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Plex library discovery failed — the run did not proceed',
+          taskId: 'plex_scan',
+          taskTitle: 'Plex library discovery',
+          message: `Plex library discovery failed: ${reason}`,
+          facts: [{ label: 'Endpoint', value: 'GET {plex}/library/sections' }],
+        }) as unknown as JsonObject,
+      };
+    }
     const movieSections = sections.filter(
       (section) => (section.type ?? '').toLowerCase() === 'movie',
     );
@@ -445,10 +467,31 @@ export class UnmonitorConfirmJob {
       message: 'Loading Radarr movies…',
     });
 
-    const allMovies = await this.radarr.listMovies({
-      baseUrl: radarrBaseUrl,
-      apiKey: radarrApiKey,
-    });
+    let allMovies: Awaited<ReturnType<RadarrService['listMovies']>>;
+    try {
+      allMovies = await this.radarr.listMovies({
+        baseUrl: radarrBaseUrl,
+        apiKey: radarrApiKey,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error('unmonitorConfirm: Radarr movie listing failed', {
+        error: reason,
+        endpoint: 'GET {radarr}/api/v3/movie',
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Radarr movie listing failed — the run did not proceed',
+          taskId: 'radarr_scan',
+          taskTitle: 'Radarr movie listing',
+          message: `Radarr movie listing failed: ${reason}`,
+          facts: [{ label: 'Endpoint', value: 'GET {radarr}/api/v3/movie' }],
+        }) as unknown as JsonObject,
+      };
+    }
     const unmonitoredMovies = allMovies.filter((movie) => !movie?.monitored);
 
     let checked = 0;
@@ -707,10 +750,37 @@ export class UnmonitorConfirmJob {
       message: 'Loading Sonarr monitored series…',
     });
 
-    const monitoredSeries = await this.sonarr.listMonitoredSeries({
-      baseUrl: sonarrBaseUrl,
-      apiKey: sonarrApiKey,
-    });
+    let monitoredSeries: Awaited<
+      ReturnType<SonarrService['listMonitoredSeries']>
+    >;
+    try {
+      monitoredSeries = await this.sonarr.listMonitoredSeries({
+        baseUrl: sonarrBaseUrl,
+        apiKey: sonarrApiKey,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error(
+        'unmonitorConfirm: Sonarr monitored-series listing failed',
+        {
+          error: reason,
+          endpoint: 'GET {sonarr}/api/v3/series',
+        },
+      );
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline:
+            'Sonarr monitored-series listing failed — the run did not proceed',
+          taskId: 'sonarr_scan',
+          taskTitle: 'Sonarr monitored-series listing',
+          message: `Sonarr monitored-series listing failed: ${reason}`,
+          facts: [{ label: 'Endpoint', value: 'GET {sonarr}/api/v3/series' }],
+        }) as unknown as JsonObject,
+      };
+    }
     const plexEpisodesCache = new Map<string, Set<string>>();
     const getPlexEpisodesSet = async (
       ratingKey: string,
