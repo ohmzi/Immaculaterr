@@ -17,6 +17,8 @@ import { SettingsService } from '../settings/settings.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobReportV1 } from './job-report-v1';
+import { issue, metricRow } from './job-report-v1';
 
 const BASELINE_STALE_MS = 24 * 60 * 60_000;
 const RECENT_RELEASE_MONTHS = 3;
@@ -738,7 +740,101 @@ export class FreshOutOfTheOvenJob {
     };
 
     await ctx.info('freshOutOfTheOven: done', summary);
-    return { summary };
+
+    // Structured report: a sweep where every user failed must fail the run
+    // instead of hiding behind counters.
+    const sweepTotal = orderedUsers.length;
+    const sweepFailedCompletely =
+      sweepTotal > 0 && usersFailed > 0 && usersSucceeded === 0;
+    const report: JobReportV1 = {
+      template: 'jobReportV1',
+      version: 1,
+      jobId: ctx.jobId,
+      dryRun: ctx.dryRun,
+      trigger: ctx.trigger,
+      headline: sweepFailedCompletely
+        ? 'Fresh Out Of The Oven failed: no user sweep completed'
+        : `Fresh Out Of The Oven: ${usersSucceeded}/${sweepTotal} user sweep(s) refreshed`,
+      sections: [
+        {
+          id: 'sweep',
+          title: 'User sweeps',
+          rows: [
+            metricRow({
+              label: 'Users processed',
+              start: null,
+              changed: null,
+              end: sweepTotal,
+              unit: 'users',
+            }),
+            metricRow({
+              label: 'Succeeded',
+              start: null,
+              changed: null,
+              end: usersSucceeded,
+              unit: 'users',
+            }),
+            metricRow({
+              label: 'Skipped',
+              start: null,
+              changed: null,
+              end: usersSkipped,
+              unit: 'users',
+            }),
+            metricRow({
+              label: 'Failed',
+              start: null,
+              changed: null,
+              end: usersFailed,
+              unit: 'users',
+            }),
+          ],
+        },
+      ],
+      tasks: [
+        {
+          id: 'movies',
+          title: 'Movie collections',
+          status: includeMovies ? 'success' : 'skipped',
+        },
+        {
+          id: 'tv',
+          title: 'TV collections',
+          status: includeShows ? 'success' : 'skipped',
+        },
+        {
+          id: 'sweep',
+          title: 'Per-user refresh sweep',
+          status: sweepFailedCompletely ? 'failed' : 'success',
+          facts: [
+            { label: 'Succeeded', value: `${usersSucceeded}/${sweepTotal}` },
+            { label: 'Skipped', value: String(usersSkipped) },
+            { label: 'Failed', value: String(usersFailed) },
+          ],
+          ...(sweepFailedCompletely
+            ? {
+                issues: [
+                  issue(
+                    'error',
+                    'Every user sweep failed — check the run logs for the per-user errors.',
+                  ),
+                ],
+              }
+            : {}),
+        },
+      ],
+      issues:
+        usersFailed > 0 && !sweepFailedCompletely
+          ? [
+              issue(
+                'warn',
+                `${usersFailed} user sweep(s) failed; the rest completed. See the run logs for details.`,
+              ),
+            ]
+          : [],
+      raw: summary,
+    };
+    return { summary: report as unknown as JsonObject };
   }
 
   private async clearMovieFreshOutRows(): Promise<{
