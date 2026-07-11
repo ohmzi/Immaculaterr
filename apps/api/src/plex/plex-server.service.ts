@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
 import { XMLParser } from 'fast-xml-parser';
 import { normalizeCollectionTitle } from './plex-collections.utils';
 import { sanitizeUrlForLogs, truncateForLog } from '../log.utils';
@@ -3295,15 +3296,17 @@ export class PlexServerService {
     const startedAt = Date.now();
 
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: '*/*',
-          Range: 'bytes=0-0',
-          'X-Plex-Token': token,
-        },
-        signal: controller.signal,
-      });
+      const res = await fetchWithTransientRetry(() =>
+        fetch(url, {
+          method: 'GET',
+          headers: {
+            Accept: '*/*',
+            Range: 'bytes=0-0',
+            'X-Plex-Token': token,
+          },
+          signal: controller.signal,
+        }),
+      );
 
       const ms = Date.now() - startedAt;
       if (this.logHttp) {
@@ -3597,14 +3600,16 @@ export class PlexServerService {
     const startedAt = Date.now();
 
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/xml',
-          'X-Plex-Token': token,
-        },
-        signal: controller.signal,
-      });
+      const res = await fetchWithTransientRetry(() =>
+        fetch(url, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/xml',
+            'X-Plex-Token': token,
+          },
+          signal: controller.signal,
+        }),
+      );
 
       const text = await res.text().catch(() => '');
       const ms = Date.now() - startedAt;

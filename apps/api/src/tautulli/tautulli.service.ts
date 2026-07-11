@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
 
 type TautulliEnvelope = {
   response?: {
@@ -200,11 +201,13 @@ export class TautulliService {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(url.toString(), {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
+      const res = await fetchWithTransientRetry(() =>
+        fetch(url.toString(), {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        }),
+      );
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');

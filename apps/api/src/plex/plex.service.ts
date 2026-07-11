@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
 import { XMLParser } from 'fast-xml-parser';
 import { randomUUID } from 'node:crypto';
 import { PlexPin, PlexSharedServerUser } from './plex.types';
@@ -414,7 +415,12 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const doFetch = () => fetch(url, { ...init, signal: controller.signal });
+    // Only idempotent reads are retried; PIN creation and other POSTs are not.
+    const method = (init.method ?? 'GET').toUpperCase();
+    return method === 'GET'
+      ? await fetchWithTransientRetry(doFetch)
+      : await doFetch();
   } finally {
     clearTimeout(timeout);
   }
