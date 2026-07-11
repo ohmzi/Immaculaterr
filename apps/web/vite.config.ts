@@ -17,6 +17,25 @@ export default defineConfig(({ command }) => ({
     __APP_ASSET_VERSION__: JSON.stringify(appAssetVersion),
   },
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the big shared libraries in their own long-cacheable chunk so
+        // app-code changes don't invalidate the vendor download.
+        manualChunks: {
+          vendor: [
+            'react',
+            'react-dom',
+            'react-router-dom',
+            '@tanstack/react-query',
+            'motion',
+            'lucide-react',
+            'sonner',
+          ],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

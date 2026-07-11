@@ -1,26 +1,46 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType } from 'react';
+import { Loader2 } from 'lucide-react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import { AppShell } from '@/app/AppShell';
 import { AuthGate } from '@/app/AuthGate';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { ObservatoryPage } from '@/pages/ObservatoryPage';
-import { TaskManagerPage } from '@/pages/TaskManagerPage';
-import { RewindPage } from '@/pages/RewindPage';
-import { LogsPage } from '@/pages/LogsPage';
-import { JobRunDetailPage } from '@/pages/JobRunDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
-import { VaultPage } from '@/pages/VaultPage';
-import { CommandCenterPage } from '@/pages/CommandCenterPage';
-import { CuttingRoomPage } from '@/pages/CuttingRoomPage';
-import { FaqPage } from '@/pages/FaqPage';
-import { SetupPage } from '@/pages/SetupPage';
-import { SetupTrueNasPage } from '@/pages/SetupTrueNasPage';
-import { SetupUnraidPage } from '@/pages/SetupUnraidPage';
-import { VersionHistoryPage } from '@/pages/VersionHistoryPage';
-import { DebuggerPage } from '@/pages/DebuggerPage';
-import { ProfilePage } from '@/pages/ProfilePage';
 import { getPublicBasePath } from '@/lib/public-path';
+
+// Route-level code splitting: each page loads on first visit instead of
+// shipping the whole app as one bundle.
+const lazyPage = <T extends Record<string, unknown>>(
+  loader: () => Promise<T>,
+  name: keyof T,
+) =>
+  lazy(() =>
+    loader().then((module) => ({
+      default: module[name] as ComponentType,
+    })),
+  );
+
+const DashboardPage = lazyPage(() => import('@/pages/DashboardPage'), 'DashboardPage');
+const ObservatoryPage = lazyPage(() => import('@/pages/ObservatoryPage'), 'ObservatoryPage');
+const TaskManagerPage = lazyPage(() => import('@/pages/TaskManagerPage'), 'TaskManagerPage');
+const RewindPage = lazyPage(() => import('@/pages/RewindPage'), 'RewindPage');
+const LogsPage = lazyPage(() => import('@/pages/LogsPage'), 'LogsPage');
+const JobRunDetailPage = lazyPage(() => import('@/pages/JobRunDetailPage'), 'JobRunDetailPage');
+const VaultPage = lazyPage(() => import('@/pages/VaultPage'), 'VaultPage');
+const CommandCenterPage = lazyPage(() => import('@/pages/CommandCenterPage'), 'CommandCenterPage');
+const CuttingRoomPage = lazyPage(() => import('@/pages/CuttingRoomPage'), 'CuttingRoomPage');
+const FaqPage = lazyPage(() => import('@/pages/FaqPage'), 'FaqPage');
+const SetupPage = lazyPage(() => import('@/pages/SetupPage'), 'SetupPage');
+const SetupTrueNasPage = lazyPage(() => import('@/pages/SetupTrueNasPage'), 'SetupTrueNasPage');
+const SetupUnraidPage = lazyPage(() => import('@/pages/SetupUnraidPage'), 'SetupUnraidPage');
+const VersionHistoryPage = lazyPage(() => import('@/pages/VersionHistoryPage'), 'VersionHistoryPage');
+const DebuggerPage = lazyPage(() => import('@/pages/DebuggerPage'), 'DebuggerPage');
+const ProfilePage = lazyPage(() => import('@/pages/ProfilePage'), 'ProfilePage');
+
+const RouteFallback = () => (
+  <div className="flex min-h-[60vh] items-center justify-center">
+    <Loader2 className="h-6 w-6 animate-spin text-white/50" />
+  </div>
+);
 
 // skipcq: SCT-A000 - Legacy localStorage cleanup key, not a credential.
 const LEGACY_ONBOARDING_STORAGE_KEY = 'tcp_onboarding_v1';
@@ -59,6 +79,7 @@ const App = () => {
 
   return (
     <BrowserRouter basename={publicBasePath || undefined}>
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<Outlet />}>
           {/* All pages require authentication and wizard completion */}
@@ -102,6 +123,7 @@ const App = () => {
           </Route>
         </Route>
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 };

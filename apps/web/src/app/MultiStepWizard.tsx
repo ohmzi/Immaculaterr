@@ -31,7 +31,7 @@ import {
   testSavedIntegration,
 } from '@/api/integrations';
 import { ApiError } from '@/api/http';
-import { getSecretsEnvelopeKey, putSettings } from '@/api/settings';
+import { getSecretsEnvelopeKey, putSettings, getPublicSettings } from '@/api/settings';
 import { createPlexPin, checkPlexPin } from '@/api/plex';
 import { createPayloadEnvelope } from '@/lib/security/clientCredentialEnvelope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -183,7 +183,6 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
     let cancelled = false;
     (async () => {
       try {
-        const { getPublicSettings } = await import('@/api/settings');
         const res = await getPublicSettings();
         if (cancelled) return;
         const plex = res.settings?.plex as Record<string, unknown> | undefined;
