@@ -1,4 +1,4 @@
-import { type ChangeEvent, type MouseEvent as ReactMouseEvent, useCallback, useMemo, useState } from 'react';
+import { type ChangeEvent, type MouseEvent as ReactMouseEvent, useCallback, useMemo, useRef, useState } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -6,7 +6,7 @@ import { CircleAlert, Loader2, ScrollText, Trash2, Pause, Play, RefreshCw, Downl
 import { copyToClipboard } from '@/lib/clipboard';
 import { usePersistentState } from '@/lib/usePersistentState';
 
-import { clearServerLogs, listServerLogs } from '@/api/logs';
+import { clearServerLogs, listServerLogs, type ServerLogEntry } from '@/api/logs';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import {
@@ -229,15 +229,40 @@ export const LogsPage = () => {
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [pollMs, setPollMs] = usePersistentState('tcp_logs_poll_ms', 5_000);
+  // Incremental polling: after the first full load, only lines newer than
+  // the last seen id are fetched and appended (the server supports afterId).
+  const [logBuffer, setLogBuffer] = useState<ServerLogEntry[]>([]);
+  const lastLogIdRef = useRef(0);
   const logsQuery = useQuery({
     queryKey: ['serverLogs'],
-    queryFn: () => listServerLogs({ limit: 5000 }),
+    queryFn: async () => {
+      const afterId = lastLogIdRef.current;
+      const res = await listServerLogs(
+        afterId > 0 ? { afterId, limit: 5000 } : { limit: 5000 },
+      );
+      const latestId = res.latestId ?? 0;
+      if (afterId > 0 && latestId > 0 && latestId < afterId) {
+        // Server restarted and ids reset — do a full reload next poll.
+        lastLogIdRef.current = 0;
+        return res;
+      }
+      lastLogIdRef.current = Math.max(afterId, latestId);
+      setLogBuffer((prev) => {
+        if (afterId <= 0) return res.logs;
+        if (!res.logs.length) return prev;
+        const merged = [...prev, ...res.logs];
+        return merged.length > 5000
+          ? merged.slice(merged.length - 5000)
+          : merged;
+      });
+      return res;
+    },
     refetchInterval: paused ? false : pollMs,
     refetchOnWindowFocus: false,
     retry: false,
   });
 
-  const logs = useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs]);
+  const logs = logBuffer;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const byText = q
@@ -281,6 +306,8 @@ export const LogsPage = () => {
   const clearMutation = useMutation({
     mutationFn: clearServerLogs,
     onSuccess: async () => {
+      lastLogIdRef.current = 0;
+      setLogBuffer([]);
       await queryClient.invalidateQueries({ queryKey: ['serverLogs'] });
       setClearAllOpen(false);
     },
