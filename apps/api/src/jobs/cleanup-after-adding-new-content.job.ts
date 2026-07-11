@@ -4079,9 +4079,6 @@ export function buildMediaAddedCleanupReport(params: {
     typeof v === 'boolean' ? v : null;
 
   for (const w of warningsRaw) {
-    const lower = w.toLowerCase();
-    if (lower.startsWith('radarr:')) continue;
-    if (lower.startsWith('sonarr:')) continue;
     issues.push(issue('warn', w));
   }
 
@@ -4351,12 +4348,14 @@ export function buildMediaAddedCleanupReport(params: {
     const connected = rec ? asBool(rec.connected) : null;
     const serviceName = service === 'radarr' ? 'Radarr' : 'Sonarr';
 
+    // A configured integration that could not be reached is a FAILURE, not a
+    // skip — otherwise an arr outage reports a silent success.
     const status =
-      !applicable ||
-      configured === false ||
-      (configured === true && connected === false)
+      !applicable || configured === false
         ? ('skipped' as const)
-        : ('success' as const);
+        : configured === true && connected === false
+          ? ('failed' as const)
+          : ('success' as const);
 
     const result = !features.unmonitorInArr
       ? 'Disabled in task settings.'
@@ -4365,7 +4364,7 @@ export function buildMediaAddedCleanupReport(params: {
         : configured === false
           ? 'Skipped: not configured.'
           : configured === true && connected === false
-            ? 'Skipped: unavailable during this run.'
+            ? 'Failed: configured but unreachable during this run.'
             : 'Processed.';
 
     const facts: Array<{ label: string; value: JsonValue }> = [

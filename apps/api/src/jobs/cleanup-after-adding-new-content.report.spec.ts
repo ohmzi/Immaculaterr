@@ -81,7 +81,7 @@ describe('buildMediaAddedCleanupReport', () => {
     ).toBe(false);
   });
 
-  it('marks unreachable Sonarr as skipped without promoting it to a top-level issue', () => {
+  it('marks unreachable Sonarr as failed and keeps its warning visible', () => {
     const ctx = createCtx(false);
     const raw: JsonObject = {
       mediaType: '',
@@ -125,11 +125,14 @@ describe('buildMediaAddedCleanupReport', () => {
     const sonarrTask = report.tasks.find((t) => t.id === 'arr_sonarr');
     const issueMessages = report.issues.map((i) => i.message);
 
-    expect(sonarrTask?.status).toBe('skipped');
-    expect(sonarrTask?.issues ?? []).toEqual([]);
+    // A configured-but-unreachable integration must fail the run instead of
+    // reporting a silent success, and its warning stays in the report.
+    expect(sonarrTask?.status).toBe('failed');
     expect(
-      issueMessages.some((m) => m.includes('Unable to connect to Sonarr.')),
-    ).toBe(false);
+      issueMessages.some((m) =>
+        m.includes('sonarr: failed to load series (continuing): timeout'),
+      ),
+    ).toBe(true);
   });
 
   it('marks disabled feature tasks as skipped for no-feature runs', () => {
