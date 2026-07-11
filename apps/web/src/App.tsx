@@ -44,15 +44,16 @@ const ProfilePage = lazyPage(() => import('@/pages/ProfilePage'), 'ProfilePage')
 // The fallback renders the exact page backdrop (image + washes) so a slow
 // chunk load on mobile looks like the next screen fading in, not a black
 // flash.
+// Boot splash: identical to the AppShell backdrop so the handoff from first
+// paint to the shell is seamless.
 const RouteFallback = () => (
-  <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+  <div className="relative min-h-screen overflow-hidden bg-gray-900">
     <div className="pointer-events-none fixed inset-0 z-0">
       <img
         src={APP_BG_IMAGE_URL}
         alt=""
         className="h-full w-full object-cover object-center opacity-80"
       />
-      <div className="absolute inset-0 bg-gradient-to-br from-amber-400/25 via-purple-900/45 to-zinc-950/70" />
       <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
       <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
     </div>

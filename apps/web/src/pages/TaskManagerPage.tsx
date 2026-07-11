@@ -56,9 +56,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
 import { SavingPill } from '@/components/SavingPill';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
 import {
@@ -3933,17 +3930,10 @@ export function TaskManagerPage() {
   }, [immaculateStartSearchImmediately, immaculateStartSearchMutation]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-hidden text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, indigo-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
         <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/55 via-blue-900/65 to-slate-900/75" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       {/* Task Manager Content */}

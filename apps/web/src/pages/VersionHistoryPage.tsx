@@ -6,11 +6,6 @@ import { toast } from 'sonner';
 
 import { copyToClipboard } from '@/lib/clipboard';
 
-import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
-} from '@/lib/ui-classes';
 import { formatDisplayVersion, VERSION_HISTORY_ENTRIES } from '@/lib/version-history';
 
 function versionAnchorId(version: string): string {
@@ -57,17 +52,10 @@ export function VersionHistoryPage() {
   }, [titleIconControls, titleIconGlowControls]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, amber-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
         <div className="absolute inset-0 bg-gradient-to-br from-amber-300/25 via-yellow-700/35 to-slate-950/75" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">

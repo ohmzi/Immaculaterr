@@ -20,8 +20,6 @@ import { toast } from 'sonner';
 import { usePersistentState } from '@/lib/usePersistentState';
 
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
 import { getImmaculateTasteCollections } from '@/api/immaculate';
@@ -1447,18 +1445,11 @@ export function ObservatoryPage() {
   }, [swipeTopCardWatched]);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
           {/* Background (landing-page style, amber-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
         {/* Purple-tinted overlay (bright yellow top-left, purple wash, dark purple bottom-right) */}
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-300/16 via-purple-800/60 to-purple-950/85" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">

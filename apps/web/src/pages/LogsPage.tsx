@@ -10,9 +10,6 @@ import { clearServerLogs, listServerLogs, type ServerLogEntry } from '@/api/logs
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
 
@@ -378,17 +375,10 @@ export const LogsPage = () => {
   }, [clearMutation, logs.length]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, cyan-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/30 via-sky-700/40 to-indigo-900/65" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">

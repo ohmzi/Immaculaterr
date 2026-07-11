@@ -34,9 +34,6 @@ import { useLocation } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_HEADER_STATUS_PILL_BASE_CLASS,
 } from '@/lib/ui-classes';
 import {
@@ -3170,17 +3167,10 @@ export const SettingsPage = ({
   }, [tautulliApiKey, tautulliEnabled, runTautulliTest]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Background (landing-page style, blue-tinted) */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
         <div className={`absolute inset-0 ${backgroundGradientClass}`} />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       {/* Settings Content */}

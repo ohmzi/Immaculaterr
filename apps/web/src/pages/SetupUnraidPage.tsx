@@ -4,12 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { copyToClipboard } from '@/lib/clipboard';
 
-import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
-} from '@/lib/ui-classes';
-
 const UNRAID_HTTP_ONLY_COMPOSE_YAML = [
   'services:',
   '  immaculaterr:',
@@ -209,16 +203,9 @@ export function SetupUnraidPage() {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div className="relative min-h-screen overflow-hidden select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
         <div className="absolute inset-0 bg-gradient-to-br from-sky-400/30 via-indigo-700/45 to-slate-950/70" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">

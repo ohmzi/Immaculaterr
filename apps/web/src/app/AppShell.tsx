@@ -6,7 +6,16 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Suspense } from 'react';
+import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
+
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+} from '@/lib/ui-classes';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -374,20 +383,52 @@ export const AppShell = () => {
   }, [location.pathname, navigate, onboardingCompleted]);
 
   const isHomePage = location.pathname === '/';
+  const outlet = useOutlet();
   const recoveryInputClass =
     'w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition';
 
   return (
-    <div className="min-h-screen bg-background transition-colors duration-300">
+    <div className="min-h-screen bg-gray-900 transition-colors duration-300">
+      {/* Persistent backdrop: painted once and never unmounted, so route
+          changes never re-rasterize the artwork (the old "flash"). Pages
+          keep only their own colour-tint layer on top. */}
+      <div className="pointer-events-none fixed inset-0 z-0 bg-gray-900">
+        <img
+          src={APP_BG_IMAGE_URL}
+          alt=""
+          className="h-full w-full object-cover object-center opacity-80"
+        />
+        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
+      </div>
+
       {/* Desktop navigation (same on every screen) */}
       <Navigation />
 
       {/* Main Content */}
       <main className={isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}>
-        {/* Force route content to remount on path change.
-            This avoids rare cases where a previous page's state/overlays prevent the next page from rendering,
-            even though the URL changes (observed leaving Observatory). */}
-        <Outlet key={location.pathname} />
+        {/* Cross-fade between screens. The captured outlet element keeps the
+            old page rendering during its exit, and keying by pathname still
+            forces a clean remount per route (previous overlay-state fix). */}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
+          >
+            <Suspense
+              fallback={
+                <div className="flex min-h-[60vh] items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+                </div>
+              }
+            >
+              {outlet}
+            </Suspense>
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Mobile app navigation */}

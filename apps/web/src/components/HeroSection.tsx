@@ -11,7 +11,6 @@ import { ArrowRight, ChevronRight, Lock } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
-import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
 
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
@@ -573,15 +572,6 @@ export function HeroSection() {
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8 select-none [-webkit-touch-callout:none]">
-      {/* Background Image */}
-      <div className="pointer-events-none fixed inset-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt="Movie posters collection"
-          className="h-full w-full object-cover object-center"
-        />
-      </div>
-      
       {/* Gradient Overlay */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
 
