@@ -135,6 +135,40 @@ function getFactPresentation(params: {
     return { label, summary: '—' };
   }
 
+  // Unknown object shapes: render as readable "key: value" pairs instead of
+  // a raw JSON blob. Arrays of scalars become comma lists; anything deeper
+  // still falls back to compact JSON per entry.
+  if (Array.isArray(value)) {
+    const scalarish = value.every(
+      (entry) =>
+        entry === null ||
+        ['string', 'number', 'boolean'].includes(typeof entry),
+    );
+    if (scalarish) {
+      return {
+        label,
+        summary: value.map((entry) => String(entry ?? '—')).join(', '),
+      };
+    }
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).slice(0, 8);
+    if (entries.length > 0) {
+      const summary = entries
+        .map(([key, entry]) => {
+          const rendered =
+            entry === null || entry === undefined
+              ? '—'
+              : ['string', 'number', 'boolean'].includes(typeof entry)
+                ? String(entry)
+                : JSON.stringify(entry);
+          return `${key}: ${rendered}`;
+        })
+        .join(' · ');
+      return { label, summary };
+    }
+  }
+
   return { label, summary: JSON.stringify(value) };
 }
 
