@@ -1,4 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
+import { truncateErrorMessage, truncateForLog } from '../log.utils';
 
 type SonarrSystemStatus = Record<string, unknown>;
 export type SonarrSeries = Record<string, unknown> & {
@@ -120,40 +122,14 @@ export class SonarrService {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrSeries[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/series');
-
-    const controller = new AbortController();
-    // Large libraries can take a while to serialize with statistics included.
-    const timeout = setTimeout(() => controller.abort(), 60000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list series failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      return Array.isArray(data) ? (data as SonarrSeries[]) : [];
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list series failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/series',
+      label: 'list series',
+      timeoutMs: 60000,
+    });
+    return Array.isArray(data) ? (data as SonarrSeries[]) : [];
   }
 
   async listMonitoredSeries(params: {
@@ -339,153 +315,39 @@ export class SonarrService {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrRootFolder[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/rootfolder');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list root folders failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data)
-        ? (data as Array<Record<string, unknown>>)
-        : [];
-
-      const out: SonarrRootFolder[] = [];
-      for (const r of rows) {
-        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
-        const path = typeof r['path'] === 'string' ? r['path'].trim() : '';
-        if (!Number.isFinite(id) || id <= 0) continue;
-        if (!path) continue;
-        out.push({ id: Math.trunc(id), path });
-      }
-      return out;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list root folders failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/rootfolder',
+      label: 'list root folders',
+    });
+    return Array.isArray(data) ? (data as SonarrRootFolder[]) : [];
   }
 
   async listQualityProfiles(params: {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrQualityProfile[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/qualityprofile');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list quality profiles failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data)
-        ? (data as Array<Record<string, unknown>>)
-        : [];
-
-      const out: SonarrQualityProfile[] = [];
-      for (const r of rows) {
-        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
-        const name = typeof r['name'] === 'string' ? r['name'].trim() : '';
-        if (!Number.isFinite(id) || id <= 0) continue;
-        if (!name) continue;
-        out.push({ id: Math.trunc(id), name });
-      }
-      return out;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list quality profiles failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/qualityprofile',
+      label: 'list quality profiles',
+    });
+    return Array.isArray(data) ? (data as SonarrQualityProfile[]) : [];
   }
 
   async listTags(params: {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrTag[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list tags failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data)
-        ? (data as Array<Record<string, unknown>>)
-        : [];
-
-      const out: SonarrTag[] = [];
-      for (const r of rows) {
-        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
-        const label = typeof r['label'] === 'string' ? r['label'].trim() : '';
-        if (!Number.isFinite(id) || id <= 0) continue;
-        if (!label) continue;
-        out.push({ id: Math.trunc(id), label });
-      }
-      return out;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list tags failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/tag',
+      label: 'list tags',
+    });
+    return Array.isArray(data) ? (data as SonarrTag[]) : [];
   }
 
   async lookupSeries(params: {
@@ -1003,42 +865,64 @@ export class SonarrService {
    * Minimal JSON request helper for the size-capped-profile endpoints
    * (custom formats + quality profiles). GET on body=undefined, else POST.
    */
-  private async profileApiRequest<T>(params: {
+  /**
+   * Shared JSON request for Sonarr: timeout, one transient retry on
+   * idempotent GETs, and truncated secret-free error text.
+   */
+  private async apiJsonRequest<T>(params: {
     baseUrl: string;
     apiKey: string;
     path: string;
+    label: string;
     body?: unknown;
+    timeoutMs?: number;
   }): Promise<T> {
     const url = this.buildApiUrl(params.baseUrl, params.path);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      params.timeoutMs ?? 30000,
+    );
+    const isGet = params.body === undefined;
     try {
-      const res = await fetch(url, {
-        method: params.body === undefined ? 'GET' : 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'X-Api-Key': params.apiKey,
-        },
-        body:
-          params.body === undefined ? undefined : JSON.stringify(params.body),
-        signal: controller.signal,
-      });
+      const doFetch = () =>
+        fetch(url, {
+          method: isGet ? 'GET' : 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Api-Key': params.apiKey,
+          },
+          body: isGet ? undefined : JSON.stringify(params.body),
+          signal: controller.signal,
+        });
+      const res = isGet
+        ? await fetchWithTransientRetry(doFetch)
+        : await doFetch();
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr ${params.path} failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr ${params.label} failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
       return (await res.json()) as T;
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr ${params.path} failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr ${params.label} failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async profileApiRequest<T>(params: {
+    baseUrl: string;
+    apiKey: string;
+    path: string;
+    body?: unknown;
+  }): Promise<T> {
+    return await this.apiJsonRequest<T>({ ...params, label: params.path });
   }
 
   async listCustomFormats(params: {

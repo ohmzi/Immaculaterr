@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
 import { truncateForLog } from '../log.utils';
 import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
@@ -269,14 +270,16 @@ export class SeerrService {
       const timeout = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'X-Api-Key': apiKey,
-          },
-          signal: controller.signal,
-        });
+        const res = await fetchWithTransientRetry(() =>
+          fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              'X-Api-Key': apiKey,
+            },
+            signal: controller.signal,
+          }),
+        );
 
         if (!res.ok) {
           const body = await res.text().catch(() => '');
@@ -357,14 +360,16 @@ export class SeerrService {
       const timeout = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'X-Api-Key': apiKey,
-          },
-          signal: controller.signal,
-        });
+        const res = await fetchWithTransientRetry(() =>
+          fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              'X-Api-Key': apiKey,
+            },
+            signal: controller.signal,
+          }),
+        );
 
         if (!res.ok) {
           const body = await res.text().catch(() => '');
