@@ -79,6 +79,14 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         ],
       },
       {
+        title: 'Reliability and performance',
+        bullets: [
+          'Tasks now fail loudly and honestly: a failed scrape, an unreachable Radarr/Sonarr, or an all-items-failed run marks the task failed in the report instead of hiding behind counters — and the large-file replacer no longer reports space freed when nothing was deleted.',
+          'Every plex.tv request now has a timeout, transient upstream blips (429/503, resets) are retried once on reads, and all error text in logs and reports is bounded with API keys redacted.',
+          'The app loads much faster: pages are code-split and fetched on first visit instead of shipping one 1.9 MB bundle, the Logs page polls only new lines, and Cutting Room listings answer instantly from a short cache after the first scan.',
+        ],
+      },
+      {
         title: 'Security dependency updates',
         bullets: [
           'Resolved high-severity dependency advisories: multer 2.2.0 (upload DoS fixes), react-router-dom 7.18.1 (redirect and deserialization fixes), and a refreshed qs.',

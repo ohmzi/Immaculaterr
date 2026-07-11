@@ -23,6 +23,10 @@ This file tracks notable changes by version.
   - Filters and tabs are remembered across visits; the Vault shows a retry on load failure and warns about unsaved changes (Command Center warns too).
   - Observatory arrow-key swiping on both decks plus a pending-sync chip with Apply now.
   - Wanted List unmonitor runs offer a 12-second Undo; Pruned History shows all-time reclaimed space; release notes are deep-linkable.
+- Reliability and performance:
+  - Tasks fail loudly and honestly: failed scrapes, unreachable Radarr/Sonarr, or all-items-failed runs mark the report task failed instead of hiding behind counters; the large-file replacer no longer reports space freed when nothing was deleted.
+  - Every plex.tv request has a timeout, transient upstream blips (429/503, resets) are retried once on reads, and error text in logs and reports is bounded with API keys redacted.
+  - Faster loading: pages are code-split and fetched on first visit instead of one 1.9 MB bundle, the Logs page polls only new lines, and Cutting Room listings answer from a short cache after the first scan.
 - Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), and refreshing qs.
 
 ## 1.7.10-beta-2
