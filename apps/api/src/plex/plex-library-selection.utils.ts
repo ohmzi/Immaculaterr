@@ -55,6 +55,52 @@ export function readConfiguredExcludedSectionKeys(
   );
 }
 
+export type ExcludedLibraryRef = {
+  key: string;
+  title: string;
+  type: 'movie' | 'show';
+};
+
+function normalizeTitleForMatch(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+/**
+ * Excluded libraries remembered as {key, title, type} triples. Plex assigns a
+ * NEW key when a library is deleted and re-created, which silently orphaned
+ * key-only exclusions; the title+type pair lets an exclusion follow the
+ * library across re-creation.
+ */
+export function readConfiguredExcludedLibraries(
+  settings: Record<string, unknown>,
+): ExcludedLibraryRef[] {
+  const raw = pick(settings, 'plex.librarySelection.excludedLibraries');
+  if (!Array.isArray(raw)) return [];
+  const out: ExcludedLibraryRef[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (!isPlainObject(entry)) continue;
+    const key = normalizeSectionKey(entry['key']);
+    const title =
+      typeof entry['title'] === 'string' ? entry['title'].trim() : '';
+    const type = entry['type'] === 'show' ? 'show' : 'movie';
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, title, type });
+  }
+  return out;
+}
+
+export function buildExcludedLibrariesFromSelected(params: {
+  eligibleLibraries: PlexEligibleLibrary[];
+  selectedSectionKeys: unknown;
+}): ExcludedLibraryRef[] {
+  const selected = new Set(sanitizeSectionKeys(params.selectedSectionKeys));
+  return params.eligibleLibraries
+    .filter((lib) => !selected.has(lib.key))
+    .map((lib) => ({ key: lib.key, title: lib.title, type: lib.type }));
+}
+
 export function toEligiblePlexLibraries(
   sections: PlexSectionLike[],
 ): PlexEligibleLibrary[] {
@@ -84,10 +130,29 @@ export function resolvePlexLibrarySelection(params: {
 }) {
   const eligibleLibraries = toEligiblePlexLibraries(params.sections);
   const eligibleSet = new Set(eligibleLibraries.map((s) => s.key));
-  const excludedSectionKeys = readConfiguredExcludedSectionKeys(
-    params.settings,
-  ).filter((key) => eligibleSet.has(key));
-  const excludedSet = new Set(excludedSectionKeys);
+  const excludedSet = new Set(
+    readConfiguredExcludedSectionKeys(params.settings).filter((key) =>
+      eligibleSet.has(key),
+    ),
+  );
+  // Follow exclusions across Plex re-keying: an entry whose key vanished
+  // still excludes the eligible library with the same title and type.
+  for (const ref of readConfiguredExcludedLibraries(params.settings)) {
+    if (eligibleSet.has(ref.key)) {
+      excludedSet.add(ref.key);
+      continue;
+    }
+    if (!ref.title) continue;
+    const match = eligibleLibraries.find(
+      (lib) =>
+        lib.type === ref.type &&
+        normalizeTitleForMatch(lib.title) === normalizeTitleForMatch(ref.title),
+    );
+    if (match) excludedSet.add(match.key);
+  }
+  const excludedSectionKeys = eligibleLibraries
+    .map((lib) => lib.key)
+    .filter((key) => excludedSet.has(key));
   const selectedSectionKeys = eligibleLibraries
     .map((lib) => lib.key)
     .filter((key) => !excludedSet.has(key));

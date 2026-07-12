@@ -18,11 +18,12 @@ import { OpenAiService } from '../openai/openai.service';
 import { SeerrService } from '../seerr/seerr.service';
 import { TautulliService } from '../tautulli/tautulli.service';
 import {
-  type PlexEligibleLibrary,
-  buildExcludedSectionKeysFromSelected,
   PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+  buildExcludedLibrariesFromSelected,
+  buildExcludedSectionKeysFromSelected,
   resolvePlexLibrarySelection,
   sanitizeSectionKeys,
+  type PlexEligibleLibrary,
 } from '../plex/plex-library-selection.utils';
 import {
   buildExcludedPlexUserIdsFromSelected,
@@ -854,6 +855,10 @@ export class IntegrationsController {
       eligibleLibraries: selection.eligibleLibraries,
       selectedSectionKeys,
     });
+    const excludedLibraries = buildExcludedLibrariesFromSelected({
+      eligibleLibraries: selection.eligibleLibraries,
+      selectedSectionKeys,
+    });
     const requestedSelectedSet = new Set(selectedSectionKeys);
     const deselectedSectionKeys = selection.selectedSectionKeys.filter(
       (key) => !requestedSelectedSet.has(key),
@@ -867,6 +872,9 @@ export class IntegrationsController {
       plex: {
         librarySelection: {
           excludedSectionKeys,
+          // Title+type triples let exclusions survive Plex re-keying a
+          // deleted-and-re-created library.
+          excludedLibraries,
         },
       },
     });
