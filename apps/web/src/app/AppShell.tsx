@@ -427,7 +427,15 @@ export const AppShell = () => {
             key={location.pathname}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            // Overlay fade, not cross-fade: the outgoing page HOLDS at full
+            // opacity while the incoming one fades in above it, so combined
+            // coverage never dips and the backdrop (with its amber highlight)
+            // can never flash through mid-transition. The held page then
+            // drops in a final 60ms hidden beneath the fully-opaque newcomer.
+            exit={{
+              opacity: 0,
+              transition: { delay: 0.22, duration: 0.06, ease: 'linear' },
+            }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <Suspense
