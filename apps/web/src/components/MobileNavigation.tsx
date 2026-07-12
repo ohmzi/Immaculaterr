@@ -19,7 +19,6 @@ import { createDebuggerUrl } from '@/lib/debugger';
 import { formatDisplayVersion } from '@/lib/version-history';
 import { clearClientUserData } from '@/lib/security/clearClientUserData';
 import {
-  toPublicHref,
   withPublicBasePath,
 } from '@/lib/public-path';
 
@@ -82,18 +81,11 @@ export function MobileNavigation({ onLogout }: MobileNavigationProps) {
     if (!dest) return;
     setIsSearchOpen(false);
 
-    // iOS "Add to Home Screen" / standalone PWAs can have flaky SPA navigation,
-    // especially after visiting heavy animated/backdrop-filter pages (Observatory).
-    // Prefer a hard navigation there to guarantee leaving the current view.
-    const isStandalone =
-      window.matchMedia?.('(display-mode: standalone)')?.matches ||
-      Boolean((navigator as unknown as { standalone?: boolean } | undefined)?.standalone);
-    if (isStandalone) {
-      window.location.assign(toPublicHref(dest));
-      return;
-    }
-
-    // Prefer SPA navigation with a safety fallback handled by useSafeNavigate.
+    // SPA navigation everywhere — including standalone PWAs. The old
+    // hard-reload workaround for flaky iOS standalone navigation forced a
+    // full app boot ("Checking session…") on every tap; the flakiness it
+    // covered is gone with the persistent shell, and useSafeNavigate still
+    // hard-falls-back automatically if the router ever fails to move.
     navigate(dest);
   }, [navigate]);
 

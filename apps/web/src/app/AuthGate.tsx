@@ -31,6 +31,7 @@ import {
   APP_CARD_ICON_GLOW_CLASS,
   APP_CARD_INTERACTIVE_CLASS,
 } from '@/lib/ui-classes';
+import { tintClassForPath } from '@/app/route-tints';
 import { cn } from '@/lib/utils';
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -482,7 +483,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             alt=""
             className="h-full w-full object-cover object-center opacity-80"
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
+          {/* Tint the boot splash to the destination route so a cold load
+              blends straight into the page it opens on. */}
+          <div
+            className={`absolute inset-0 ${tintClassForPath(window.location.pathname)}`}
+          />
           <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
           <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
         </div>
