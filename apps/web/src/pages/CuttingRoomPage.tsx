@@ -758,7 +758,10 @@ function FactorsStep(props: {
     });
   };
 
+  const hasFactorSelection = Object.values(factors).some(Boolean);
+
   const handleNext = () => {
+    if (!hasFactorSelection) return;
     onSave({
       factors,
       recencyWindowDays: recency,
@@ -894,13 +897,23 @@ function FactorsStep(props: {
       <div className="flex justify-end">
         <button
           type="button"
-          disabled={saving}
+          disabled={saving || !hasFactorSelection}
           onClick={handleNext}
-          className={`${APP_PRESSABLE_CLASS} px-5 py-2.5 rounded-xl bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)]`}
+          title={
+            hasFactorSelection
+              ? undefined
+              : 'Pick at least one signal to continue'
+          }
+          className={`${APP_PRESSABLE_CLASS} px-5 py-2.5 rounded-xl bg-[#facc15] text-black font-bold shadow-[0_0_20px_rgba(250,204,21,0.25)] disabled:opacity-40 disabled:shadow-none`}
         >
           Continue
         </button>
       </div>
+      {!hasFactorSelection ? (
+        <p className="text-right text-xs text-white/45 -mt-4">
+          Select at least one card above to continue.
+        </p>
+      ) : null}
     </div>
   );
 }
