@@ -288,9 +288,6 @@ export function ProfilePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#2e1065]/50 via-[#1e1b4b]/60 to-[#0f172a]/70" />
-      </div>
 
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
         <div className="container mx-auto max-w-5xl min-w-0 px-4 pb-20">

@@ -774,10 +774,6 @@ export function JobRunDetailPage() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, Rewind violet-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400/35 via-violet-700/45 to-indigo-900/65" />
-      </div>
 
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16 select-text">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">

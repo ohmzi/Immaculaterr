@@ -16,6 +16,7 @@ import {
   APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
+import { tintClassForPath } from '@/app/route-tints';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -408,6 +409,13 @@ export const AppShell = () => {
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
+      {/* Route tint: swaps in a single frame on navigation. Keeping it out of
+          the content cross-fade means two page colours can never blend, so
+          transitions cannot flash the wrong hue. */}
+      <div
+        className={`pointer-events-none fixed inset-0 z-0 ${tintClassForPath(location.pathname)}`}
+      />
+
       {/* Desktop navigation (same on every screen) */}
       <Navigation />
 
@@ -427,16 +435,11 @@ export const AppShell = () => {
             key={location.pathname}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            // Overlay fade, not cross-fade: the outgoing page HOLDS at full
-            // opacity while the incoming one fades in above it, so combined
-            // coverage never dips and the backdrop (with its amber highlight)
-            // can never flash through mid-transition. The held page then
-            // drops in a final 60ms hidden beneath the fully-opaque newcomer.
-            exit={{
-              opacity: 0,
-              transition: { delay: 0.22, duration: 0.06, ease: 'linear' },
-            }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
+            // Symmetric cross-fade over a CONSTANT tint (the shell swaps the
+            // route tint instantly): a mid-fade dip now reveals the correctly
+            // tinted backdrop, so no colour can flash.
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
           >
             <Suspense
               fallback={

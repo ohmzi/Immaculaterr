@@ -220,7 +220,6 @@ export const SettingsPage = ({
   headerIcon,
   subtitle,
   subtitleDetails,
-  backgroundGradientClass = 'bg-gradient-to-br from-[#2e1065]/50 via-[#1e1b4b]/60 to-[#0f172a]/70',
   extraContent,
   showCards = true,
 }: {
@@ -228,7 +227,6 @@ export const SettingsPage = ({
   headerIcon: ReactNode;
   subtitle: ReactNode;
   subtitleDetails?: ReactNode;
-  backgroundGradientClass?: string;
   extraContent?: ReactNode;
   showCards?: boolean;
 }) => {
@@ -3168,11 +3166,6 @@ export const SettingsPage = ({
 
   return (
     <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, blue-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div className={`absolute inset-0 ${backgroundGradientClass}`} />
-      </div>
-
       {/* Settings Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">

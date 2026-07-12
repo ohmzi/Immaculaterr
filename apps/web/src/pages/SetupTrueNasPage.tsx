@@ -220,9 +220,6 @@ export function SetupTrueNasPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-sky-400/30 via-indigo-700/45 to-slate-950/70" />
-      </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">

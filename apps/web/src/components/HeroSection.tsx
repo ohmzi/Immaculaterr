@@ -572,8 +572,6 @@ export function HeroSection() {
 
   return (
     <section className="relative min-h-screen overflow-hidden pb-32 lg:pb-8 select-none [-webkit-touch-callout:none]">
-      {/* Gradient Overlay */}
-      <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-yellow-400/90 via-yellow-300/85 to-green-400/90" />
 
       {/* Content Container */}
       <div className="relative z-10 container mx-auto px-6 lg:px-8 pt-28 sm:pt-32 lg:pt-40 pb-24">

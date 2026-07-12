@@ -376,10 +376,6 @@ export const LogsPage = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, cyan-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/30 via-sky-700/40 to-indigo-900/65" />
-      </div>
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <PullToRefresh onRefresh={() => logsQuery.refetch()}>

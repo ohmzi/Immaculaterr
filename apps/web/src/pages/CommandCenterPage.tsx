@@ -4028,7 +4028,6 @@ export function CommandCenterPage() {
           strokeWidth={2.5}
         />
       }
-      backgroundGradientClass="bg-gradient-to-br from-sky-900/55 via-cyan-900/60 to-slate-900/75"
       subtitle={
         <>
           Tweak, tune, and turbocharge your{' '}

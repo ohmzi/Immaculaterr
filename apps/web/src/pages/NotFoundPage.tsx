@@ -17,7 +17,6 @@ export function NotFoundPage() {
       {/* Background (match landing page) */}
 
       {/* Red tint overlay */}
-      <div className="pointer-events-none fixed inset-0 bg-gradient-to-br from-red-600/85 via-rose-500/80 to-orange-400/75" />
       <div className="pointer-events-none fixed inset-0 bg-black/10" />
 
       {/* Content */}

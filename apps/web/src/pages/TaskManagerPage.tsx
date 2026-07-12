@@ -3931,10 +3931,6 @@ export function TaskManagerPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, indigo-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/55 via-blue-900/65 to-slate-900/75" />
-      </div>
 
       {/* Task Manager Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
