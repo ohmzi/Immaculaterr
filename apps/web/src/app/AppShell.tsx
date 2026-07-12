@@ -8,7 +8,6 @@ import {
 } from 'react';
 import { Suspense, useLayoutEffect } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
-import { AnimatePresence, motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 
 import {
@@ -423,35 +422,23 @@ export const AppShell = () => {
       <main
         className={`relative ${isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}`}
       >
-        {/* True cross-fade: popLayout lifts the outgoing page out of flow so
-            the incoming one renders in place and both overlap mid-fade —
-            there is never a frame without page content. The captured outlet
-            keeps the old page rendering during exit, and keying by pathname
-            still forces a clean remount per route (previous overlay fix).
-            Opacity-only on purpose: transforms would create containing
-            blocks and break the pages' fixed tint layers. */}
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            // Symmetric cross-fade over a CONSTANT tint (the shell swaps the
-            // route tint instantly): a mid-fade dip now reveals the correctly
-            // tinted backdrop, so no colour can flash.
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+        {/* Instant swap — deliberately NO transition animation. Any fade
+            momentarily thins the page over the shared backdrop and reads as
+            a colour flash. With the backdrop and route tint persistent in
+            the shell and page chunks prefetched, the old page is replaced by
+            the fully-formed next page in a single frame. Keying by pathname
+            keeps the clean remount per route (previous overlay-state fix). */}
+        <div key={location.pathname}>
+          <Suspense
+            fallback={
+              <div className="flex min-h-[60vh] items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+              </div>
+            }
           >
-            <Suspense
-              fallback={
-                <div className="flex min-h-[60vh] items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-white/40" />
-                </div>
-              }
-            >
-              {outlet}
-            </Suspense>
-          </motion.div>
-        </AnimatePresence>
+            {outlet}
+          </Suspense>
+        </div>
       </main>
 
       {/* Mobile app navigation */}
