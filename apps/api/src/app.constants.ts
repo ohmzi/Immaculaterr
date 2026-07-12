@@ -8,7 +8,11 @@ export const API_DEFAULT_PORT = 5454;
 export const API_DEV_PORT_EXAMPLE = 5859;
 export const HTTP_SLOW_REQUEST_THRESHOLD_MS = 1_500;
 
-export const API_RATE_LIMIT_DEFAULT_MAX = 120;
+// General API limiter (token bucket): the burst covers fast navigation
+// (each page fires several parallel queries), the sustained rate caps
+// request floods. Auth endpoints keep separate, stricter fixed windows.
+export const API_RATE_LIMIT_DEFAULT_MAX = 240;
+export const API_RATE_LIMIT_DEFAULT_BURST = 400;
 export const API_RATE_LIMIT_DEFAULT_WINDOW_MS = 60_000;
 
 export const AUTH_RATE_LIMIT_DEFAULT_WINDOW_MS = 60_000;
