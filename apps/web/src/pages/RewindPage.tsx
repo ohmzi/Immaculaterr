@@ -1084,7 +1084,12 @@ export const RewindPage = () => {
                                             }
                                             disabled={!needsExpand}
                                             className={[
-                                              'min-w-0 text-left break-words [overflow-wrap:anywhere]',
+                                              'min-w-0 flex-1 text-left',
+                                              // Collapsed: one ellipsized line so rows stay compact;
+                                              // wrapping only once expanded.
+                                              expanded
+                                                ? 'break-words [overflow-wrap:anywhere]'
+                                                : 'truncate',
                                               needsExpand
                                                 ? 'cursor-pointer underline decoration-dotted underline-offset-2 hover:text-red-100'
                                                 : 'cursor-default',
@@ -1097,9 +1102,7 @@ export const RewindPage = () => {
                                                 : undefined
                                             }
                                           >
-                                            {expanded || !needsExpand
-                                              ? msg
-                                              : `${msg.slice(0, 56)}…`}
+                                            {msg}
                                           </button>
                                           <button
                                             type="button"
