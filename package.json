@@ -39,7 +39,7 @@
     "security:ci": "npm run quality:ci && npm run security:check:ajv && npm run security:audit:prod"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.2.4"
   },
   "overrides": {
     "file-type": "21.3.2",
