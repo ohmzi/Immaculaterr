@@ -25,7 +25,7 @@
     "test": "npm --workspaces --if-present run test",
     "quality:ci": "npm run lint && npm run build && npm run test && npm run test:workflow:publish && npm run test:workflow:ci",
     "security:check:ajv": "bash -lc 'command -v rg >/dev/null 2>&1 || { echo \"rg is required for security:check:ajv\"; exit 2; }; ! rg -n \"\\\\$data[[:space:]]*:[[:space:]]*true\" apps scripts .github -g \"**/*.{js,cjs,mjs,ts,tsx,cts,mts,json,yml,yaml}\" -g \"!**/node_modules/**\" -g \"!**/dist/**\" -g \"!**/coverage/**\"'",
-    "security:audit:prod": "npm audit --omit=dev --audit-level=high",
+    "security:audit:prod": "node security/audit-prod.mjs",
     "security:scan:semgrep": "bash security/scanners/semgrep.sh",
     "security:scan:trivy": "bash security/scanners/trivy-image.sh",
     "security:scan:zap": "bash security/scanners/zap-baseline.sh",
@@ -47,6 +47,9 @@
     "diff": "4.0.4",
     "multer": "2.2.0",
     "terser-webpack-plugin": "5.3.17",
-    "shell-quote": "1.10.0"
+    "shell-quote": "1.10.0",
+    "@nestjs/swagger": {
+      "js-yaml": "4.3.1"
+    }
   }
 }
