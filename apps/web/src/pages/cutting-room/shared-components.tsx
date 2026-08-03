@@ -1,7 +1,9 @@
 import { useState, type ChangeEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Info, X } from 'lucide-react';
 
 import type { LargeFileItem } from '@/api/cutting-room';
+import type { FaqReturnState } from '@/lib/faq-feature-links';
 import { useSafeNavigate } from '@/lib/navigation';
 import { fmtBytes, lfItemKey, SHIFT_RANGE_HINT, useShiftRangeSelect } from './shared';
 
@@ -78,10 +80,15 @@ export function TagPillInput(props: {
 
 export function FaqPill(props: { section: string; label: string }) {
   const navigate = useSafeNavigate();
+  const location = useLocation();
+  const returnState: FaqReturnState = {
+    featureReturnTo: location.pathname,
+    featureReturnAnchor: props.section,
+  };
   return (
     <button
       type="button"
-      onClick={() => void navigate(`/faq#${props.section}`)}
+      onClick={() => void navigate(`/faq#${props.section}`, { state: returnState })}
       className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold leading-none text-white/75 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
       aria-label={`Open FAQ for ${props.label}`}
       title={`Open FAQ for ${props.label}`}

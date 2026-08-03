@@ -39,83 +39,62 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
     version: '1.7.10-beta-3',
     popupHighlights: [
-      'Cutting Room: a new page that finds and prunes the media nobody will ever watch — with dry-runs, typed confirmations, and one-click restore.',
-      'Tautulli is now a first-class optional integration with a setup-wizard step and a Vault card.',
+      'Cutting Room: a new page that finds and prunes the media nobody will ever watch, with dry runs and one-click restore.',
+      'Large Files: swap oversized movies and episodes for smaller copies automatically.',
+      'Tautulli: an optional integration with its own setup step and Vault card.',
+      'Safer automation: Confirm Monitored waits for a verified file, and repeat Plex watches stop rebuilding the same collections.',
     ],
     sections: [
       {
         title: 'Cutting Room',
         bullets: [
-          'Six-step wizard: pick factors and protections, choose Plex libraries, scan once, tune the bar instantly, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.',
-          'Scoring blends real watch history (Plex, server history, Tautulli), time in library, vote-confident ratings, personal Plex star-ratings, and request provenance.',
-          'Watchlists, continue-watching, recent requests, protected tags, and Immaculaterr collections are always protected; every item is re-checked at prune time.',
-          'Pruning deletes files through Radarr/Sonarr but keeps entries unmonitored and tagged deleted-by-immaculaterr; Pruned History offers one-click Restore.',
-          'Companion tabs: Wanted List cleaner (stop future downloads without touching files), Duplicates cleaner (keep one version per movie), and Large Files replacer (swap oversized movie/episode files for smaller copies automatically).',
-          'Large Files: files over a threshold you pick (default 10 GB) are deleted, re-monitored with surgical precision (episodes: only the affected episodes, their seasons, and the show), tagged size-reduction, and re-searched so leaner copies download automatically — available as an exclusive Oversized files card in the wizard or as its own tab.',
-          'Replaced items switch to auto-created size-capped quality profiles (created once, reused after): movies reject releases over ~10 GB; episodes reject over 3 GB and prefer 1–2 GB — so re-downloads and future upgrades stay small.',
-          'Smarter Low ratings factor: points only start below 6.0 (movies) / 6.2 (shows), and any title rated 7.5+ by any source is exempt — popular and highly-regarded titles are never flagged as low rated.',
-          'Large Files hardening: double episodes sharing one file are listed once and deleted exactly once, episode sizes measure the largest single version (not all versions summed), the tab remembers your saved size threshold, and the scan shows clear warnings when Plex, a library, or a Radarr instance could not be reached.',
-          'Shift-click range selection in every Cutting Room list: click one row, then shift-click another to select (or clear) everything in between — works in the candidate review, Large Files, Wanted List, and Duplicates.',
+          'A new page that finds the movies and shows nobody is going to watch, then prunes them safely.',
+          'A guided wizard walks you through it: pick what counts against a title, choose libraries, scan, tune how low the bar goes, review the list, then type a confirmation to prune.',
+          'Scores are built from real watch history (Plex and Tautulli), time sitting in your library, ratings, and who asked for the title.',
+          'Watchlists, continue-watching, recent requests, protected tags, and Immaculaterr collections are never touched — and everything is re-checked right before pruning.',
+          'Nothing disappears for good: files are removed through Radarr/Sonarr, the entry stays tagged, and Pruned History restores it in one click.',
+          'Extra tabs for Wanted List and Duplicates, plus shift-click to select a whole range in any list.',
+        ],
+      },
+      {
+        title: 'Large Files',
+        bullets: [
+          'Finds files bigger than the size you pick (10 GB by default) and replaces them with smaller copies automatically.',
+          'Shows are handled surgically — only the oversized episodes, their seasons, and the show are re-monitored.',
+          'Replacements move to a size-capped quality profile, so re-downloads and future upgrades stay small.',
+          'Run it as its own tab for a quick pass, or as the Oversized files card in the Prune Wizard.',
         ],
       },
       {
         title: 'Tautulli integration',
         bullets: [
-          'Optional step in the setup wizard and a Vault card with connection testing.',
-          'The Cutting Room offers a shortcut to Vault when Tautulli is not configured, or continues with Plex data only.',
+          'Optional Tautulli connection with a setup-wizard step and a Vault card you can test.',
+          'Cutting Room uses it for richer watch history, or carries on with Plex data alone.',
         ],
       },
       {
-        title: 'Quality of life across the app',
+        title: 'Safer automation',
         bullets: [
-          'Cancel queued runs and pause/resume the whole job queue from Rewind; the run detail page can cancel too.',
-          'Relative timestamps everywhere ("3 minutes ago", exact time on hover) and reduced-motion support.',
-          'Search opens with Ctrl/Cmd+K or /, and now finds pages and FAQ sections; the FAQ itself gained a search box.',
-          'Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.',
-          'Rewind: load more past 200 runs, expandable + copyable error messages, and pull-to-refresh on mobile (Logs too).',
-          'Filters and tabs are remembered across visits; Vault shows a load-error retry and an unsaved-changes warning (Command Center warns too).',
-          'Observatory swipes with arrow keys on both decks and shows a pending-sync chip with Apply now.',
-          'Wanted List unmonitor runs offer a 12-second Undo; Pruned History shows your all-time reclaimed space; release notes are deep-linkable with copy-link buttons.',
+          'Confirm Monitored only unmonitors a movie once Plex can play it and Radarr confirms the file is there, so missing or half-finished downloads stay monitored.',
+          'Watching more episodes of the same show no longer rebuilds the same collections — the skip is recorded in Task Manager and Rewind so you can see why.',
         ],
       },
       {
-        title: 'Reliability and performance',
+        title: 'Quality of life',
         bullets: [
-          'Tasks now fail loudly and honestly: a failed scrape, an unreachable Radarr/Sonarr, or an all-items-failed run marks the task failed in the report instead of hiding behind counters — and the large-file replacer no longer reports space freed when nothing was deleted.',
-          'Every plex.tv request now has a timeout, transient upstream blips (429/503, resets) are retried once on reads, and all error text in logs and reports is bounded with API keys redacted.',
-          'The app loads much faster: pages are code-split and fetched on first visit instead of shipping one 1.9 MB bundle, the Logs page polls only new lines, and Cutting Room listings answer instantly from a short cache after the first scan.',
+          'Cancel queued runs and pause or resume the whole job queue from Rewind.',
+          'Search (Ctrl/Cmd+K or /) now finds pages and FAQ answers, and the FAQ has its own search box.',
+          'Logs and run reports gained pause, filtering, search, download, and copy; Rewind loads past the first 200 runs and pulls to refresh on mobile.',
+          'Filters and tabs are remembered, unsaved changes warn before you leave, and timestamps read as "3 minutes ago".',
+          'Wanted List unmonitor runs offer a 12-second undo, and release notes can be linked to directly.',
         ],
       },
       {
-        title: 'Security dependency updates',
+        title: 'Under the hood',
         bullets: [
-          'Resolved high-severity dependency advisories: multer 2.2.0 (upload DoS fixes), react-router-dom 7.18.1 (redirect and deserialization fixes), and a refreshed qs.',
-        ],
-      },
-    ],
-  },
-  {
-    version: '1.7.10-beta-2',
-    popupHighlights: [
-      'Confirm Monitored now keeps Radarr movies monitored unless Plex verifies them as playable and Radarr confirms a file already exists.',
-      'Plex repeat-watch dedupe now blocks later episodes at the show level and records skipped entries in Task Manager and Rewind.',
-    ],
-    sections: [
-      {
-        title: 'Confirm Monitored file guard',
-        bullets: [
-          'Radarr movies are only unmonitored when Plex verifies playable media and Radarr explicitly reports hasFile as true.',
-          'Verified Plex matches that still have no Radarr file now stay monitored, so missing or incomplete downloads are not treated as safely finished.',
-          'The beta also hardens the file-state check so ambiguous Radarr hasFile values no longer slip through as eligible matches.',
-        ],
-      },
-      {
-        title: 'Plex-triggered repeat-watch dedupe',
-        bullets: [
-          'Based on your recently watched and Immaculate Taste now dedupe TV auto-runs per Plex user, library, and same show instead of per individual episode.',
-          'Once a show has already triggered one of those auto-runs, later episodes of that same show are skipped instead of rebuilding the same collections again.',
-          'Repeat and in-progress duplicate auto-triggers now create skipped Task Manager and Rewind entries so the reason is visible without digging through Plex automation logs.',
-          'Existing durable auto-run history is reused, so older episode-level records still block later episodes of the same show after upgrading.',
+          'Tasks now fail honestly: a failed scrape or an unreachable Radarr/Sonarr marks the run failed instead of quietly reporting success.',
+          'The app loads much faster — pages are fetched as you visit them instead of in one big bundle.',
+          'Security updates for multer, react-router-dom, and qs.',
         ],
       },
     ],

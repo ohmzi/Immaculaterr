@@ -27,7 +27,14 @@ import {
 } from '@/lib/ui-classes';
 import {
   COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION,
+  CUTTING_ROOM_LABEL_BY_PATH,
+  CUTTING_ROOM_PATH_BY_FAQ_ITEM,
+  FEATURE_PAGE_PATH_BY_FAQ_SECTION,
   TASK_MANAGER_CARD_ID_BY_FAQ_SECTION,
+  isCuttingRoomPath,
+  type CuttingRoomFaqItemId,
+  type CuttingRoomPath,
+  type FaqReturnState,
 } from '@/lib/faq-feature-links';
 
 export const FaqPage = () => {
@@ -90,6 +97,24 @@ export const FaqPage = () => {
   const handleScrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+  // An in-app FAQ button hands over the tab it was pressed on. Only the
+  // question it deep-linked to follows that origin — every other question keeps
+  // its canonical home, so a Large Files answer opened from the Prune Wizard
+  // returns to the wizard while the same answer opened cold returns to the tab.
+  const faqReturnState = (location.state ?? null) as FaqReturnState | null;
+  const featureReturnPath =
+    faqReturnState?.featureReturnTo && isCuttingRoomPath(faqReturnState.featureReturnTo)
+      ? faqReturnState.featureReturnTo
+      : null;
+  const featureReturnAnchor = faqReturnState?.featureReturnAnchor ?? null;
+  const itemFeatureLinkFor = (itemId: string) => {
+    if (!(itemId in CUTTING_ROOM_PATH_BY_FAQ_ITEM)) return null;
+    const canonical: CuttingRoomPath =
+      CUTTING_ROOM_PATH_BY_FAQ_ITEM[itemId as CuttingRoomFaqItemId];
+    const to =
+      featureReturnPath && featureReturnAnchor === itemId ? featureReturnPath : canonical;
+    return { to, label: CUTTING_ROOM_LABEL_BY_PATH[to] };
+  };
   const renderSectionFlash = (sectionId: string) => (
     <AnimatePresence initial={false}>
       {flashSection?.id === sectionId ? (
@@ -3778,6 +3803,12 @@ export const FaqPage = () => {
                       section.id as keyof typeof TASK_MANAGER_CARD_ID_BY_FAQ_SECTION
                     ]
                   : null;
+              const featurePagePath =
+                section.id in FEATURE_PAGE_PATH_BY_FAQ_SECTION
+                  ? FEATURE_PAGE_PATH_BY_FAQ_SECTION[
+                      section.id as keyof typeof FEATURE_PAGE_PATH_BY_FAQ_SECTION
+                    ]
+                  : null;
               const featureLink = commandCenterCardId
                 ? {
                     to: `/command-center#${commandCenterCardId}`,
@@ -3788,7 +3819,12 @@ export const FaqPage = () => {
                       to: `/task-manager#job-${taskManagerCardId}`,
                       title: `Open ${section.title} in Task Manager`,
                     }
-                  : null;
+                  : featurePagePath
+                    ? {
+                        to: featurePagePath,
+                        title: `Open ${section.title}`,
+                      }
+                    : null;
               const isFlashingSection = flashSection?.id === section.id;
 
               return (
@@ -3867,7 +3903,10 @@ export const FaqPage = () => {
                       </div>
 
                       <div className="mt-6 space-y-4">
-                        {section.items.map((item, itemIndex) => (
+                        {section.items.map((item, itemIndex) => {
+                          const itemFeatureLink = itemFeatureLinkFor(item.id);
+
+                          return (
                           <div
                             key={item.id}
                             id={item.id}
@@ -3883,18 +3922,32 @@ export const FaqPage = () => {
                                 >
                                   Q{String(itemIndex + 1).padStart(2, '0')}
                                 </div>
-                                <Link
-                                  to={`${location.pathname}#${item.id}`}
-                                  className="mt-3 block text-lg font-semibold leading-tight text-white transition hover:text-[#fde68a]"
-                                >
-                                  {item.question}
-                                </Link>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <Link
+                                    to={`${location.pathname}#${item.id}`}
+                                    className="min-w-0 text-lg font-semibold leading-tight text-white transition hover:text-[#fde68a]"
+                                  >
+                                    {item.question}
+                                  </Link>
+                                  {itemFeatureLink ? (
+                                    <Link
+                                      to={itemFeatureLink.to}
+                                      className={APP_SHORTCUT_CHIP_CLASS}
+                                      title={`Open ${itemFeatureLink.label}`}
+                                      aria-label={`Open ${itemFeatureLink.label} feature`}
+                                    >
+                                      <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+                                      <span className="max-[420px]:hidden">Feature</span>
+                                    </Link>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
 
                             <div className={answerBodyClass}>{item.answer}</div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
