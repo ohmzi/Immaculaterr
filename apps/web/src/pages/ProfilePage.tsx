@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormE
 import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
-import { Info, ShieldCheck, UserRoundCog } from 'lucide-react';
+import { Copy, Info, ShieldCheck, UserRoundCog } from 'lucide-react';
 import { toast } from 'sonner';
+
+import { copyToClipboard } from '@/lib/clipboard';
 
 import {
   changePassword,
@@ -20,9 +22,6 @@ import {
   createEmptyPasswordRecoveryDrafts,
 } from '@/lib/password-recovery';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_SHORTCUT_CHIP_CLASS,
 } from '@/lib/ui-classes';
 import { getPublicBasePath, withPublicBasePath } from '@/lib/public-path';
@@ -288,17 +287,7 @@ export function ProfilePage() {
   }, [centerElementInViewport, location.hash]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-[#2e1065]/50 via-[#1e1b4b]/60 to-[#0f172a]/70" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-hidden text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
         <div className="container mx-auto max-w-5xl min-w-0 px-4 pb-20">
@@ -514,13 +503,28 @@ export function ProfilePage() {
                 >
                   App base path
                 </label>
-                <input
-                  id="profile-public-path"
-                  type="text"
-                  readOnly
-                  value={publicPathLabel}
-                  className={`${inputClass} font-mono text-sm text-white/80`}
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    id="profile-public-path"
+                    type="text"
+                    readOnly
+                    value={publicPathLabel}
+                    className={`${inputClass} flex-1 font-mono text-sm text-white/80`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void copyToClipboard(publicPathLabel)
+                        .then(() => toast.success('Base path copied'))
+                        .catch(() => toast.error('Copy failed'));
+                    }}
+                    className="shrink-0 rounded-xl border border-white/15 bg-white/5 p-2.5 text-white/70 transition hover:bg-white/10 hover:text-white"
+                    aria-label="Copy base path"
+                    title="Copy base path"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <p className="mt-4 text-sm text-white/65">
                 Configure <code className="font-mono text-white/80">APP_BASE_PATH</code> and your

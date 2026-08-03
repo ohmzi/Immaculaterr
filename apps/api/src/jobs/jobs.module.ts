@@ -18,6 +18,7 @@ import { JobsRetentionService } from './jobs-retention.service';
 import { JobsWatchdogService } from './jobs-watchdog.service';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { UnmonitorConfirmJob } from './unmonitor-confirm.job';
+import { RepairMonitoredJob } from './repair-monitored.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { BasedonLatestWatchedRefresherJob } from './basedon-latest-watched-refresher.job';
@@ -33,6 +34,12 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { RottenTomatoesUpcomingMoviesJob } from './rotten-tomatoes-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
+import { CuttingRoomAnalyzeJob } from './cutting-room-analyze.job';
+import { CuttingRoomPruneJob } from './cutting-room-prune.job';
+import { CuttingRoomWantedPruneJob } from './cutting-room-wanted-prune.job';
+import { CuttingRoomDuplicatesJob } from './cutting-room-duplicates.job';
+import { CuttingRoomLargeFilesJob } from './cutting-room-large-files.job';
+import { CuttingRoomModule } from '../cutting-room/cutting-room.module';
 import { ImportModule } from '../import/import.module';
 import { AuthModule } from '../auth/auth.module';
 
@@ -51,6 +58,7 @@ import { AuthModule } from '../auth/auth.module';
     ImmaculateTasteCollectionModule,
     WatchedMovieRecommendationsModule,
     forwardRef(() => ImportModule),
+    forwardRef(() => CuttingRoomModule),
     AuthModule,
     ScheduleModule.forRoot(),
   ],
@@ -63,6 +71,7 @@ import { AuthModule } from '../auth/auth.module';
     JobsWatchdogService,
     MonitorConfirmJob,
     UnmonitorConfirmJob,
+    RepairMonitoredJob,
     ArrMonitoredSearchJob,
     CleanupAfterAddingNewContentJob,
     BasedonLatestWatchedCollectionJob,
@@ -75,6 +84,11 @@ import { AuthModule } from '../auth/auth.module';
     RottenTomatoesUpcomingMoviesJob,
     ImportNetflixHistoryJob,
     ImportPlexHistoryJob,
+    CuttingRoomAnalyzeJob,
+    CuttingRoomPruneJob,
+    CuttingRoomWantedPruneJob,
+    CuttingRoomDuplicatesJob,
+    CuttingRoomLargeFilesJob,
     CollectionResyncUpgradeService,
   ],
   exports: [JobsService],

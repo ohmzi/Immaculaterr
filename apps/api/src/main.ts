@@ -7,7 +7,10 @@ import { AppModule } from './app.module';
 import { ensureBootstrapEnv } from './bootstrap-env';
 import { BufferedLogger } from './logs/buffered-logger';
 import { createOriginCheckMiddleware } from './security/origin-check.middleware';
-import { createIpRateLimitMiddleware } from './security/ip-rate-limit.middleware';
+import {
+  createIpRateLimitMiddleware,
+  createTokenBucketRateLimitMiddleware,
+} from './security/ip-rate-limit.middleware';
 import { privateCacheMiddleware } from './security/private-cache.middleware';
 import { securityHeadersMiddleware } from './security/security-headers.middleware';
 import { readAppMeta } from './app.meta';
@@ -19,6 +22,7 @@ import {
   API_DOCS_PATH,
   API_GLOBAL_PREFIX,
   API_PREFIX_PATH,
+  API_RATE_LIMIT_DEFAULT_BURST,
   API_RATE_LIMIT_DEFAULT_MAX,
   API_RATE_LIMIT_DEFAULT_WINDOW_MS,
   AUTH_RATE_LIMIT_DEFAULT_GET_MAX,
@@ -206,13 +210,17 @@ async function bootstrap() {
     process.env.API_RATE_LIMIT_WINDOW_MS,
     API_RATE_LIMIT_DEFAULT_WINDOW_MS,
   );
+  const apiRateLimitBurst = parsePositiveIntegerEnv(
+    process.env.API_RATE_LIMIT_BURST,
+    API_RATE_LIMIT_DEFAULT_BURST,
+  );
   app.use(
     API_PREFIX_PATH,
-    createIpRateLimitMiddleware({
+    createTokenBucketRateLimitMiddleware({
       windowMs: apiRateLimitWindowMs,
-      max: apiRateLimitMax,
+      sustainedMax: apiRateLimitMax,
+      burstMax: apiRateLimitBurst,
       keyPrefix: 'api_global',
-      methods: [],
     }),
   );
 

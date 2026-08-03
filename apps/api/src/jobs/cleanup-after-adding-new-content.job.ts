@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { SettingsService } from '../settings/settings.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexWatchlistService } from '../plex/plex-watchlist.service';
@@ -454,7 +455,7 @@ export class CleanupAfterAddingNewContentJob {
             if (t) radarrByNormTitle.set(normTitle(t), m);
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           fullSweepRadarrConnected = false;
           sweepWarnings.push(
             `radarr: failed to load movies (continuing): ${msg}`,
@@ -489,7 +490,7 @@ export class CleanupAfterAddingNewContentJob {
             if (t) sonarrByNormTitle.set(normTitle(t), s);
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           fullSweepSonarrConnected = false;
           sweepWarnings.push(
             `sonarr: failed to load series (continuing): ${msg}`,
@@ -647,7 +648,7 @@ export class CleanupAfterAddingNewContentJob {
                 movies.push({ ...it, libraryTitle: sec.title });
               }
             } catch (err) {
-              const msg = (err as Error)?.message ?? String(err);
+              const msg = truncateErrorMessage(err);
               sweepWarnings.push(
                 `plex: failed listing movies for section=${sec.title} (continuing): ${msg}`,
               );
@@ -743,7 +744,7 @@ export class CleanupAfterAddingNewContentJob {
                   'plex: failed loading movie metadata (continuing)',
                   {
                     ratingKey: it.ratingKey,
-                    error: (err as Error)?.message ?? String(err),
+                    error: truncateErrorMessage(err),
                   },
                 );
               }
@@ -903,7 +904,7 @@ export class CleanupAfterAddingNewContentJob {
                   {
                     ratingKey: rk,
                     tmdbId,
-                    error: (err as Error)?.message ?? String(err),
+                    error: truncateErrorMessage(err),
                   },
                 );
               }
@@ -965,7 +966,7 @@ export class CleanupAfterAddingNewContentJob {
                 {
                   ratingKey: keep.ratingKey,
                   tmdbId,
-                  error: (err as Error)?.message ?? String(err),
+                  error: truncateErrorMessage(err),
                 },
               );
             }
@@ -992,7 +993,7 @@ export class CleanupAfterAddingNewContentJob {
                     libraryTitle: sec.title,
                   });
               } catch (err) {
-                const msg = (err as Error)?.message ?? String(err);
+                const msg = truncateErrorMessage(err);
                 sweepWarnings.push(
                   `plex: movie duplicate listing failed section=${sec.title} (continuing): ${msg}`,
                 );
@@ -1146,13 +1147,13 @@ export class CleanupAfterAddingNewContentJob {
                   {
                     ratingKey: rk,
                     section: libraryTitle,
-                    error: (err as Error)?.message ?? String(err),
+                    error: truncateErrorMessage(err),
                   },
                 );
               }
             }
           } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
+            const msg = truncateErrorMessage(err);
             sweepWarnings.push(`plex: movie duplicate listing failed: ${msg}`);
             await ctx.warn(
               'plex: movie duplicate listing failed (continuing)',
@@ -1162,7 +1163,7 @@ export class CleanupAfterAddingNewContentJob {
             );
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           sweepWarnings.push(`plex: movie scan failed: ${msg}`);
           await ctx.warn('plex: movie scan failed (continuing)', {
             error: msg,
@@ -1211,7 +1212,7 @@ export class CleanupAfterAddingNewContentJob {
                 'plex: duplicate episode listing failed for section (continuing)',
                 {
                   section: sec.title,
-                  error: (err as Error)?.message ?? String(err),
+                  error: truncateErrorMessage(err),
                 },
               );
             }
@@ -1296,7 +1297,7 @@ export class CleanupAfterAddingNewContentJob {
                 'plex: failed loading episode metadata (continuing)',
                 {
                   ratingKey: rk,
-                  error: (err as Error)?.message ?? String(err),
+                  error: truncateErrorMessage(err),
                 },
               );
             }
@@ -1427,7 +1428,7 @@ export class CleanupAfterAddingNewContentJob {
                       title: showTitle,
                       season,
                       episode: epNum,
-                      error: (err as Error)?.message ?? String(err),
+                      error: truncateErrorMessage(err),
                     },
                   );
                 }
@@ -1460,7 +1461,7 @@ export class CleanupAfterAddingNewContentJob {
                   'plex: failed deleting duplicate episode metadata (continuing)',
                   {
                     ratingKey: rk,
-                    error: (err as Error)?.message ?? String(err),
+                    error: truncateErrorMessage(err),
                   },
                 );
               }
@@ -1521,13 +1522,13 @@ export class CleanupAfterAddingNewContentJob {
                 'plex: failed cleaning episode versions (continuing)',
                 {
                   ratingKey: keep.ratingKey,
-                  error: (err as Error)?.message ?? String(err),
+                  error: truncateErrorMessage(err),
                 },
               );
             }
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           sweepWarnings.push(`plex: episode scan failed: ${msg}`);
           await ctx.warn('plex: episode scan failed (continuing)', {
             error: msg,
@@ -1560,7 +1561,7 @@ export class CleanupAfterAddingNewContentJob {
                   'plex: failed building TVDB map for section (continuing)',
                   {
                     section: sec.title,
-                    error: (err as Error)?.message ?? String(err),
+                    error: truncateErrorMessage(err),
                   },
                 );
               }
@@ -1693,7 +1694,7 @@ export class CleanupAfterAddingNewContentJob {
                       'plex: failed deleting duplicate episode metadata (continuing)',
                       {
                         ratingKey: rk,
-                        error: (err as Error)?.message ?? String(err),
+                        error: truncateErrorMessage(err),
                       },
                     );
                   }
@@ -1730,7 +1731,7 @@ export class CleanupAfterAddingNewContentJob {
                     'plex: failed cleaning episode versions (continuing)',
                     {
                       ratingKey: keep.ratingKey,
-                      error: (err as Error)?.message ?? String(err),
+                      error: truncateErrorMessage(err),
                     },
                   );
                 }
@@ -1738,7 +1739,7 @@ export class CleanupAfterAddingNewContentJob {
             }
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           sweepWarnings.push(`plex: cross-library episode scan failed: ${msg}`);
           await ctx.warn(
             'plex: cross-library episode scan failed (continuing)',
@@ -1825,7 +1826,7 @@ export class CleanupAfterAddingNewContentJob {
                 addMovieToYearIndex(it.title, it.year ?? null);
               }
             } catch (err) {
-              const msg = (err as Error)?.message ?? String(err);
+              const msg = truncateErrorMessage(err);
               watchlistWarnings.push(
                 `plex: failed indexing movies for watchlist reconciliation section=${sec.title} (continuing): ${msg}`,
               );
@@ -1921,7 +1922,7 @@ export class CleanupAfterAddingNewContentJob {
             }
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           watchlistWarnings.push(
             `plex: failed loading movie watchlist (continuing): ${msg}`,
           );
@@ -1963,7 +1964,7 @@ export class CleanupAfterAddingNewContentJob {
                     plexTvdbRatingKeys.set(tvdbId, prev);
                   }
                 } catch (err) {
-                  const msg = (err as Error)?.message ?? String(err);
+                  const msg = truncateErrorMessage(err);
                   watchlistWarnings.push(
                     `plex: failed building TVDB map for section=${sec.title} (continuing): ${msg}`,
                   );
@@ -2085,7 +2086,7 @@ export class CleanupAfterAddingNewContentJob {
               }
             }
           } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
+            const msg = truncateErrorMessage(err);
             watchlistWarnings.push(
               `plex: failed loading show watchlist (continuing): ${msg}`,
             );
@@ -2134,7 +2135,7 @@ export class CleanupAfterAddingNewContentJob {
                   plexTvdbRatingKeys.set(tvdbId, prev);
                 }
               } catch (err) {
-                const msg = (err as Error)?.message ?? String(err);
+                const msg = truncateErrorMessage(err);
                 seasonSyncWarnings.push(
                   `plex: failed building TVDB map for section=${sec.title} (season sync continuing): ${msg}`,
                 );
@@ -2170,7 +2171,7 @@ export class CleanupAfterAddingNewContentJob {
                 const eps = await getPlexEpisodesSet(rk);
                 for (const k of eps) set.add(k);
               } catch (err) {
-                const msg = (err as Error)?.message ?? String(err);
+                const msg = truncateErrorMessage(err);
                 seasonSyncWarnings.push(
                   `plex: failed loading episodes for showRatingKey=${rk} (season sync continuing): ${msg}`,
                 );
@@ -2244,7 +2245,7 @@ export class CleanupAfterAddingNewContentJob {
               });
               sonarrSeasonsUnmonitored += seasonsToUnmonitor.length;
             } catch (err) {
-              const msg = (err as Error)?.message ?? String(err);
+              const msg = truncateErrorMessage(err);
               seasonSyncWarnings.push(
                 `sonarr: failed unmonitoring seasons for seriesId=${series.id} (continuing): ${msg}`,
               );
@@ -2260,7 +2261,7 @@ export class CleanupAfterAddingNewContentJob {
             }
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           seasonSyncWarnings.push(
             `sonarr: season sync failed (continuing): ${msg}`,
           );
@@ -2380,7 +2381,7 @@ export class CleanupAfterAddingNewContentJob {
             out.set(tvdbId, prev);
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           (summary.warnings as string[]).push(
             `plex: failed building TVDB map for section=${sec.title} (continuing): ${msg}`,
           );
@@ -2443,7 +2444,7 @@ export class CleanupAfterAddingNewContentJob {
           'plex: failed resolving library section for ratingKey (continuing)',
           {
             ratingKey,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         return { key: null, title: null };
@@ -2575,7 +2576,7 @@ export class CleanupAfterAddingNewContentJob {
                 {
                   ratingKey: it.ratingKey,
                   tmdbId,
-                  error: (err as Error)?.message ?? String(err),
+                  error: truncateErrorMessage(err),
                 },
               );
             }
@@ -2643,7 +2644,7 @@ export class CleanupAfterAddingNewContentJob {
                 {
                   ratingKey: rk,
                   tmdbId,
-                  error: (err as Error)?.message ?? String(err),
+                  error: truncateErrorMessage(err),
                 },
               );
             }
@@ -2665,12 +2666,12 @@ export class CleanupAfterAddingNewContentJob {
           } catch (err) {
             movieStats.failures += 1;
             warnings.push(
-              `plex: failed cleaning movie versions ratingKey=${keep.ratingKey} (continuing): ${(err as Error)?.message ?? String(err)}`,
+              `plex: failed cleaning movie versions ratingKey=${keep.ratingKey} (continuing): ${truncateErrorMessage(err)}`,
             );
           }
         }
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         movieStats.failures += 1;
         warnings.push(
           `plex: failed listing duplicate movies for section=${librarySectionTitle ?? librarySectionKey} (continuing): ${msg}`,
@@ -2705,12 +2706,12 @@ export class CleanupAfterAddingNewContentJob {
           } catch (err) {
             movieStats.failures += 1;
             warnings.push(
-              `plex: failed cleaning movie versions ratingKey=${rk} (continuing): ${(err as Error)?.message ?? String(err)}`,
+              `plex: failed cleaning movie versions ratingKey=${rk} (continuing): ${truncateErrorMessage(err)}`,
             );
           }
         }
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         movieStats.failures += 1;
         warnings.push(
           `plex: failed listing duplicate movie keys for section=${librarySectionTitle ?? librarySectionKey} (continuing): ${msg}`,
@@ -2764,7 +2765,7 @@ export class CleanupAfterAddingNewContentJob {
             librarySectionKey,
           });
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         episodeStats.failures += 1;
         warnings.push(
           `plex: duplicate episode listing failed section=${librarySectionTitle ?? librarySectionKey} (continuing): ${msg}`,
@@ -2819,7 +2820,7 @@ export class CleanupAfterAddingNewContentJob {
           episodeStats.failures += 1;
           await ctx.warn('plex: failed loading episode metadata (continuing)', {
             ratingKey: rk,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           });
         }
       }
@@ -2885,7 +2886,7 @@ export class CleanupAfterAddingNewContentJob {
               'plex: failed deleting duplicate episode metadata (continuing)',
               {
                 ratingKey: rk,
-                error: (err as Error)?.message ?? String(err),
+                error: truncateErrorMessage(err),
               },
             );
           }
@@ -2903,7 +2904,7 @@ export class CleanupAfterAddingNewContentJob {
         } catch (err) {
           episodeStats.failures += 1;
           warnings.push(
-            `plex: failed cleaning episode versions ratingKey=${keep.ratingKey} (continuing): ${(err as Error)?.message ?? String(err)}`,
+            `plex: failed cleaning episode versions ratingKey=${keep.ratingKey} (continuing): ${truncateErrorMessage(err)}`,
           );
         }
       }
@@ -2971,7 +2972,7 @@ export class CleanupAfterAddingNewContentJob {
           movieLibrarySectionTitle =
             meta?.librarySectionTitle ?? movieLibrarySectionTitle;
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           (summary.warnings as string[]).push(
             `plex: failed to read movie metadata (continuing): ${msg}`,
           );
@@ -3108,7 +3109,7 @@ export class CleanupAfterAddingNewContentJob {
             });
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           radarrSummary.connected = false;
           radarrSummary.error = msg;
           (summary.warnings as string[]).push(
@@ -3153,7 +3154,7 @@ export class CleanupAfterAddingNewContentJob {
             );
             summary.watchlist = wl as unknown as JsonObject;
           } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
+            const msg = truncateErrorMessage(err);
             (summary.warnings as string[]).push(
               `plex: watchlist removal failed (non-critical): ${msg}`,
             );
@@ -3195,7 +3196,7 @@ export class CleanupAfterAddingNewContentJob {
           });
           tvdbId = meta?.tvdbIds?.[0] ?? null;
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           (summary.warnings as string[]).push(
             `plex: failed to read show tvdbId from metadata (continuing): ${msg}`,
           );
@@ -3274,7 +3275,7 @@ export class CleanupAfterAddingNewContentJob {
         series = await findSonarrSeries({ tvdbId, title: seriesTitle });
         sonarrSummary.connected = true;
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         sonarrSummary.connected = false;
         sonarrSummary.error = msg;
         (summary.warnings as string[]).push(
@@ -3410,7 +3411,7 @@ export class CleanupAfterAddingNewContentJob {
             .then(() => true)
             .catch((err) => {
               failures += 1;
-              const msg = (err as Error)?.message ?? String(err);
+              const msg = truncateErrorMessage(err);
               (summary.warnings as string[]).push(
                 `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
               );
@@ -3435,7 +3436,7 @@ export class CleanupAfterAddingNewContentJob {
             .then(() => true)
             .catch((err) => {
               failures += 1;
-              const msg = (err as Error)?.message ?? String(err);
+              const msg = truncateErrorMessage(err);
               (summary.warnings as string[]).push(
                 `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
               );
@@ -3489,7 +3490,7 @@ export class CleanupAfterAddingNewContentJob {
           });
           summary.watchlist = wl as unknown as JsonObject;
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           (summary.warnings as string[]).push(
             `plex: watchlist check/removal failed (non-critical): ${msg}`,
           );
@@ -3713,7 +3714,7 @@ export class CleanupAfterAddingNewContentJob {
               .then(() => true)
               .catch((err) => {
                 failures += 1;
-                const msg = (err as Error)?.message ?? String(err);
+                const msg = truncateErrorMessage(err);
                 (summary.warnings as string[]).push(
                   `sonarr episode: failed to unmonitor ${r.key} (continuing): ${msg}`,
                 );
@@ -3737,7 +3738,7 @@ export class CleanupAfterAddingNewContentJob {
               .then(() => true)
               .catch((err) => {
                 failures += 1;
-                const msg = (err as Error)?.message ?? String(err);
+                const msg = truncateErrorMessage(err);
                 (summary.warnings as string[]).push(
                   `sonarr episode: failed to monitor ${r.key} (continuing): ${msg}`,
                 );
@@ -3821,7 +3822,7 @@ export class CleanupAfterAddingNewContentJob {
             });
             summary.watchlist = wl as unknown as JsonObject;
           } catch (err) {
-            const msg = (err as Error)?.message ?? String(err);
+            const msg = truncateErrorMessage(err);
             (summary.warnings as string[]).push(
               `plex: watchlist check/removal failed (non-critical): ${msg}`,
             );
@@ -3841,7 +3842,7 @@ export class CleanupAfterAddingNewContentJob {
         await ctx.info('mediaAddedCleanup(season): done', summary);
         return toReport(summary);
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         (summary.warnings as string[]).push(
           `season flow failed (continuing): ${msg}`,
         );
@@ -3997,7 +3998,7 @@ export class CleanupAfterAddingNewContentJob {
             }
           }
         } catch (err) {
-          const msg = (err as Error)?.message ?? String(err);
+          const msg = truncateErrorMessage(err);
           sonarrSummary.connected = false;
           sonarrSummary.error = msg;
           (summary.warnings as string[]).push(
@@ -4079,9 +4080,6 @@ export function buildMediaAddedCleanupReport(params: {
     typeof v === 'boolean' ? v : null;
 
   for (const w of warningsRaw) {
-    const lower = w.toLowerCase();
-    if (lower.startsWith('radarr:')) continue;
-    if (lower.startsWith('sonarr:')) continue;
     issues.push(issue('warn', w));
   }
 
@@ -4351,12 +4349,14 @@ export function buildMediaAddedCleanupReport(params: {
     const connected = rec ? asBool(rec.connected) : null;
     const serviceName = service === 'radarr' ? 'Radarr' : 'Sonarr';
 
+    // A configured integration that could not be reached is a FAILURE, not a
+    // skip — otherwise an arr outage reports a silent success.
     const status =
-      !applicable ||
-      configured === false ||
-      (configured === true && connected === false)
+      !applicable || configured === false
         ? ('skipped' as const)
-        : ('success' as const);
+        : configured === true && connected === false
+          ? ('failed' as const)
+          : ('success' as const);
 
     const result = !features.unmonitorInArr
       ? 'Disabled in task settings.'
@@ -4365,7 +4365,7 @@ export function buildMediaAddedCleanupReport(params: {
         : configured === false
           ? 'Skipped: not configured.'
           : configured === true && connected === false
-            ? 'Skipped: unavailable during this run.'
+            ? 'Failed: configured but unreachable during this run.'
             : 'Processed.';
 
     const facts: Array<{ label: string; value: JsonValue }> = [

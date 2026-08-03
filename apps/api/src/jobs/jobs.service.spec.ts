@@ -110,7 +110,7 @@ function callResolveRunEstimate(
   const resolveRunEstimate = (
     service as unknown as {
       resolveRunEstimate: (
-        run: typeof run,
+        runArg: typeof run,
         groups: EstimateHistoryGroups,
       ) => { estimatedRuntimeMs: number; estimateSource: string };
     }

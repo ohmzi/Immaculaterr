@@ -1,4 +1,5 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
 import { XMLParser } from 'fast-xml-parser';
 import { randomUUID } from 'node:crypto';
 import { PlexPin, PlexSharedServerUser } from './plex.types';
@@ -403,6 +404,28 @@ function scoreServerConnectionCandidate(
   return score;
 }
 
+const PLEX_TV_TIMEOUT_MS = 15_000;
+
+/** fetch with an AbortController timeout — plex.tv calls must never hang. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = PLEX_TV_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const doFetch = () => fetch(url, { ...init, signal: controller.signal });
+    // Only idempotent reads are retried; PIN creation and other POSTs are not.
+    const method = (init.method ?? 'GET').toUpperCase();
+    return method === 'GET'
+      ? await fetchWithTransientRetry(doFetch)
+      : await doFetch();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 @Injectable()
 export class PlexService {
   private readonly logger = new Logger(PlexService.name);
@@ -421,7 +444,7 @@ export class PlexService {
     const safeUrl = sanitizeUrlForLogs(url);
     const startedAt = Date.now();
 
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: this.getPlexHeaders(),
     });
@@ -462,7 +485,7 @@ export class PlexService {
     const safeUrl = sanitizeUrlForLogs(url);
     const startedAt = Date.now();
 
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: this.getPlexHeaders(),
     });
@@ -552,7 +575,7 @@ export class PlexService {
     const safeUrl = sanitizeUrlForLogs(url);
     const startedAt = Date.now();
 
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         ...this.getPlexHeaders(),
@@ -630,17 +653,24 @@ export class PlexService {
     const users = await this.listSharedUsersForServer(params);
     if (!users.length) return users;
 
-    const usersWithResolvedTokens = await Promise.all(
-      users.map(async (user) => {
-        if (user.accessToken) return user;
-        if (!user.isHomeUser || user.plexAccountId === null) return user;
-        const accessToken = await this.resolveHomeUserAccessToken({
-          plexToken: params.plexToken,
-          plexAccountId: user.plexAccountId,
-        }).catch(() => null);
-        return accessToken ? { ...user, accessToken } : user;
-      }),
-    );
+    // Resolve missing tokens in small batches instead of one unbounded
+    // burst of simultaneous plex.tv requests.
+    const TOKEN_RESOLVE_BATCH = 4;
+    const usersWithResolvedTokens: typeof users = [];
+    for (let i = 0; i < users.length; i += TOKEN_RESOLVE_BATCH) {
+      const batch = await Promise.all(
+        users.slice(i, i + TOKEN_RESOLVE_BATCH).map(async (user) => {
+          if (user.accessToken) return user;
+          if (!user.isHomeUser || user.plexAccountId === null) return user;
+          const accessToken = await this.resolveHomeUserAccessToken({
+            plexToken: params.plexToken,
+            plexAccountId: user.plexAccountId,
+          }).catch(() => null);
+          return accessToken ? { ...user, accessToken } : user;
+        }),
+      );
+      usersWithResolvedTokens.push(...batch);
+    }
 
     return dedupeSharedServerUsers(usersWithResolvedTokens);
   }
@@ -666,7 +696,7 @@ export class PlexService {
       const safeUrl = sanitizeUrlForLogs(url);
       const startedAt = Date.now();
       try {
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
           method: 'POST',
           headers: {
             ...this.getPlexHeaders(),
@@ -762,7 +792,7 @@ export class PlexService {
       const safeUrl = sanitizeUrlForLogs(url);
       const startedAt = Date.now();
       try {
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
           method: 'GET',
           headers: {
             ...this.getPlexHeaders(),
@@ -850,7 +880,7 @@ export class PlexService {
       const safeUrl = sanitizeUrlForLogs(url);
       const startedAt = Date.now();
       try {
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
           method: 'GET',
           headers: {
             ...this.getPlexHeaders(),

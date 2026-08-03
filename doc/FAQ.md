@@ -183,6 +183,13 @@ Pick a feature area first, then jump into the full section below.
 >
 > - 4 more answers in the section below.
 
+> ### [Cutting Room](#cutting-room)
+>
+> Find and prune the media nobody will ever watch — safely, with dry-runs and one-click restore.
+> [What does the Cutting Room do?](#what-does-the-cutting-room-do) · [How is the prune score built?](#how-is-the-prune-score-built) · [What is always protected from pruning?](#what-is-always-protected-from-pruning)
+>
+> - 6 more answers in the section below.
+
 ## Getting started
 
 ### What is Immaculaterr?
@@ -1163,3 +1170,44 @@ A title that is in Plex and eligible to appear in a curated collection.
 ### Refresher
 
 A job that revisits the saved dataset, activates newly-available items, shuffles, and rebuilds collections.
+
+## Cutting Room
+
+Find and prune the media nobody on your server is ever going to watch, plus companion cleaners for the wanted list, duplicate versions, and oversized files.
+
+### What does the Cutting Room do?
+
+It scans your selected Plex libraries plus Radarr/Sonarr (and Tautulli when connected), scores every item on how unlikely it is to ever be watched, and walks you through a six-step wizard: pick factors and protections, choose libraries, scan, tune "how low a bar" instantly, set a space target with auto-select, review every candidate with plain-language reason chips, then prune with a typed confirmation. Pruning deletes files through Radarr/Sonarr but keeps each entry unmonitored and tagged `deleted-by-immaculaterr`, so the arr itself records what was removed.
+
+### How is the prune score built?
+
+The core signal is never watched by anyone × time in your library (+25 points per year, capped at three years). Watch truth is the union of Plex view counts, the server's all-account play history, imported history, and Tautulli when connected. Optional factors add points on top (the "Oversized files" card is the exception — it is a replacement flow, not a scoring signal, and always runs alone): genuinely low aggregate ratings (points only start below 6.0 for movies / 6.2 for shows, ratings are blended across every source and shrunk toward that bar when vote counts are small, and any title rated 7.5+ by any single source is exempt outright — popular and highly-regarded titles never count as "low rated"), request provenance (guest requests, bulk list imports, change-of-taste), unmonitored status, and ended shows. Your own Plex star-ratings outrank everything: rate something 4 or lower and it gains +30 points; rate it 8 or higher and it is protected outright.
+
+### What do the tiers mean?
+
+Tier 1 is never watched, 18+ months in the library, with a strong score — the safest deletions. Tier 2 is never watched for 6+ months. Tier 3 holds abandoned partial watches and younger never-watched items. Tier 4 (off by default) is items watched long ago, which carries rewatch risk. The bar slider filters the already-scanned results instantly, so tuning never re-scans.
+
+### What is always protected from pruning?
+
+Anything watched within your recency window (default 12 months), anything added within the grace period (default 90 days), deselected libraries, protected Radarr/Sonarr tags (the `deleted-by-immaculaterr` tag is a default pill so pruned entries are never re-processed), monitored still-airing shows, items on any user's Plex Watchlist or in Continue Watching, recent Overseerr/Jellyseerr requests, items in Immaculaterr's own recommendation collections, and anything you rated 8+ in Plex. At prune time every item is re-checked, and anything watched since the scan is skipped.
+
+### What safety rails does pruning have?
+
+A full dry-run mode rehearses the entire prune and reports the exact would-delete list without touching a file. A typed confirmation (the item count or PRUNE) arms the real run, deletion happens in small waves with a Stop button, per-run caps prevent one-click catastrophes, and files are deleted through Radarr/Sonarr so their Recycle Bin is honored when configured.
+
+### How does Restore work?
+
+The Pruned History tab lists everything ever pruned. Restore re-monitors the entry, removes the `deleted-by-immaculaterr` tag, and triggers a search so the item re-downloads automatically — deletion is reversible in practice.
+
+### What are the Wanted List and Duplicates tabs?
+
+Wanted List shows monitored Radarr/Sonarr entries that never downloaded anything; unmonitor or remove them to stop future downloads without touching any files. Duplicates shows movies with more than one version in Plex and keeps exactly one copy per movie (your choice of largest or smallest), deleting the extras through Plex.
+
+### What is the Large Files tab?
+
+It finds movies and individual episodes whose files exceed a size threshold you pick (default 10 GB per file) and replaces them with smaller copies: the oversized file is deleted, the item is re-monitored, a `size-reduction` tag is added in Radarr/Sonarr, the item is switched to a size-capped quality profile, and a fresh search is triggered so a leaner copy downloads automatically. The profiles are created on the first real run and reused forever after: movies get "Immaculaterr 10GB Movie Cap" (a size-rule custom format scores anything over 10 GB at -10000, so it is rejected), shows get "Immaculaterr 3GB Episode Cap" (over 3 GB rejected, 1-2 GB preferred). That keeps the re-download and every future upgrade small. Caveat for switched shows: release size is judged as a whole, so full-season packs over the cap are skipped in favor of per-episode grabs. It runs in two places: select the "Oversized files" card in the Prune Wizard — it runs alone (other factors and protections switch off) and walks the usual steps of libraries, size bar, replacement target with auto-select, review, and a dry-run/typed confirmation — or use the Large Files tab directly for a quick pass. For episodes the monitoring change is surgically precise — only the oversized episodes themselves, their seasons, and the show are re-monitored, never the whole series or untouched episodes. Dry-run rehearses everything first, a typed confirmation arms the real run, and replacements are recorded in Pruned History as "replaced for size" (no Restore button — the re-download happens automatically). Tip: make sure your quality profile's size limits would actually grab a smaller release.
+
+### Why does the Cutting Room ask about Tautulli?
+
+Tautulli records every play by every user, which makes "never watched" decisions much more reliable. It is optional: a dialog offers a shortcut to the Vault to connect it, or you can continue with Plex data only.
+

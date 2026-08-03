@@ -99,3 +99,39 @@ export function issuesFromErrorMessage(
   if (!msg) return [];
   return [issue('error', msg)];
 }
+
+/**
+ * Minimal failure-shaped report for jobs whose primary upstream fetch died
+ * before any real work: one failed task (fails the run) plus an error issue.
+ */
+export function simpleFailureReport(params: {
+  jobId: string;
+  dryRun: boolean;
+  trigger: JobReportV1['trigger'];
+  headline: string;
+  taskId: string;
+  taskTitle: string;
+  message: string;
+  facts?: Array<{ label: string; value: string }>;
+}): JobReportV1 {
+  return {
+    template: 'jobReportV1',
+    version: 1,
+    jobId: params.jobId,
+    dryRun: params.dryRun,
+    trigger: params.trigger,
+    headline: params.headline,
+    sections: [],
+    tasks: [
+      {
+        id: params.taskId,
+        title: params.taskTitle,
+        status: 'failed',
+        ...(params.facts ? { facts: params.facts } : {}),
+        issues: [issue('error', params.message)],
+      },
+    ],
+    issues: [issue('error', params.message)],
+    raw: { error: params.message },
+  };
+}

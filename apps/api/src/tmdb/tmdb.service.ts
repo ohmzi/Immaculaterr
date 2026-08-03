@@ -1,4 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { truncateForLog } from '../log.utils';
+import { fetchWithTransientRetry } from '../http.utils';
 import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import {
@@ -3533,16 +3535,18 @@ export class TmdbService {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
+      const res = await fetchWithTransientRetry(() =>
+        fetch(url, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        }),
+      );
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `${errorPrefix}: HTTP ${res.status} ${body}`.trim(),
+          `${errorPrefix}: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -3622,7 +3626,7 @@ export class TmdbService {
             if (status < 200 || status >= 300) {
               reject(
                 new BadGatewayException(
-                  `${errorPrefix}: HTTP ${status} ${body}`.trim(),
+                  `${errorPrefix}: HTTP ${status} ${truncateForLog(body)}`.trim(),
                 ),
               );
               return;

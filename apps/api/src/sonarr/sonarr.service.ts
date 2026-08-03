@@ -1,4 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { fetchWithTransientRetry } from '../http.utils';
+import { truncateErrorMessage, truncateForLog } from '../log.utils';
 
 type SonarrSystemStatus = Record<string, unknown>;
 export type SonarrSeries = Record<string, unknown> & {
@@ -6,6 +8,21 @@ export type SonarrSeries = Record<string, unknown> & {
   title?: string;
   tvdbId?: number;
   monitored?: boolean;
+  year?: number;
+  added?: string;
+  status?: string;
+  ended?: boolean;
+  path?: string;
+  rootFolderPath?: string;
+  tags?: number[];
+  ratings?: Record<string, unknown> & { value?: number; votes?: number };
+  statistics?: Record<string, unknown> & {
+    seasonCount?: number;
+    episodeCount?: number;
+    episodeFileCount?: number;
+    totalEpisodeCount?: number;
+    sizeOnDisk?: number;
+  };
   seasons?: Array<
     Record<string, unknown> & { seasonNumber?: number; monitored?: boolean }
   >;
@@ -16,6 +33,25 @@ export type SonarrEpisode = Record<string, unknown> & {
   seasonNumber?: number;
   episodeNumber?: number;
   monitored?: boolean;
+  hasFile?: boolean;
+  episodeFileId?: number;
+};
+
+export type SonarrEpisodeFile = {
+  id: number;
+  seriesId: number | null;
+  seasonNumber: number | null;
+  path: string;
+  relativePath: string | null;
+  size: number;
+};
+
+export type SonarrHistoryRecord = {
+  id: number;
+  episodeId: number | null;
+  eventType: string | null;
+  sourceTitle: string | null;
+  date: string | null;
 };
 
 export type SonarrRootFolder = {
@@ -31,6 +67,13 @@ export type SonarrQualityProfile = {
 export type SonarrTag = {
   id: number;
   label: string;
+};
+
+export type SonarrDiskSpace = {
+  path: string;
+  label: string | null;
+  freeSpace: number;
+  totalSpace: number;
 };
 
 @Injectable()
@@ -59,7 +102,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr test failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr test failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -68,7 +111,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr test failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr test failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -79,39 +122,41 @@ export class SonarrService {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrSeries[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/series');
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/series',
+      label: 'list series',
+      timeoutMs: 60000,
+    });
+    return Array.isArray(data) ? (data as SonarrSeries[]) : [];
+  }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+  private readonly seriesListCache = new Map<
+    string,
+    { at: number; data: SonarrSeries[] }
+  >();
 
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list series failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      return Array.isArray(data) ? (data as SonarrSeries[]) : [];
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list series failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
+  /**
+   * listSeries with a short per-process cache keyed by server. Only for
+   * read-only flows that tolerate ~30s staleness — never call after a
+   * mutation you need reflected.
+   */
+  async listSeriesCached(params: {
+    baseUrl: string;
+    apiKey: string;
+    maxAgeMs?: number;
+  }): Promise<SonarrSeries[]> {
+    const maxAgeMs = params.maxAgeMs ?? 30_000;
+    const now = Date.now();
+    for (const [key, entry] of this.seriesListCache) {
+      if (now - entry.at >= maxAgeMs) this.seriesListCache.delete(key);
     }
+    const hit = this.seriesListCache.get(params.baseUrl);
+    if (hit) return hit.data;
+    const data = await this.listSeries(params);
+    this.seriesListCache.set(params.baseUrl, { at: now, data });
+    return data;
   }
 
   async listMonitoredSeries(params: {
@@ -149,7 +194,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr list episodes failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr list episodes failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -158,7 +203,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr list episodes failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr list episodes failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -193,7 +238,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr update episode failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr update episode failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -201,7 +246,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr update episode failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr update episode failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -234,7 +279,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr update series failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr update series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -242,7 +287,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr update series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr update series failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -278,7 +323,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr search monitored failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr search monitored failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -286,7 +331,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr search monitored failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr search monitored failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -297,153 +342,39 @@ export class SonarrService {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrRootFolder[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/rootfolder');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list root folders failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data)
-        ? (data as Array<Record<string, unknown>>)
-        : [];
-
-      const out: SonarrRootFolder[] = [];
-      for (const r of rows) {
-        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
-        const path = typeof r['path'] === 'string' ? r['path'].trim() : '';
-        if (!Number.isFinite(id) || id <= 0) continue;
-        if (!path) continue;
-        out.push({ id: Math.trunc(id), path });
-      }
-      return out;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list root folders failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/rootfolder',
+      label: 'list root folders',
+    });
+    return Array.isArray(data) ? (data as SonarrRootFolder[]) : [];
   }
 
   async listQualityProfiles(params: {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrQualityProfile[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/qualityprofile');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list quality profiles failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data)
-        ? (data as Array<Record<string, unknown>>)
-        : [];
-
-      const out: SonarrQualityProfile[] = [];
-      for (const r of rows) {
-        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
-        const name = typeof r['name'] === 'string' ? r['name'].trim() : '';
-        if (!Number.isFinite(id) || id <= 0) continue;
-        if (!name) continue;
-        out.push({ id: Math.trunc(id), name });
-      }
-      return out;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list quality profiles failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/qualityprofile',
+      label: 'list quality profiles',
+    });
+    return Array.isArray(data) ? (data as SonarrQualityProfile[]) : [];
   }
 
   async listTags(params: {
     baseUrl: string;
     apiKey: string;
   }): Promise<SonarrTag[]> {
-    const { baseUrl, apiKey } = params;
-    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Api-Key': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new BadGatewayException(
-          `Sonarr list tags failed: HTTP ${res.status} ${body}`.trim(),
-        );
-      }
-
-      const data = (await res.json()) as unknown;
-      const rows = Array.isArray(data)
-        ? (data as Array<Record<string, unknown>>)
-        : [];
-
-      const out: SonarrTag[] = [];
-      for (const r of rows) {
-        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
-        const label = typeof r['label'] === 'string' ? r['label'].trim() : '';
-        if (!Number.isFinite(id) || id <= 0) continue;
-        if (!label) continue;
-        out.push({ id: Math.trunc(id), label });
-      }
-      return out;
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      throw new BadGatewayException(
-        `Sonarr list tags failed: ${(err as Error)?.message ?? String(err)}`,
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    const data = await this.apiJsonRequest<unknown>({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/tag',
+      label: 'list tags',
+    });
+    return Array.isArray(data) ? (data as SonarrTag[]) : [];
   }
 
   async lookupSeries(params: {
@@ -476,7 +407,7 @@ export class SonarrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Sonarr lookup series failed: HTTP ${res.status} ${body}`.trim(),
+          `Sonarr lookup series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -485,7 +416,7 @@ export class SonarrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr lookup series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr lookup series failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -560,12 +491,742 @@ export class SonarrService {
       }
 
       throw new BadGatewayException(
-        `Sonarr add series failed: HTTP ${res.status} ${body}`.trim(),
+        `Sonarr add series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
       );
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Sonarr add series failed: ${(err as Error)?.message ?? String(err)}`,
+        `Sonarr add series failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async getEpisodeFiles(params: {
+    baseUrl: string;
+    apiKey: string;
+    seriesId: number;
+  }): Promise<SonarrEpisodeFile[]> {
+    const { baseUrl, apiKey, seriesId } = params;
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/episodefile?seriesId=${seriesId}`,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr list episode files failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
+
+      const out: SonarrEpisodeFile[] = [];
+      for (const r of rows) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        const path = typeof r['path'] === 'string' ? r['path'].trim() : '';
+        if (!path) continue;
+        const seriesIdRaw =
+          typeof r['seriesId'] === 'number'
+            ? r['seriesId']
+            : Number(r['seriesId']);
+        const seasonRaw =
+          typeof r['seasonNumber'] === 'number'
+            ? r['seasonNumber']
+            : Number(r['seasonNumber']);
+        const relativePath =
+          typeof r['relativePath'] === 'string' ? r['relativePath'].trim() : '';
+        const sizeRaw =
+          typeof r['size'] === 'number' ? r['size'] : Number(r['size']);
+        out.push({
+          id: Math.trunc(id),
+          seriesId: Number.isFinite(seriesIdRaw)
+            ? Math.trunc(seriesIdRaw)
+            : null,
+          seasonNumber: Number.isFinite(seasonRaw)
+            ? Math.trunc(seasonRaw)
+            : null,
+          path,
+          relativePath: relativePath || null,
+          size: Number.isFinite(sizeRaw) && sizeRaw > 0 ? sizeRaw : 0,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr list episode files failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async deleteEpisodeFile(params: {
+    baseUrl: string;
+    apiKey: string;
+    episodeFileId: number;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, episodeFileId } = params;
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/episodefile/${episodeFileId}`,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr delete episode file failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr delete episode file failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async listEpisodeHistory(params: {
+    baseUrl: string;
+    apiKey: string;
+    episodeId: number;
+  }): Promise<SonarrHistoryRecord[]> {
+    const { baseUrl, apiKey, episodeId } = params;
+    const url = this.buildApiUrl(
+      baseUrl,
+      `api/v3/history?episodeId=${episodeId}&eventType=1`,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr list episode history failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const records =
+        isRecord(data) && Array.isArray(data['records'])
+          ? (data['records'] as Array<Record<string, unknown>>)
+          : Array.isArray(data)
+            ? (data as Array<Record<string, unknown>>)
+            : [];
+
+      const out: SonarrHistoryRecord[] = [];
+      for (const r of records) {
+        const id = typeof r['id'] === 'number' ? r['id'] : Number(r['id']);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        const epRaw =
+          typeof r['episodeId'] === 'number'
+            ? r['episodeId']
+            : Number(r['episodeId']);
+        out.push({
+          id: Math.trunc(id),
+          episodeId: Number.isFinite(epRaw) ? Math.trunc(epRaw) : null,
+          eventType: typeof r['eventType'] === 'string' ? r['eventType'] : null,
+          sourceTitle:
+            typeof r['sourceTitle'] === 'string' ? r['sourceTitle'] : null,
+          date: typeof r['date'] === 'string' ? r['date'] : null,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr list episode history failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async markHistoryFailed(params: {
+    baseUrl: string;
+    apiKey: string;
+    historyId: number;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, historyId } = params;
+    const url = this.buildApiUrl(baseUrl, `api/v3/history/failed/${historyId}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: '{}',
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr mark history failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr mark history failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async searchEpisodes(params: {
+    baseUrl: string;
+    apiKey: string;
+    episodeIds: number[];
+  }): Promise<boolean> {
+    const { baseUrl, apiKey } = params;
+    const episodeIds = (params.episodeIds ?? [])
+      .map((id) => Math.trunc(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (episodeIds.length === 0) return false;
+
+    const url = this.buildApiUrl(baseUrl, 'api/v3/command');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({ name: 'EpisodeSearch', episodeIds }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr episode search failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr episode search failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async createTag(params: {
+    baseUrl: string;
+    apiKey: string;
+    label: string;
+  }): Promise<SonarrTag> {
+    const { baseUrl, apiKey } = params;
+    const label = (params.label ?? '').trim();
+    if (!label) {
+      throw new BadGatewayException('Sonarr create tag failed: empty label');
+    }
+    const url = this.buildApiUrl(baseUrl, 'api/v3/tag');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({ label }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr create tag failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const id =
+        isRecord(data) && typeof data['id'] === 'number' ? data['id'] : NaN;
+      if (!Number.isFinite(id) || id <= 0) {
+        throw new BadGatewayException(
+          'Sonarr create tag failed: response missing tag id',
+        );
+      }
+      return { id: Math.trunc(id), label };
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr create tag failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async updateSeriesEditor(params: {
+    baseUrl: string;
+    apiKey: string;
+    seriesIds: number[];
+    tags?: number[];
+    applyTags?: 'add' | 'remove' | 'replace';
+    monitored?: boolean;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey } = params;
+    const seriesIds = (params.seriesIds ?? [])
+      .map((id) => Math.trunc(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (seriesIds.length === 0) return false;
+
+    const payload: Record<string, unknown> = { seriesIds };
+    if (Array.isArray(params.tags) && params.tags.length > 0) {
+      payload['tags'] = params.tags.map((t) => Math.trunc(t));
+      payload['applyTags'] = params.applyTags ?? 'add';
+    }
+    if (typeof params.monitored === 'boolean') {
+      payload['monitored'] = params.monitored;
+    }
+
+    const url = this.buildApiUrl(baseUrl, 'api/v3/series/editor');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr series editor update failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr series editor update failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * Minimal JSON request helper for the size-capped-profile endpoints
+   * (custom formats + quality profiles). GET on body=undefined, else POST.
+   */
+  /**
+   * Shared JSON request for Sonarr: timeout, one transient retry on
+   * idempotent GETs, and truncated secret-free error text.
+   */
+  private async apiJsonRequest<T>(params: {
+    baseUrl: string;
+    apiKey: string;
+    path: string;
+    label: string;
+    body?: unknown;
+    timeoutMs?: number;
+  }): Promise<T> {
+    const url = this.buildApiUrl(params.baseUrl, params.path);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      params.timeoutMs ?? 30000,
+    );
+    const isGet = params.body === undefined;
+    try {
+      const doFetch = () =>
+        fetch(url, {
+          method: isGet ? 'GET' : 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Api-Key': params.apiKey,
+          },
+          body: isGet ? undefined : JSON.stringify(params.body),
+          signal: controller.signal,
+        });
+      const res = isGet
+        ? await fetchWithTransientRetry(doFetch)
+        : await doFetch();
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr ${params.label} failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr ${params.label} failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async profileApiRequest<T>(params: {
+    baseUrl: string;
+    apiKey: string;
+    path: string;
+    body?: unknown;
+  }): Promise<T> {
+    return await this.apiJsonRequest<T>({ ...params, label: params.path });
+  }
+
+  async listCustomFormats(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<Array<Record<string, unknown> & { id: number; name?: string }>> {
+    return await this.profileApiRequest({
+      ...params,
+      path: 'api/v3/customformat',
+    });
+  }
+
+  async createCustomFormat(params: {
+    baseUrl: string;
+    apiKey: string;
+    format: Record<string, unknown>;
+  }): Promise<Record<string, unknown> & { id: number }> {
+    return await this.profileApiRequest({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/customformat',
+      body: params.format,
+    });
+  }
+
+  async getQualityProfileSchema(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<Record<string, unknown>> {
+    return await this.profileApiRequest({
+      ...params,
+      path: 'api/v3/qualityprofile/schema',
+    });
+  }
+
+  async createQualityProfile(params: {
+    baseUrl: string;
+    apiKey: string;
+    profile: Record<string, unknown>;
+  }): Promise<Record<string, unknown> & { id: number }> {
+    return await this.profileApiRequest({
+      baseUrl: params.baseUrl,
+      apiKey: params.apiKey,
+      path: 'api/v3/qualityprofile',
+      body: params.profile,
+    });
+  }
+
+  async deleteSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+    seriesId: number;
+    deleteFiles: boolean;
+    addImportListExclusion: boolean;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, seriesId } = params;
+    const query = `deleteFiles=${params.deleteFiles ? 'true' : 'false'}&addImportListExclusion=${
+      params.addImportListExclusion ? 'true' : 'false'
+    }`;
+    const url = this.buildApiUrl(baseUrl, `api/v3/series/${seriesId}?${query}`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok && res.status !== 404) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr delete series failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr delete series failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async deleteEpisodeFilesBulk(params: {
+    baseUrl: string;
+    apiKey: string;
+    episodeFileIds: number[];
+  }): Promise<boolean> {
+    const { baseUrl, apiKey } = params;
+    const episodeFileIds = (params.episodeFileIds ?? [])
+      .map((id) => Math.trunc(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (episodeFileIds.length === 0) return true;
+
+    const url = this.buildApiUrl(baseUrl, 'api/v3/episodefile/bulk');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({ episodeFileIds }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr bulk delete episode files failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr bulk delete episode files failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async searchSeries(params: {
+    baseUrl: string;
+    apiKey: string;
+    seriesId: number;
+  }): Promise<boolean> {
+    const { baseUrl, apiKey, seriesId } = params;
+    if (!Number.isFinite(seriesId) || seriesId <= 0) return false;
+
+    const url = this.buildApiUrl(baseUrl, 'api/v3/command');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({
+          name: 'SeriesSearch',
+          seriesId: Math.trunc(seriesId),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr series search failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr series search failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async getDiskSpace(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<SonarrDiskSpace[]> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/diskspace');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr disk space failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const rows = Array.isArray(data)
+        ? (data as Array<Record<string, unknown>>)
+        : [];
+
+      const out: SonarrDiskSpace[] = [];
+      for (const r of rows) {
+        const path = typeof r['path'] === 'string' ? r['path'].trim() : '';
+        if (!path) continue;
+        const free = Number(r['freeSpace']);
+        const total = Number(r['totalSpace']);
+        out.push({
+          path,
+          label: typeof r['label'] === 'string' ? r['label'] : null,
+          freeSpace: Number.isFinite(free) ? free : 0,
+          totalSpace: Number.isFinite(total) ? total : 0,
+        });
+      }
+      return out;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr disk space failed: ${truncateErrorMessage(err)}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async getRecycleBinPath(params: {
+    baseUrl: string;
+    apiKey: string;
+  }): Promise<string | null> {
+    const { baseUrl, apiKey } = params;
+    const url = this.buildApiUrl(baseUrl, 'api/v3/config/mediamanagement');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new BadGatewayException(
+          `Sonarr media management config failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+        );
+      }
+
+      const data = (await res.json()) as unknown;
+      const bin =
+        isRecord(data) && typeof data['recycleBin'] === 'string'
+          ? data['recycleBin'].trim()
+          : '';
+      return bin.length > 0 ? bin : null;
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      throw new BadGatewayException(
+        `Sonarr media management config failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -576,4 +1237,8 @@ export class SonarrService {
     const normalized = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     return new URL(path, normalized).toString();
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

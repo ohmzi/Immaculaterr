@@ -159,6 +159,7 @@ function makeController() {
     google as never,
     openai as never,
     seerr as never,
+    {} as never,
     arrInstances as never,
   );
 

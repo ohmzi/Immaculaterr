@@ -10,7 +10,8 @@ import { RadarrService, type RadarrMovie } from '../radarr/radarr.service';
 import { SonarrService, type SonarrSeries } from '../sonarr/sonarr.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportV1 } from './job-report-v1';
-import { issue, metricRow } from './job-report-v1';
+import { issue, metricRow, simpleFailureReport } from './job-report-v1';
+import { truncateErrorMessage } from '../log.utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -386,10 +387,31 @@ export class MonitorConfirmJob {
     });
 
     // --- Plex libraries (scan ALL movie/show libraries)
-    const sections = await this.plexServer.getSections({
-      baseUrl: plexBaseUrl,
-      token: plexToken,
-    });
+    let sections: Awaited<ReturnType<PlexServerService['getSections']>>;
+    try {
+      sections = await this.plexServer.getSections({
+        baseUrl: plexBaseUrl,
+        token: plexToken,
+      });
+    } catch (err) {
+      const reason = truncateErrorMessage(err);
+      await ctx.error('monitorConfirm: Plex library discovery failed', {
+        error: reason,
+        endpoint: 'GET {plex}/library/sections',
+      });
+      return {
+        summary: simpleFailureReport({
+          jobId: ctx.jobId,
+          dryRun: ctx.dryRun,
+          trigger: ctx.trigger,
+          headline: 'Plex library discovery failed — the run did not proceed',
+          taskId: 'plex_scan',
+          taskTitle: 'Plex library discovery',
+          message: `Plex library discovery failed: ${reason}`,
+          facts: [{ label: 'Endpoint', value: 'GET {plex}/library/sections' }],
+        }) as unknown as JsonObject,
+      };
+    }
     const movieSections = sections.filter(
       (s) => (s.type ?? '').toLowerCase() === 'movie',
     );
@@ -495,7 +517,7 @@ export class MonitorConfirmJob {
         moviePlayabilityCache.set(ratingKey, fallback);
         await ctx.warn('plex: failed verifying Plex movie playability', {
           ratingKey,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         return fallback;
       }
@@ -517,7 +539,7 @@ export class MonitorConfirmJob {
         movieMetadataCache.set(ratingKey, null);
         await ctx.warn('plex: failed loading Plex movie metadata details', {
           ratingKey,
-          error: (error as Error)?.message ?? String(error),
+          error: truncateErrorMessage(error),
         });
         return null;
       }
@@ -544,10 +566,37 @@ export class MonitorConfirmJob {
         step: 'radarr_scan',
         message: 'Loading Radarr monitored movies…',
       });
-      const monitoredMovies = await this.radarr.listMonitoredMovies({
-        baseUrl: radarrBaseUrl as string,
-        apiKey: radarrApiKey as string,
-      });
+      let monitoredMovies: Awaited<
+        ReturnType<RadarrService['listMonitoredMovies']>
+      >;
+      try {
+        monitoredMovies = await this.radarr.listMonitoredMovies({
+          baseUrl: radarrBaseUrl as string,
+          apiKey: radarrApiKey as string,
+        });
+      } catch (err) {
+        const reason = truncateErrorMessage(err);
+        await ctx.error(
+          'monitorConfirm: Radarr monitored-movie listing failed',
+          {
+            error: reason,
+            endpoint: 'GET {radarr}/api/v3/movie',
+          },
+        );
+        return {
+          summary: simpleFailureReport({
+            jobId: ctx.jobId,
+            dryRun: ctx.dryRun,
+            trigger: ctx.trigger,
+            headline:
+              'Radarr monitored-movie listing failed — the run did not proceed',
+            taskId: 'radarr_scan',
+            taskTitle: 'Radarr monitored-movie listing',
+            message: `Radarr monitored-movie listing failed: ${reason}`,
+            facts: [{ label: 'Endpoint', value: 'GET {radarr}/api/v3/movie' }],
+          }) as unknown as JsonObject,
+        };
+      }
 
       radarrTotalMonitored = monitoredMovies.length;
       summary.radarr = buildRadarrSummary({
@@ -871,7 +920,7 @@ export class MonitorConfirmJob {
           'plex: failed verifying Plex show episode availability',
           {
             showRatingKey,
-            error: (error as Error)?.message ?? String(error),
+            error: truncateErrorMessage(error),
           },
         );
         return fallback;
@@ -899,10 +948,37 @@ export class MonitorConfirmJob {
         step: 'sonarr_scan',
         message: 'Loading Sonarr monitored series…',
       });
-      const monitoredSeries = await this.sonarr.listMonitoredSeries({
-        baseUrl: sonarrBaseUrl as string,
-        apiKey: sonarrApiKey as string,
-      });
+      let monitoredSeries: Awaited<
+        ReturnType<SonarrService['listMonitoredSeries']>
+      >;
+      try {
+        monitoredSeries = await this.sonarr.listMonitoredSeries({
+          baseUrl: sonarrBaseUrl as string,
+          apiKey: sonarrApiKey as string,
+        });
+      } catch (err) {
+        const reason = truncateErrorMessage(err);
+        await ctx.error(
+          'monitorConfirm: Sonarr monitored-series listing failed',
+          {
+            error: reason,
+            endpoint: 'GET {sonarr}/api/v3/series',
+          },
+        );
+        return {
+          summary: simpleFailureReport({
+            jobId: ctx.jobId,
+            dryRun: ctx.dryRun,
+            trigger: ctx.trigger,
+            headline:
+              'Sonarr monitored-series listing failed — the run did not proceed',
+            taskId: 'sonarr_scan',
+            taskTitle: 'Sonarr monitored-series listing',
+            message: `Sonarr monitored-series listing failed: ${reason}`,
+            facts: [{ label: 'Endpoint', value: 'GET {sonarr}/api/v3/series' }],
+          }) as unknown as JsonObject,
+        };
+      }
 
       sonarrSeriesTotal = monitoredSeries.length;
       summary.sonarr = buildSonarrSummary({
@@ -1170,7 +1246,7 @@ export class MonitorConfirmJob {
                     title,
                     seriesId: series.id,
                     seasonsUnmonitored: seasonsUpdatedForSeries,
-                    error: (error as Error)?.message ?? String(error),
+                    error: truncateErrorMessage(error),
                   },
                 );
               }
@@ -1285,7 +1361,7 @@ export class MonitorConfirmJob {
                   {
                     title,
                     seriesId: series.id,
-                    error: (error as Error)?.message ?? String(error),
+                    error: truncateErrorMessage(error),
                   },
                 );
               }

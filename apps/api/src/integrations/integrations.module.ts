@@ -7,6 +7,7 @@ import { PlexModule } from '../plex/plex.module';
 import { RadarrModule } from '../radarr/radarr.module';
 import { SettingsModule } from '../settings/settings.module';
 import { SonarrModule } from '../sonarr/sonarr.module';
+import { TautulliModule } from '../tautulli/tautulli.module';
 import { TmdbModule } from '../tmdb/tmdb.module';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsConnectivityMonitorService } from './integrations-connectivity-monitor.service';
@@ -23,6 +24,7 @@ import { ArrInstanceModule } from '../arr-instances/arr-instance.module';
     GoogleModule,
     OpenAiModule,
     SeerrModule,
+    TautulliModule,
     ArrInstanceModule,
   ],
   controllers: [IntegrationsController],

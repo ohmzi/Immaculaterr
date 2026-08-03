@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { isDebuggerAccessAllowed } from '@/lib/debugger';
+import { copyToClipboard } from '@/lib/clipboard';
 import { APP_HEADER_STATUS_PILL_BASE_CLASS } from '@/lib/ui-classes';
 
 const buildRuntimeInfo = () => {
@@ -274,7 +275,7 @@ export function DebuggerPage() {
   const handleCopy = useCallback(async () => {
     setCopied(false);
     try {
-      await navigator.clipboard.writeText(diagnosticsText);
+      await copyToClipboard(diagnosticsText);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -284,7 +285,7 @@ export function DebuggerPage() {
   const handlePlexCopy = useCallback(async () => {
     setPlexCopied(false);
     try {
-      await navigator.clipboard.writeText(plexLogText || '');
+      await copyToClipboard(plexLogText || '');
       setPlexCopied(true);
       window.setTimeout(() => setPlexCopied(false), 2000);
     } catch {

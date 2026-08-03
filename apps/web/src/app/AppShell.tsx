@@ -6,7 +6,16 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Suspense, useLayoutEffect } from 'react';
+import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+
+import {
+  APP_BG_DARK_WASH_CLASS,
+  APP_BG_HIGHLIGHT_CLASS,
+  APP_BG_IMAGE_URL,
+} from '@/lib/ui-classes';
+import { tintClassForPath } from '@/app/route-tints';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -374,20 +383,62 @@ export const AppShell = () => {
   }, [location.pathname, navigate, onboardingCompleted]);
 
   const isHomePage = location.pathname === '/';
+  const outlet = useOutlet();
+
+  // Jump to the top before paint on every route change: the cross-fade then
+  // blends both pages from their tops instead of from a stale scroll offset.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
   const recoveryInputClass =
     'w-full px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-white/20 focus:border-transparent outline-none transition';
 
   return (
-    <div className="min-h-screen bg-background transition-colors duration-300">
+    <div className="min-h-screen bg-gray-900 transition-colors duration-300">
+      {/* Persistent backdrop: painted once and never unmounted, so route
+          changes never re-rasterize the artwork (the old "flash"). Pages
+          keep only their own colour-tint layer on top. */}
+      <div className="pointer-events-none fixed inset-0 z-0 bg-gray-900">
+        <img
+          src={APP_BG_IMAGE_URL}
+          alt=""
+          className="h-full w-full object-cover object-center opacity-80"
+        />
+        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
+        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
+      </div>
+
+      {/* Route tint: swaps in a single frame on navigation. Keeping it out of
+          the content cross-fade means two page colours can never blend, so
+          transitions cannot flash the wrong hue. */}
+      <div
+        className={`pointer-events-none fixed inset-0 z-0 ${tintClassForPath(location.pathname)}`}
+      />
+
       {/* Desktop navigation (same on every screen) */}
       <Navigation />
 
-      {/* Main Content */}
-      <main className={isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}>
-        {/* Force route content to remount on path change.
-            This avoids rare cases where a previous page's state/overlays prevent the next page from rendering,
-            even though the URL changes (observed leaving Observatory). */}
-        <Outlet key={location.pathname} />
+      {/* Main Content — `relative` anchors popLayout's absolute exit pinning. */}
+      <main
+        className={`relative ${isHomePage ? 'pb-24 lg:pb-0' : 'pt-24 pb-24 lg:pb-8'}`}
+      >
+        {/* Instant swap — deliberately NO transition animation. Any fade
+            momentarily thins the page over the shared backdrop and reads as
+            a colour flash. With the backdrop and route tint persistent in
+            the shell and page chunks prefetched, the old page is replaced by
+            the fully-formed next page in a single frame. Keying by pathname
+            keeps the clean remount per route (previous overlay-state fix). */}
+        <div key={location.pathname}>
+          <Suspense
+            fallback={
+              <div className="flex min-h-[60vh] items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+              </div>
+            }
+          >
+            {outlet}
+          </Suspense>
+        </div>
       </main>
 
       {/* Mobile app navigation */}

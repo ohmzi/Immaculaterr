@@ -42,6 +42,30 @@ function buildDefaultEstimateKey(params: JobEstimateKeyBuilderParams): string {
   return `${params.jobId}|dryRun:${params.dryRun ? '1' : '0'}`;
 }
 
+function buildCuttingRoomSnapshotFingerprint(
+  params: JobEstimateKeyBuilderParams,
+): string | null {
+  const input = params.input ?? null;
+  if (!input) return null;
+  const snapshotId =
+    typeof input['snapshotId'] === 'string' ? input['snapshotId'].trim() : '';
+  if (!snapshotId) return null;
+  return `${params.jobId}|snapshot:${snapshotId}`;
+}
+
+function buildDefaultFingerprintFromInputKind(
+  params: JobEstimateKeyBuilderParams,
+): string | null {
+  const input = params.input ?? null;
+  const type =
+    input && typeof input['type'] === 'string' ? input['type'].trim() : '';
+  const instanceId =
+    input && typeof input['instanceId'] === 'string'
+      ? input['instanceId'].trim()
+      : '';
+  return `${params.jobId}|type:${type || 'any'}|instance:${instanceId || 'primary'}`;
+}
+
 function pickString(
   value: Record<string, unknown> | null | undefined,
   key: string,
@@ -240,6 +264,16 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     estimateKeyBuilder: buildDefaultEstimateKey,
   }),
   defineJob({
+    id: 'repairMonitored',
+    name: 'Repair Monitored',
+    description:
+      'Fixes movies and episodes that Radarr or Sonarr think are downloaded but that never showed up in Plex — it deletes the bad file, blocks that release, and searches for a working copy.',
+    defaultScheduleCron: '0 2 * * *',
+    defaultEstimatedRuntimeMs: 12 * 60_000,
+    dedupePolicy: 'schedule_singleton',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+  }),
+  defineJob({
     id: 'mediaAddedCleanup',
     name: 'Cleanup After Adding New Content',
     description:
@@ -351,6 +385,76 @@ export const JOB_DEFINITIONS: JobDefinitionInfo[] = [
     defaultEstimatedRuntimeMs: 12 * 60_000,
     dedupePolicy: 'none',
     estimateKeyBuilder: buildDefaultEstimateKey,
+  }),
+  defineJob({
+    id: 'cuttingRoomAnalyze',
+    name: 'Cutting Room Scan',
+    description:
+      'Scans the selected Plex libraries plus Radarr/Sonarr (and Tautulli when connected) and scores every item for the Cutting Room page. Read-only: finds prune candidates, never deletes anything.',
+    defaultScheduleCron: undefined,
+    visibleInTaskManager: false,
+    visibleInRewind: true,
+    rewindDisplayName: 'Cutting room scan',
+    defaultEstimatedRuntimeMs: 5 * 60_000,
+    dedupePolicy: 'queue_fingerprint',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+    queueFingerprintBuilder: buildCuttingRoomSnapshotFingerprint,
+  }),
+  defineJob({
+    id: 'cuttingRoomPrune',
+    name: 'Cutting Room Prune',
+    description:
+      'Executes a reviewed Cutting Room selection in waves: tags each item in Radarr/Sonarr, unmonitors it, deletes its files, and records it in Pruned History. Honors dry-run and can be stopped between waves.',
+    defaultScheduleCron: undefined,
+    visibleInTaskManager: false,
+    visibleInRewind: true,
+    rewindDisplayName: 'Cutting room prune',
+    defaultEstimatedRuntimeMs: 10 * 60_000,
+    dedupePolicy: 'queue_fingerprint',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+    queueFingerprintBuilder: buildCuttingRoomSnapshotFingerprint,
+  }),
+  defineJob({
+    id: 'cuttingRoomLargeFiles',
+    name: 'Large File Replacement',
+    description:
+      'Replaces oversized movie/episode files: deletes the file, re-monitors exactly the affected items, tags them size-reduction, and triggers a fresh Radarr/Sonarr search for a smaller copy. Driven from the Cutting Room page; honors dry-run.',
+    defaultScheduleCron: undefined,
+    visibleInTaskManager: false,
+    visibleInRewind: true,
+    rewindDisplayName: 'Large file replacement',
+    defaultEstimatedRuntimeMs: 5 * 60_000,
+    dedupePolicy: 'queue_fingerprint',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+    queueFingerprintBuilder: buildDefaultFingerprintFromInputKind,
+  }),
+  defineJob({
+    id: 'cuttingRoomDuplicates',
+    name: 'Duplicate Version Cleanup',
+    description:
+      'Removes extra versions of selected movies via Plex, keeping one copy per movie (configurable keep-largest/keep-smallest). Driven from the Cutting Room page; honors dry-run.',
+    defaultScheduleCron: undefined,
+    visibleInTaskManager: false,
+    visibleInRewind: true,
+    rewindDisplayName: 'Duplicate cleanup',
+    defaultEstimatedRuntimeMs: 3 * 60_000,
+    dedupePolicy: 'queue_fingerprint',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+    queueFingerprintBuilder: buildDefaultFingerprintFromInputKind,
+  }),
+  defineJob({
+    id: 'cuttingRoomWantedPrune',
+    name: 'Wanted List Prune',
+    description:
+      'Unmonitors or removes monitored-but-never-downloaded entries from Radarr/Sonarr so they stop downloading in the future. Never touches files.',
+    defaultScheduleCron: undefined,
+    visibleInTaskManager: false,
+    visibleInRewind: true,
+    rewindDisplayName: 'Wanted list prune',
+    defaultEstimatedRuntimeMs: 3 * 60_000,
+    dedupePolicy: 'queue_fingerprint',
+    estimateKeyBuilder: buildDefaultEstimateKey,
+    queueFingerprintBuilder: buildDefaultFingerprintFromInputKind,
   }),
   defineJob({
     id: IMMACULATE_TASTE_PROFILE_ACTION_JOB_ID,

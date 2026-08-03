@@ -143,6 +143,38 @@ export function ToolbarSearch({ open, onOpenChange, variant }: ToolbarSearchProp
     onOpenChange(true);
   }, [closeSearch, onOpenChange, open]);
 
+  // Global shortcuts (desktop): Cmd/Ctrl+K anywhere, or "/" outside of a
+  // text field, open the search.
+  useEffect(() => {
+    if (!isDesktop) return;
+    const onGlobalKeyDown = (event: KeyboardEvent) => {
+      const isCommandK =
+        event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey);
+      const target = event.target as HTMLElement | null;
+      const isTyping = Boolean(
+        target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT' ||
+            target.isContentEditable),
+      );
+      const isSlash =
+        event.key === '/' &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !isTyping;
+      if (!isCommandK && !isSlash) return;
+      event.preventDefault();
+      if (!open) {
+        setQuery('');
+        onOpenChange(true);
+      }
+    };
+    window.addEventListener('keydown', onGlobalKeyDown);
+    return () => window.removeEventListener('keydown', onGlobalKeyDown);
+  }, [isDesktop, onOpenChange, open]);
+
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (variant !== 'mobile' || event.key !== 'Enter') return;
@@ -227,6 +259,13 @@ export function ToolbarSearch({ open, onOpenChange, variant }: ToolbarSearchProp
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={open ? 'Close toolbar search' : 'Open toolbar search'}
+        title={
+          isDesktop
+            ? open
+              ? 'Close search (Esc)'
+              : 'Search (Ctrl+K or /)'
+            : undefined
+        }
         transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
         className={cn(
           APP_PRESSABLE_CLASS,

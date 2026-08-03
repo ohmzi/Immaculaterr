@@ -235,7 +235,7 @@ export class ObservatoryService {
     const tvdbToTitle = new Map<number, string>();
     if (tvdbIds.length > 0 && sonarrBaseUrl && sonarrApiKey) {
       const series = await this.sonarr
-        .listSeries({ baseUrl: sonarrBaseUrl, apiKey: sonarrApiKey })
+        .listSeriesCached({ baseUrl: sonarrBaseUrl, apiKey: sonarrApiKey })
         .catch(() => []);
       for (const s of series) {
         const id = (s as SonarrSeries | null)?.tvdbId;
@@ -1410,7 +1410,7 @@ export class ObservatoryService {
       // Unmonitor rejected movies that we previously requested in Radarr.
       let unmonitored = 0;
       if (radarrEnabled && rejected.some((r) => Boolean(r.sentToRadarrAt))) {
-        const movies = await this.radarr.listMovies({
+        const movies = await this.radarr.listMoviesCached({
           baseUrl: radarrBaseUrl,
           apiKey: radarrApiKey,
         });
@@ -1579,7 +1579,7 @@ export class ObservatoryService {
 
     let unmonitored = 0;
     if (sonarrEnabled && rejected.some((r) => Boolean(r.sentToSonarrAt))) {
-      const series = await this.sonarr.listSeries({
+      const series = await this.sonarr.listSeriesCached({
         baseUrl: sonarrBaseUrl,
         apiKey: sonarrApiKey,
       });
@@ -1853,7 +1853,7 @@ export class ObservatoryService {
     // --- ARR unmonitor for rejected items that we previously requested ---
     let unmonitored = 0;
     if (radarrEnabled && rejected.some((r) => Boolean(r.sentToRadarrAt))) {
-      const movies = await this.radarr.listMovies({
+      const movies = await this.radarr.listMoviesCached({
         baseUrl: radarrBaseUrl,
         apiKey: radarrApiKey,
       });
@@ -2091,7 +2091,7 @@ export class ObservatoryService {
 
     let unmonitored = 0;
     if (sonarrEnabled && rejected.some((r) => Boolean(r.sentToSonarrAt))) {
-      const series = await this.sonarr.listSeries({
+      const series = await this.sonarr.listSeriesCached({
         baseUrl: sonarrBaseUrl,
         apiKey: sonarrApiKey,
       });

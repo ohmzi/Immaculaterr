@@ -39,7 +39,14 @@ function normalizeHttpUrl(raw: string): string {
   return baseUrl;
 }
 
-type ServiceKey = 'tmdb' | 'radarr' | 'sonarr' | 'openai' | 'google' | 'seerr';
+type ServiceKey =
+  | 'tmdb'
+  | 'radarr'
+  | 'sonarr'
+  | 'openai'
+  | 'google'
+  | 'seerr'
+  | 'tautulli';
 type ServiceStatus = 'unknown' | 'not_configured' | 'online' | 'offline';
 
 @Injectable()
@@ -155,6 +162,7 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       this.checkRadarr(s, sec),
       this.checkSonarr(s, sec),
       this.checkSeerr(s, sec),
+      this.checkTautulli(s, sec),
       this.checkOpenAi(s, sec),
       this.checkGoogle(s, sec),
     ]);
@@ -274,6 +282,35 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
 
     await this.probeHttp('seerr', url, {
       headers: { Accept: 'application/json', 'X-Api-Key': apiKey },
+      timeoutMs: 10_000,
+    });
+  }
+
+  private async checkTautulli(
+    settings: Record<string, unknown>,
+    secrets: Record<string, unknown>,
+  ) {
+    const enabled =
+      (pickBool(settings, 'tautulli.enabled') ??
+        Boolean(pickString(secrets, 'tautulli.apiKey'))) &&
+      Boolean(pickString(settings, 'tautulli.baseUrl')) &&
+      Boolean(pickString(secrets, 'tautulli.apiKey'));
+    if (!enabled) {
+      this.setStatus('tautulli', 'not_configured', null, {
+        reason: 'disabled_or_missing',
+      });
+      return;
+    }
+
+    const baseUrl = normalizeHttpUrl(pickString(settings, 'tautulli.baseUrl'));
+    const apiKey = pickString(secrets, 'tautulli.apiKey');
+    const url = new URL(
+      `api/v2?apikey=${encodeURIComponent(apiKey)}&cmd=status`,
+      baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`,
+    ).toString();
+
+    await this.probeHttp('tautulli', url, {
+      headers: { Accept: 'application/json' },
       timeoutMs: 10_000,
     });
   }

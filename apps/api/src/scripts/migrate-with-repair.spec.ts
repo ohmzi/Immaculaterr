@@ -1,5 +1,5 @@
 const mockSpawnSync = jest.fn();
-const mockExistsSync = jest.fn(() => true);
+const mockExistsSync = jest.fn<boolean, unknown[]>(() => true);
 const mockPrismaInstances: Array<{
   $disconnect: jest.Mock<Promise<void>, []>;
   $executeRawUnsafe: jest.Mock<Promise<void>, [string]>;
@@ -18,8 +18,12 @@ jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => {
     const instance = {
       $disconnect: jest.fn(() => Promise.resolve()),
-      $executeRawUnsafe: jest.fn(() => Promise.resolve()),
-      $queryRawUnsafe: jest.fn(() => Promise.resolve([])),
+      $executeRawUnsafe: jest.fn<Promise<void>, [string]>(() =>
+        Promise.resolve(),
+      ),
+      $queryRawUnsafe: jest.fn<Promise<unknown>, [string, ...unknown[]]>(() =>
+        Promise.resolve([]),
+      ),
     };
     mockPrismaInstances.push(instance);
     return instance;
@@ -65,7 +69,6 @@ function createPrismaMock(state: Partial<PrismaMockState> = {}): {
     columns: {},
     failedMigrations: [],
     migrationRows: {},
-    tables: new Set<string>(),
     ...state,
     tables: new Set(state.tables ?? []),
   };

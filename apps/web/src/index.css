@@ -67,3 +67,23 @@ input, textarea, [contenteditable] {
 .recharts-surface:focus {
   outline: none;
 }
+
+/* Respect the OS "reduce motion" preference for CSS-driven animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* The app is dark-only; paint the root the same tone as every page backdrop
+   so route transitions and lazy-chunk loads never flash black or white. */
+html,
+body,
+#root {
+  background-color: #111827; /* gray-900 — matches the page shells */
+}

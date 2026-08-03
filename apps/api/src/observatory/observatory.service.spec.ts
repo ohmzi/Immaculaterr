@@ -18,6 +18,7 @@ describe('ObservatoryService library selection guard', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     return { service, settings };

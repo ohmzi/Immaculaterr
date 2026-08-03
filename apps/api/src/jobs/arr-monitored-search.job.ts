@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { SettingsService } from '../settings/settings.service';
 import { RadarrService } from '../radarr/radarr.service';
 import { SonarrService } from '../sonarr/sonarr.service';
@@ -227,7 +228,7 @@ export class ArrMonitoredSearchJob {
           facts: [{ label: 'Base URL', value: radarrBaseUrl as string }],
         });
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         issues.push(issue('warn', `Radarr trigger failed: ${msg}`));
         tasks.push({
           id: 'radarr',
@@ -349,7 +350,7 @@ export class ArrMonitoredSearchJob {
           facts: [{ label: 'Base URL', value: sonarrBaseUrl as string }],
         });
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = truncateErrorMessage(err);
         issues.push(issue('warn', `Sonarr trigger failed: ${msg}`));
         tasks.push({
           id: 'sonarr',

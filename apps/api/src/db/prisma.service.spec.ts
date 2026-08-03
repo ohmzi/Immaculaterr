@@ -18,7 +18,7 @@ describe('PrismaService', () => {
     const queryRawUnsafe = jest.fn().mockResolvedValue([]);
     const executeRawUnsafe = jest.fn().mockResolvedValue(0);
     const warn = jest.fn();
-    const service = Object.create(PrismaService.prototype) as PrismaService & {
+    const service = Object.create(PrismaService.prototype) as unknown as {
       $executeRawUnsafe: typeof executeRawUnsafe;
       $queryRawUnsafe: typeof queryRawUnsafe;
       logger: { warn: typeof warn };
@@ -52,7 +52,7 @@ describe('PrismaService', () => {
 
     const queryRawUnsafe = jest.fn().mockResolvedValue([]);
     const warn = jest.fn();
-    const service = Object.create(PrismaService.prototype) as PrismaService & {
+    const service = Object.create(PrismaService.prototype) as unknown as {
       $queryRawUnsafe: typeof queryRawUnsafe;
       logger: { warn: typeof warn };
     };

@@ -17,10 +17,9 @@ import {
 import { Telescope, Undo2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { usePersistentState } from '@/lib/usePersistentState';
 
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
   APP_BG_IMAGE_URL,
 } from '@/lib/ui-classes';
 import { getImmaculateTasteCollections } from '@/api/immaculate';
@@ -432,8 +431,11 @@ export function ObservatoryPage() {
   const queryClient = useQueryClient();
 
   const [activeCollectionTab, setActiveCollectionTab] =
-    useState<CollectionTab>('immaculate');
-  const [mediaTab, setMediaTab] = useState<Tab>('movie');
+    usePersistentState<CollectionTab>('tcp_observatory_collection_tab', 'immaculate');
+  const [mediaTab, setMediaTab] = usePersistentState<Tab>(
+    'tcp_observatory_media_tab',
+    'movie',
+  );
   const [movieLibrary, setMovieLibrary] = useState<string>('');
   const [tvLibrary, setTvLibrary] = useState<string>('');
 
@@ -450,6 +452,8 @@ export function ObservatoryPage() {
   const [watchedUndoState, setWatchedUndoState] = useState<WatchedUndoState>(null);
 
   const pendingApplyRef = useRef(false);
+  const [hasPendingApply, setHasPendingApply] = useState(false);
+  const [hasPendingWatchedApply, setHasPendingWatchedApply] = useState(false);
   const applyTimerRef = useRef<number | null>(null);
   const deckKeyRef = useRef<string | null>(null);
   const swipeTopCardRef = useRef<((dir: 'left' | 'right') => void) | null>(null);
@@ -941,6 +945,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       pendingApplyRef.current = true;
+      setHasPendingApply(true);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -1007,6 +1012,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       watchedPendingApplyRef.current = true;
+      setHasPendingWatchedApply(true);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -1068,6 +1074,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       pendingApplyRef.current = false;
+      setHasPendingApply(false);
       setUndoState(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste'] }),
@@ -1085,6 +1092,7 @@ export function ObservatoryPage() {
     },
     onSuccess: async () => {
       watchedPendingApplyRef.current = false;
+      setHasPendingWatchedApply(false);
       setWatchedUndoState(null);
       await Promise.all([
         queryClient.invalidateQueries({
@@ -1347,7 +1355,6 @@ export function ObservatoryPage() {
       if (e.repeat) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      if (activeCollectionTab !== 'immaculate') return;
 
       const t = e.target as HTMLElement | null;
       if (t) {
@@ -1407,7 +1414,7 @@ export function ObservatoryPage() {
       if (!tab) return;
       setActiveCollectionTab(tab);
     },
-    [],
+    [setActiveCollectionTab],
   );
   const handleMediaTabClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -1415,7 +1422,7 @@ export function ObservatoryPage() {
       if (!tab) return;
       setMediaTab(tab);
     },
-    [],
+    [setMediaTab],
   );
   const handleLibraryValueChange = useCallback(
     (value: string) => {
@@ -1438,20 +1445,7 @@ export function ObservatoryPage() {
   }, [swipeTopCardWatched]);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-          {/* Background (landing-page style, amber-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        {/* Purple-tinted overlay (bright yellow top-left, purple wash, dark purple bottom-right) */}
-        <div className="absolute inset-0 bg-gradient-to-br from-yellow-300/16 via-purple-800/60 to-purple-950/85" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
-
+    <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
           <div className="mb-12">
@@ -1530,6 +1524,42 @@ export function ObservatoryPage() {
               </button>
             ))}
           </div>
+
+          {(activeCollectionTab === 'immaculate' && hasPendingApply) ||
+          (activeCollectionTab === 'latestWatched' && hasPendingWatchedApply) ? (
+            <div className="mb-6 flex items-center justify-center">
+              <div className="flex items-center gap-3 rounded-full border border-[#facc15]/25 bg-[#facc15]/10 px-4 py-2 text-xs font-semibold text-[#fde68a]">
+                <span>
+                  Decisions recorded — they sync to Plex automatically in the
+                  background.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeCollectionTab === 'immaculate') {
+                      applyMutation.mutate({
+                        mediaType: mediaTab,
+                        librarySectionKey: activeLibraryKey,
+                      });
+                    } else {
+                      applyWatchedMutation.mutate({
+                        mediaType: mediaTab,
+                        librarySectionKey: activeLibraryKey,
+                      });
+                    }
+                  }}
+                  disabled={
+                    applyMutation.isPending || applyWatchedMutation.isPending
+                  }
+                  className="rounded-full border border-[#facc15]/35 bg-[#facc15]/20 px-3 py-1 font-bold text-[#facc15] transition hover:bg-[#facc15]/30 disabled:opacity-50"
+                >
+                  {applyMutation.isPending || applyWatchedMutation.isPending
+                    ? 'Applying…'
+                    : 'Apply now'}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="min-h-[300px]">
             <AnimatePresence mode="wait">

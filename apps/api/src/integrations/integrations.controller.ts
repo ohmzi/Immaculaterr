@@ -16,12 +16,14 @@ import { PrismaService } from '../db/prisma.service';
 import { GoogleService } from '../google/google.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SeerrService } from '../seerr/seerr.service';
+import { TautulliService } from '../tautulli/tautulli.service';
 import {
-  type PlexEligibleLibrary,
-  buildExcludedSectionKeysFromSelected,
   PLEX_LIBRARY_SELECTION_MIN_SELECTED,
+  buildExcludedLibrariesFromSelected,
+  buildExcludedSectionKeysFromSelected,
   resolvePlexLibrarySelection,
   sanitizeSectionKeys,
+  type PlexEligibleLibrary,
 } from '../plex/plex-library-selection.utils';
 import {
   buildExcludedPlexUserIdsFromSelected,
@@ -249,6 +251,7 @@ const SERVICE_SECRET_ID_BY_INTEGRATION: Record<string, ServiceSecretId> = {
   sonarr: 'sonarr',
   tmdb: 'tmdb',
   seerr: 'seerr',
+  tautulli: 'tautulli',
   google: 'google',
   openai: 'openai',
 };
@@ -283,6 +286,7 @@ export class IntegrationsController {
     private readonly google: GoogleService,
     private readonly openai: OpenAiService,
     private readonly seerr: SeerrService,
+    private readonly tautulli: TautulliService,
     private readonly arrInstances: ArrInstanceService,
   ) {}
 
@@ -851,6 +855,10 @@ export class IntegrationsController {
       eligibleLibraries: selection.eligibleLibraries,
       selectedSectionKeys,
     });
+    const excludedLibraries = buildExcludedLibrariesFromSelected({
+      eligibleLibraries: selection.eligibleLibraries,
+      selectedSectionKeys,
+    });
     const requestedSelectedSet = new Set(selectedSectionKeys);
     const deselectedSectionKeys = selection.selectedSectionKeys.filter(
       (key) => !requestedSelectedSet.has(key),
@@ -864,6 +872,9 @@ export class IntegrationsController {
       plex: {
         librarySelection: {
           excludedSectionKeys,
+          // Title+type triples let exclusions survive Plex re-keying a
+          // deleted-and-re-created library.
+          excludedLibraries,
         },
       },
     });
@@ -1020,6 +1031,8 @@ export class IntegrationsController {
         return await this.testSavedTmdb(context);
       case 'seerr':
         return await this.testSavedSeerr(context);
+      case 'tautulli':
+        return await this.testSavedTautulli(context);
       case 'google':
         return await this.testSavedGoogle(context);
       case 'openai':
@@ -1236,6 +1249,49 @@ export class IntegrationsController {
           });
           this.logger.log(
             `Seerr integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
+          );
+          return { ok: true, result };
+        } catch {
+          // Try next candidate URL.
+        }
+      }
+
+      throw primaryError;
+    }
+  }
+
+  private async testSavedTautulli(
+    context: SavedIntegrationTestContext,
+  ): Promise<SavedIntegrationTestResult> {
+    const baseUrl = this.requireSavedBaseUrl(
+      context,
+      'tautulli.baseUrl',
+      'Tautulli',
+    );
+    const apiKey = await this.resolveSavedIntegrationSecret(
+      context,
+      'tautulli',
+    );
+    try {
+      const result = await this.tautulli.testConnection({ baseUrl, apiKey });
+      return { ok: true, result };
+    } catch (primaryError) {
+      if (!isConnectivityFailure(primaryError)) throw primaryError;
+
+      const fallbackBaseUrls = deriveContainerHostFallbackUrls(baseUrl).filter(
+        (candidate) => candidate.toLowerCase() !== baseUrl.toLowerCase(),
+      );
+      for (const fallbackBaseUrl of fallbackBaseUrls) {
+        try {
+          const result = await this.tautulli.testConnection({
+            baseUrl: fallbackBaseUrl,
+            apiKey,
+          });
+          await this.settingsService.updateSettings(context.userId, {
+            tautulli: { baseUrl: fallbackBaseUrl },
+          });
+          this.logger.log(
+            `Tautulli integration fallback succeeded userId=${context.userId} baseUrl=${fallbackBaseUrl}`,
           );
           return { ok: true, result };
         } catch {

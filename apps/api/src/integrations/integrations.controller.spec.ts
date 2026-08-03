@@ -84,6 +84,7 @@ describe('IntegrationsController plex libraries', () => {
       {} as never,
       {} as never,
       seerr as never,
+      {} as never,
       arrInstances as never,
     );
     return {
@@ -196,6 +197,10 @@ describe('IntegrationsController plex libraries', () => {
       plex: {
         librarySelection: {
           excludedSectionKeys: ['3', '1'],
+          excludedLibraries: [
+            { key: '3', title: 'Kids Movies', type: 'movie' },
+            { key: '1', title: 'Movies', type: 'movie' },
+          ],
         },
       },
     });

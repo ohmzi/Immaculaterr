@@ -19,6 +19,7 @@ describe('security/auth rate limit lockout', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     await expect.assertions(3);

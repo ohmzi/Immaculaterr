@@ -11,13 +11,10 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CircleAlert, Copy, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
-import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
-} from '@/lib/ui-classes';
+import { cancelRun, getRun, getRunLogs, listJobs, type JobRun } from '@/api/jobs';
 import { decodeHtmlEntities } from '@/lib/utils';
+import { RelativeTime } from '@/components/RelativeTime';
+import { copyToClipboard } from '@/lib/clipboard';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -133,29 +130,41 @@ function getFactPresentation(params: {
     return { label, summary: '—' };
   }
 
-  return { label, summary: JSON.stringify(value) };
-}
+  // Unknown object shapes: render as readable "key: value" pairs instead of
+  // a raw JSON blob. Arrays of scalars become comma lists; anything deeper
+  // still falls back to compact JSON per entry.
+  if (Array.isArray(value)) {
+    const scalarish = value.every(
+      (entry) =>
+        entry === null ||
+        ['string', 'number', 'boolean'].includes(typeof entry),
+    );
+    if (scalarish) {
+      return {
+        label,
+        summary: value.map((entry) => String(entry ?? '—')).join(', '),
+      };
+    }
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).slice(0, 8);
+    if (entries.length > 0) {
+      const summary = entries
+        .map(([key, entry]) => {
+          const rendered =
+            entry === null || entry === undefined
+              ? '—'
+              : ['string', 'number', 'boolean'].includes(typeof entry)
+                ? String(entry)
+                : JSON.stringify(entry);
+          return `${key}: ${rendered}`;
+        })
+        .join(' · ');
+      return { label, summary };
+    }
+  }
 
-async function copyToClipboard(text: string) {
-  // Prefer async clipboard API when available (secure contexts).
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  // Fallback for older browsers / non-secure contexts.
-  const el = document.createElement('textarea');
-  el.value = text;
-  el.setAttribute('readonly', 'true');
-  el.style.position = 'fixed';
-  el.style.left = '-9999px';
-  el.style.top = '0';
-  document.body.appendChild(el);
-  el.select();
-  try {
-    document.execCommand('copy');
-  } finally {
-    document.body.removeChild(el);
-  }
+  return { label, summary: JSON.stringify(value) };
 }
 
 function buildJsonPreview(value: string, visibleLines: number): { text: string; truncated: boolean } {
@@ -311,6 +320,37 @@ function getProgressPlan(jobId: string): ProgressPlan | null {
     };
   }
 
+  // Cutting room scan: arr → plex → watch truth → protections → scoring → persist
+  if (id === 'cuttingRoomAnalyze') {
+    return {
+      total: 6,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'arr_scan') return 1;
+        if (stepId === 'plex_scan') return 2;
+        if (stepId === 'watch_truth') return 3;
+        if (stepId === 'protections') return 4;
+        if (stepId === 'scoring') return 5;
+        if (stepId === 'persisting' || stepId === 'done') return 6;
+        return null;
+      },
+    };
+  }
+
+  // Cutting room prune: freshness → tag → waves
+  if (id === 'cuttingRoomPrune') {
+    return {
+      total: 3,
+      getStage: ({ stepId }) => {
+        if (!stepId) return null;
+        if (stepId === 'freshness') return 1;
+        if (stepId === 'tagging') return 2;
+        if (stepId === 'pruning' || stepId === 'done') return 3;
+        return null;
+      },
+    };
+  }
+
   // Cleanup job: scan → delete/unmonitor → watchlist
   if (id === 'mediaAddedCleanup') {
     return {
@@ -459,9 +499,14 @@ export function JobRunDetailPage() {
   const isPendingOrRunning =
     isRunning || runQuery.data?.run?.status === 'PENDING';
 
+  const [logSearch, setLogSearch] = useState('');
+  const [logLevel, setLogLevel] = useState<'all' | 'info' | 'warn' | 'error'>(
+    'all',
+  );
+  const [logTake, setLogTake] = useState(1000);
   const logsQuery = useQuery({
-    queryKey: ['jobRunLogs', runId],
-    queryFn: () => getRunLogs({ runId, take: 1000 }),
+    queryKey: ['jobRunLogs', runId, logTake],
+    queryFn: () => getRunLogs({ runId, take: logTake }),
     enabled: Boolean(runId),
     refetchInterval: isPendingOrRunning ? 2000 : false,
     refetchOnWindowFocus: false,
@@ -641,7 +686,22 @@ export function JobRunDetailPage() {
     [runSummaryJson],
   );
   const logsJsonPreview = useMemo(() => buildJsonPreview(logsJson, 3), [logsJson]);
-  const visibleLogs = logs;
+  const visibleLogs = useMemo(() => {
+    const q = logSearch.trim().toLowerCase();
+    return logs.filter((line) => {
+      if (logLevel !== 'all') {
+        const lvl = String(line.level ?? '').toLowerCase();
+        const matchesLevel =
+          logLevel === 'warn' ? lvl === 'warn' || lvl === 'warning' : lvl === logLevel;
+        if (!matchesLevel) return false;
+      }
+      if (!q) return true;
+      return (
+        (line.message ?? '').toLowerCase().includes(q) ||
+        JSON.stringify(line.context ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [logs, logSearch, logLevel]);
   const logStats = useMemo(() => {
     const counts = { error: 0, warn: 0 };
     for (const l of visibleLogs) {
@@ -713,18 +773,7 @@ export function JobRunDetailPage() {
   }, [logsJson]);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, Rewind violet-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400/35 via-violet-700/45 to-indigo-900/65" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16 select-text">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
@@ -805,27 +854,46 @@ export function JobRunDetailPage() {
               <div className="grid gap-6 min-w-0">
                 {/* Run Details Card */}
                 <div className={cardClass}>
-                  <div className="mb-3 text-sm font-medium text-white/85">
-                    Summary
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-white/85">Summary</div>
+                    {run.status === 'PENDING' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void cancelRun(run.id)
+                            .then(() => {
+                              toast.success('Queued run cancelled');
+                              void runQuery.refetch();
+                            })
+                            .catch((err: unknown) =>
+                              toast.error((err as Error).message),
+                            );
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-100 transition hover:bg-red-500/20"
+                        title="Cancel this queued run before it starts"
+                      >
+                        Cancel run
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="text-sm text-white/70 mb-4 space-y-1">
                     <div>
                       <span className="text-white/80 font-semibold">Queued:</span>{' '}
-                      {new Date(run.queuedAt || run.startedAt).toLocaleString()}
+                      <RelativeTime value={run.queuedAt || run.startedAt} />
                     </div>
                     {run.executionStartedAt ? (
                       <div>
                         <span className="text-white/80 font-semibold">
                           Started:
                         </span>{' '}
-                        {new Date(run.executionStartedAt).toLocaleString()}
+                        <RelativeTime value={run.executionStartedAt} />
                       </div>
                     ) : null}
                     {run.finishedAt ? (
                       <div>
                         <span className="text-white/80 font-semibold">Finished:</span>{' '}
-                        {new Date(run.finishedAt).toLocaleString()}
+                        <RelativeTime value={run.finishedAt} />
                       </div>
                     ) : null}
                     {seedContext ? (
@@ -2694,15 +2762,61 @@ export function JobRunDetailPage() {
 
                 {/* Logs Card */}
                 <div className={cardClass}>
-                  <div className="text-sm text-white/70 mb-4">
-                    {(() => {
-                      if (logsQuery.isLoading) return 'Loading…';
-                      const parts: string[] = [];
-                      if (logStats.error) parts.push(`${logStats.error} errors`);
-                      if (logStats.warn) parts.push(`${logStats.warn} warnings`);
-                      if (isRunning) parts.push('updating');
-                      return parts.length ? parts.join(' • ') : 'Logs';
-                    })()}
+                  <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="text-sm text-white/70">
+                      {(() => {
+                        if (logsQuery.isLoading) return 'Loading…';
+                        const parts: string[] = [];
+                        if (logStats.error) parts.push(`${logStats.error} errors`);
+                        if (logStats.warn) parts.push(`${logStats.warn} warnings`);
+                        if (isRunning) parts.push('updating');
+                        return parts.length ? parts.join(' • ') : 'Logs';
+                      })()}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(
+                        [
+                          ['all', 'All'],
+                          ['info', 'Info'],
+                          ['warn', 'Warn'],
+                          ['error', 'Error'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setLogLevel(value)}
+                          className={[
+                            'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                            logLevel === value
+                              ? 'border-white/25 bg-white/15 text-white'
+                              : 'border-white/10 bg-white/5 text-white/55 hover:bg-white/10',
+                          ].join(' ')}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <input
+                        type="search"
+                        value={logSearch}
+                        onChange={(e) => setLogSearch(e.target.value)}
+                        placeholder="Search logs…"
+                        aria-label="Search run logs"
+                        className="w-44 rounded-full border border-white/15 bg-black/30 px-3 py-1.5 text-xs text-white placeholder:text-white/35 focus:border-white/30 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void copyToClipboard(runId)
+                            .then(() => toast.success('Run ID copied'))
+                            .catch(() => toast.error('Copy failed'));
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-white/60 transition hover:bg-white/10 hover:text-white/90"
+                        title={`Copy run ID (${runId})`}
+                      >
+                        <Copy className="h-3 w-3" /> Run ID
+                      </button>
+                    </div>
                   </div>
 
                   {logsQuery.error ? (
@@ -2822,6 +2936,22 @@ export function JobRunDetailPage() {
                   ) : (
                     <div className="text-sm text-white/70">No logs yet.</div>
                   )}
+
+                  {logs.length >= logTake ? (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setLogTake((prev) => prev + 1000)}
+                        disabled={logsQuery.isFetching}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-semibold text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+                      >
+                        {logsQuery.isFetching ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                        Load 1000 more lines
+                      </button>
+                    </div>
+                  ) : null}
 
                   {/* Raw Response (inline) */}
                   <div className="mt-5">

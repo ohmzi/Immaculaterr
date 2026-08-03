@@ -63,7 +63,11 @@ describe('security/field encryption at rest', () => {
   it('stores user secrets encrypted and returns decrypted internal secrets', async () => {
     const crypto = createCryptoMock();
     const { prisma, readStoredSecretsValue } = createPrismaMock();
-    const service = new SettingsService(prisma as never, crypto as never);
+    const service = new SettingsService(
+      prisma as never,
+      crypto as never,
+      {} as never,
+    );
 
     const publicSecretPresence = await service.updateSecrets('u1', {
       radarr: { apiKey: 'super-secret-key' },

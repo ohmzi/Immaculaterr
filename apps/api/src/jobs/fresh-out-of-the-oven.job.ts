@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { SWEEP_ORDER, sortSweepUsers } from './refresher-sweep.utils';
@@ -17,6 +18,8 @@ import { SettingsService } from '../settings/settings.service';
 import { TmdbService } from '../tmdb/tmdb.service';
 import { WatchedCollectionsRefresherService } from '../watched-movie-recommendations/watched-collections-refresher.service';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
+import type { JobReportV1 } from './job-report-v1';
+import { issue, metricRow } from './job-report-v1';
 
 const BASELINE_STALE_MS = 24 * 60 * 60_000;
 const RECENT_RELEASE_MONTHS = 3;
@@ -448,7 +451,7 @@ export class FreshOutOfTheOvenJob {
           );
         } catch (err) {
           usersSkipped += 1;
-          const message = (err as Error)?.message ?? String(err);
+          const message = truncateErrorMessage(err);
           await ctx.warn(
             'freshOutOfTheOven: skipping user (failed to resolve accessible libraries)',
             {
@@ -518,7 +521,7 @@ export class FreshOutOfTheOvenJob {
         }
       } catch (err) {
         usersSkipped += 1;
-        const message = (err as Error)?.message ?? String(err);
+        const message = truncateErrorMessage(err);
         await ctx.warn(
           'freshOutOfTheOven: skipping user after lookup failure',
           {
@@ -688,7 +691,7 @@ export class FreshOutOfTheOvenJob {
         });
       } catch (err) {
         usersFailed += 1;
-        const message = (err as Error)?.message ?? String(err);
+        const message = truncateErrorMessage(err);
         await ctx.warn('freshOutOfTheOven: failed user refresh', {
           plexUserId: user.id,
           plexUserTitle: user.plexAccountTitle,
@@ -738,7 +741,101 @@ export class FreshOutOfTheOvenJob {
     };
 
     await ctx.info('freshOutOfTheOven: done', summary);
-    return { summary };
+
+    // Structured report: a sweep where every user failed must fail the run
+    // instead of hiding behind counters.
+    const sweepTotal = orderedUsers.length;
+    const sweepFailedCompletely =
+      sweepTotal > 0 && usersFailed > 0 && usersSucceeded === 0;
+    const report: JobReportV1 = {
+      template: 'jobReportV1',
+      version: 1,
+      jobId: ctx.jobId,
+      dryRun: ctx.dryRun,
+      trigger: ctx.trigger,
+      headline: sweepFailedCompletely
+        ? 'Fresh Out Of The Oven failed: no user sweep completed'
+        : `Fresh Out Of The Oven: ${usersSucceeded}/${sweepTotal} user sweep(s) refreshed`,
+      sections: [
+        {
+          id: 'sweep',
+          title: 'User sweeps',
+          rows: [
+            metricRow({
+              label: 'Users processed',
+              start: null,
+              changed: null,
+              end: sweepTotal,
+              unit: 'users',
+            }),
+            metricRow({
+              label: 'Succeeded',
+              start: null,
+              changed: null,
+              end: usersSucceeded,
+              unit: 'users',
+            }),
+            metricRow({
+              label: 'Skipped',
+              start: null,
+              changed: null,
+              end: usersSkipped,
+              unit: 'users',
+            }),
+            metricRow({
+              label: 'Failed',
+              start: null,
+              changed: null,
+              end: usersFailed,
+              unit: 'users',
+            }),
+          ],
+        },
+      ],
+      tasks: [
+        {
+          id: 'movies',
+          title: 'Movie collections',
+          status: includeMovies ? 'success' : 'skipped',
+        },
+        {
+          id: 'tv',
+          title: 'TV collections',
+          status: includeShows ? 'success' : 'skipped',
+        },
+        {
+          id: 'sweep',
+          title: 'Per-user refresh sweep',
+          status: sweepFailedCompletely ? 'failed' : 'success',
+          facts: [
+            { label: 'Succeeded', value: `${usersSucceeded}/${sweepTotal}` },
+            { label: 'Skipped', value: String(usersSkipped) },
+            { label: 'Failed', value: String(usersFailed) },
+          ],
+          ...(sweepFailedCompletely
+            ? {
+                issues: [
+                  issue(
+                    'error',
+                    'Every user sweep failed — check the run logs for the per-user errors.',
+                  ),
+                ],
+              }
+            : {}),
+        },
+      ],
+      issues:
+        usersFailed > 0 && !sweepFailedCompletely
+          ? [
+              issue(
+                'warn',
+                `${usersFailed} user sweep(s) failed; the rest completed. See the run logs for details.`,
+              ),
+            ]
+          : [],
+      raw: summary,
+    };
+    return { summary: report as unknown as JsonObject };
   }
 
   private async clearMovieFreshOutRows(): Promise<{
@@ -802,7 +899,7 @@ export class FreshOutOfTheOvenJob {
         await params.ctx.warn(
           'freshOutOfTheOven: shared-user discovery failed (admin will still run)',
           {
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         return [];
@@ -998,7 +1095,7 @@ export class FreshOutOfTheOvenJob {
             librarySectionKey: section.key,
             library: section.title,
             tmdbId,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         if (existingCacheRow && existingRowIsRecent) {
@@ -1226,7 +1323,7 @@ export class FreshOutOfTheOvenJob {
             library: section.title,
             tvdbId,
             tmdbId,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           },
         );
         if (existingCacheRow && existingRowIsRecent) {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { truncateErrorMessage } from '../log.utils';
 import { PrismaService } from '../db/prisma.service';
 import { PlexServerService } from '../plex/plex-server.service';
 import { PlexUsersService } from '../plex/plex-users.service';
@@ -700,7 +701,7 @@ export class BasedonLatestWatchedCollectionJob {
         // Ensure summary is created even on failure
         await ctx.warn('collection_run: failed, creating error summary', {
           collectionName: col.name,
-          error: (err as Error)?.message ?? String(err),
+          error: truncateErrorMessage(err),
         });
         perCollection.push({
           collectionName: col.name,
@@ -751,7 +752,7 @@ export class BasedonLatestWatchedCollectionJob {
           },
           sampleMissing: col.titles.slice(0, 10),
           sampleResolved: [],
-          error: (err as Error)?.message ?? String(err),
+          error: truncateErrorMessage(err),
         });
       }
     }
@@ -773,7 +774,7 @@ export class BasedonLatestWatchedCollectionJob {
         scope: { librarySectionKey: movieSectionKey, mode: 'movie' },
       });
     } catch (err) {
-      const msg = (err as Error)?.message ?? String(err);
+      const msg = truncateErrorMessage(err);
       await ctx.warn(
         'watchedMovieRecommendations: refresh failed (continuing)',
         {
@@ -1195,7 +1196,7 @@ export class BasedonLatestWatchedCollectionJob {
           ).catch((err) => ({
             status: 'failed' as const,
             requestId: null,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           }));
 
           if (result.status === 'requested') {
@@ -1353,7 +1354,7 @@ export class BasedonLatestWatchedCollectionJob {
             radarrLists.failed.push(title);
             await ctx.warn('radarr: add failed (continuing)', {
               title,
-              error: (err as Error)?.message ?? String(err),
+              error: truncateErrorMessage(err),
             });
           }
         }
@@ -1882,7 +1883,7 @@ export class BasedonLatestWatchedCollectionJob {
         // Ensure summary is created even on failure
         await ctx.warn('collection_run(tv): failed, creating error summary', {
           collectionName: col.name,
-          error: (err as Error)?.message ?? String(err),
+          error: truncateErrorMessage(err),
         });
         perCollection.push({
           collectionName: col.name,
@@ -1933,7 +1934,7 @@ export class BasedonLatestWatchedCollectionJob {
           },
           sampleMissing: col.titles.slice(0, 10),
           sampleResolved: [],
-          error: (err as Error)?.message ?? String(err),
+          error: truncateErrorMessage(err),
         });
       }
     }
@@ -1955,7 +1956,7 @@ export class BasedonLatestWatchedCollectionJob {
         scope: { librarySectionKey: tvSectionKey, mode: 'tv' },
       });
     } catch (err) {
-      const msg = (err as Error)?.message ?? String(err);
+      const msg = truncateErrorMessage(err);
       await ctx.warn(
         'watchedShowRecommendations: refresh failed (continuing)',
         {
@@ -2352,7 +2353,7 @@ export class BasedonLatestWatchedCollectionJob {
           ).catch((err) => ({
             status: 'failed' as const,
             requestId: null,
-            error: (err as Error)?.message ?? String(err),
+            error: truncateErrorMessage(err),
           }));
 
           if (result.status === 'requested') {
@@ -2495,7 +2496,7 @@ export class BasedonLatestWatchedCollectionJob {
             sonarrLists.failed.push(title);
             await ctx.warn('sonarr: add failed (continuing)', {
               title,
-              error: (err as Error)?.message ?? String(err),
+              error: truncateErrorMessage(err),
             });
           }
         }

@@ -1,5 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
-import { truncateForLog } from '../log.utils';
+import { fetchWithTransientRetry } from '../http.utils';
+import { truncateErrorMessage, truncateForLog } from '../log.utils';
 import { LOG_BODY_MAX_LENGTH } from '../app.constants';
 
 export type SeerrRequestStatus = 'requested' | 'exists' | 'failed';
@@ -15,6 +16,13 @@ export type SeerrClearAllRequestsResult = {
   deleted: number;
   failed: number;
   failedRequestIds: number[];
+};
+
+export type SeerrRecentRequest = {
+  tmdbId: number | null;
+  tvdbId: number | null;
+  mediaType: string | null;
+  createdAtMs: number | null;
 };
 
 type SeerrAuthMe = Record<string, unknown>;
@@ -49,7 +57,7 @@ export class SeerrService {
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new BadGatewayException(
-          `Seerr test failed: HTTP ${res.status} ${body}`.trim(),
+          `Seerr test failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
         );
       }
 
@@ -58,7 +66,7 @@ export class SeerrService {
     } catch (err) {
       if (err instanceof BadGatewayException) throw err;
       throw new BadGatewayException(
-        `Seerr test failed: ${(err as Error)?.message ?? String(err)}`,
+        `Seerr test failed: ${truncateErrorMessage(err)}`,
       );
     } finally {
       clearTimeout(timeout);
@@ -143,7 +151,7 @@ export class SeerrService {
         failedRequestIds.push(requestId);
       } catch (err) {
         this.logger.warn(
-          `Seerr request delete failed (${requestId}): ${(err as Error)?.message ?? String(err)}`,
+          `Seerr request delete failed (${requestId}): ${truncateErrorMessage(err)}`,
         );
         failedRequestIds.push(requestId);
       } finally {
@@ -207,7 +215,8 @@ export class SeerrService {
         };
       }
 
-      const message = `Seerr request failed: HTTP ${res.status} ${body}`.trim();
+      const message =
+        `Seerr request failed: HTTP ${res.status} ${truncateForLog(body)}`.trim();
       return {
         status: 'failed',
         requestId: null,
@@ -217,7 +226,7 @@ export class SeerrService {
       return {
         status: 'failed',
         requestId: null,
-        error: `Seerr request failed: ${(err as Error)?.message ?? String(err)}`,
+        error: `Seerr request failed: ${truncateErrorMessage(err)}`,
       };
     } finally {
       clearTimeout(timeout);
@@ -235,6 +244,102 @@ export class SeerrService {
       bodyLower.includes('requested') ||
       bodyLower.includes('pending')
     );
+  }
+
+  /**
+   * Recent media requests (all users), newest first. Used by the Cutting Room to
+   * protect recently-requested items from pruning.
+   */
+  async listRecentRequests(params: {
+    baseUrl: string;
+    apiKey: string;
+    sinceMs: number;
+    maxRecords?: number;
+  }): Promise<SeerrRecentRequest[]> {
+    const { baseUrl, apiKey, sinceMs } = params;
+    const take = 100;
+    const maxRecords = Math.max(take, params.maxRecords ?? 5000);
+    let skip = 0;
+    const out: SeerrRecentRequest[] = [];
+
+    while (skip < maxRecords) {
+      const url = this.buildApiUrl(
+        baseUrl,
+        `/request?take=${take}&skip=${skip}&sort=added`,
+      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const res = await fetchWithTransientRetry(() =>
+          fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              'X-Api-Key': apiKey,
+            },
+            signal: controller.signal,
+          }),
+        );
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new BadGatewayException(
+            `Seerr list requests failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
+          );
+        }
+
+        const data = (await res.json()) as SeerrRequestListResponse;
+        const rows = Array.isArray(data?.results) ? data.results : [];
+        let sawOlder = false;
+        for (const row of rows) {
+          if (!row || typeof row !== 'object') continue;
+          const record = row as Record<string, unknown>;
+          const createdAtRaw = record['createdAt'];
+          const createdAtMs =
+            typeof createdAtRaw === 'string' ? Date.parse(createdAtRaw) : NaN;
+          if (Number.isFinite(createdAtMs) && createdAtMs < sinceMs) {
+            sawOlder = true;
+            continue;
+          }
+          const media =
+            record['media'] && typeof record['media'] === 'object'
+              ? (record['media'] as Record<string, unknown>)
+              : {};
+          const tmdbRaw = Number(media['tmdbId']);
+          const tvdbRaw = Number(media['tvdbId']);
+          out.push({
+            tmdbId:
+              Number.isFinite(tmdbRaw) && tmdbRaw > 0
+                ? Math.trunc(tmdbRaw)
+                : null,
+            tvdbId:
+              Number.isFinite(tvdbRaw) && tvdbRaw > 0
+                ? Math.trunc(tvdbRaw)
+                : null,
+            mediaType:
+              typeof media['mediaType'] === 'string'
+                ? media['mediaType']
+                : null,
+            createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : null,
+          });
+        }
+
+        // Results are newest-first when sorted by added; once a page contains
+        // only older-than-window rows we can stop paging.
+        if (rows.length < take || sawOlder) break;
+        skip += take;
+      } catch (err) {
+        if (err instanceof BadGatewayException) throw err;
+        throw new BadGatewayException(
+          `Seerr list requests failed: ${truncateErrorMessage(err)}`,
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    return out;
   }
 
   private async listAllRequestIds(params: {
@@ -256,19 +361,21 @@ export class SeerrService {
       const timeout = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'X-Api-Key': apiKey,
-          },
-          signal: controller.signal,
-        });
+        const res = await fetchWithTransientRetry(() =>
+          fetch(url, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              'X-Api-Key': apiKey,
+            },
+            signal: controller.signal,
+          }),
+        );
 
         if (!res.ok) {
           const body = await res.text().catch(() => '');
           throw new BadGatewayException(
-            `Seerr list requests failed: HTTP ${res.status} ${body}`.trim(),
+            `Seerr list requests failed: HTTP ${res.status} ${truncateForLog(body)}`.trim(),
           );
         }
 
@@ -286,7 +393,7 @@ export class SeerrService {
       } catch (err) {
         if (err instanceof BadGatewayException) throw err;
         throw new BadGatewayException(
-          `Seerr list requests failed: ${(err as Error)?.message ?? String(err)}`,
+          `Seerr list requests failed: ${truncateErrorMessage(err)}`,
         );
       } finally {
         clearTimeout(timeout);

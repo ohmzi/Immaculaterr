@@ -35,6 +35,7 @@ import {
   Trash2,
   FileUp,
   History,
+  Wrench,
 } from 'lucide-react';
 
 import {
@@ -55,9 +56,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
 import { SavingPill } from '@/components/SavingPill';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
 import {
@@ -65,6 +63,7 @@ import {
   type TaskManagerFeatureCardId,
 } from '@/lib/faq-feature-links';
 import { useSafeNavigate } from '@/lib/navigation';
+import { RelativeTime } from '@/components/RelativeTime';
 
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly';
 
@@ -123,6 +122,7 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
 ]);
 const NO_WEBHOOK_JOB_IDS = new Set<string>([
   'unmonitorConfirm', // manual only, no Plex-triggered auto-run
+  'repairMonitored', // scheduled/manual, no Plex-triggered auto-run
   'importNetflixHistory', // manual upload only, no Plex-triggered auto-run
   'importPlexHistory', // manual only, no Plex-triggered auto-run
 ]);
@@ -167,6 +167,12 @@ const JOB_CONFIG: Record<
     color: 'text-red-300',
     description:
       'Manual Run now asks for Radarr or Sonarr, then re-monitors missing unmonitored movies or episodes that Plex does not actually have.',
+  },
+  repairMonitored: {
+    icon: <Wrench className="w-8 h-8" />,
+    color: 'text-amber-300',
+    description:
+      'Fixes movies and episodes that Radarr or Sonarr think are downloaded but that never showed up in Plex — it deletes the bad file, blocks that release, and searches for a working copy.',
   },
   arrMonitoredSearch: {
     icon: <Search className="w-8 h-8" />,
@@ -3924,18 +3930,7 @@ export function TaskManagerPage() {
   }, [immaculateStartSearchImmediately, immaculateStartSearchMutation]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, indigo-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/55 via-blue-900/65 to-slate-900/75" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-hidden text-white font-sans selection:bg-[#facc15] selection:text-black select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       {/* Task Manager Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
@@ -6777,9 +6772,16 @@ export function TaskManagerPage() {
                                   className="w-full flex items-center justify-between bg-[#1a1625] border border-white/10 rounded-xl px-4 py-3 h-[42px] hover:bg-[#1a1625]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   <span className="text-sm font-mono text-emerald-400 font-medium">
-                                    {scheduleEnabled && nextRunAt
-                                      ? `${new Date(nextRunAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${formatTimeDisplay(draft.time)}`
-                                      : '—'}
+                                    {scheduleEnabled && nextRunAt ? (
+                                      <>
+                                        {`${new Date(nextRunAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${formatTimeDisplay(draft.time)}`}{' '}
+                                        <span className="text-emerald-300/60 font-sans">
+                                          (<RelativeTime value={nextRunAt} />)
+                                        </span>
+                                      </>
+                                    ) : (
+                                      '—'
+                                    )}
                                   </span>
                                   <ChevronDown
                                     className={cn(

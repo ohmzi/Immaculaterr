@@ -89,10 +89,96 @@
         ]
       }
     },
+    "/api/auth/login-key": {
+      "get": {
+        "operationId": "AuthController_getLoginKey",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/recovery/questions": {
+      "get": {
+        "operationId": "AuthController_listRecoveryQuestions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login-challenge": {
+      "post": {
+        "operationId": "AuthController_loginChallenge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login-proof": {
+      "post": {
+        "operationId": "AuthController_loginProof",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginProofDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/register": {
       "post": {
         "operationId": "AuthController_register",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -107,6 +193,16 @@
       "post": {
         "operationId": "AuthController_login",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -121,6 +217,130 @@
       "post": {
         "operationId": "AuthController_logout",
         "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout-all": {
+      "post": {
+        "operationId": "AuthController_logoutAll",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/recovery/status": {
+      "get": {
+        "operationId": "AuthController_recoveryStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/recovery/configure": {
+      "post": {
+        "operationId": "AuthController_configureRecovery",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureRecoveryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/recovery/reset-questions": {
+      "post": {
+        "operationId": "AuthController_createRecoveryResetQuestions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetQuestionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/recovery/reset-password": {
+      "post": {
+        "operationId": "AuthController_resetPasswordWithRecovery",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -175,6 +395,30 @@
       "put": {
         "operationId": "SettingsController_put",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/secrets-key": {
+      "get": {
+        "operationId": "SettingsController_secretsKey",
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -202,7 +446,16 @@
     "/api/integrations/radarr/options": {
       "get": {
         "operationId": "IntegrationsController_radarrOptions",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "instanceId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -216,7 +469,111 @@
     "/api/integrations/sonarr/options": {
       "get": {
         "operationId": "IntegrationsController_sonarrOptions",
+        "parameters": [
+          {
+            "name": "instanceId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/plex/library-filters": {
+      "get": {
+        "operationId": "IntegrationsController_plexLibraryFilters",
+        "parameters": [
+          {
+            "name": "sectionKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/plex/libraries": {
+      "get": {
+        "operationId": "IntegrationsController_plexLibraries",
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      },
+      "put": {
+        "operationId": "IntegrationsController_savePlexLibraries",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlexLibrariesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/integrations/plex/monitoring-users": {
+      "get": {
+        "operationId": "IntegrationsController_plexMonitoringUsers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "integrations"
+        ]
+      },
+      "put": {
+        "operationId": "IntegrationsController_savePlexMonitoringUsers",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlexMonitoringUsersDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -240,6 +597,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSavedIntegrationDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -272,6 +639,14 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-immaculaterr-oauth-poll",
+            "required": true,
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -314,6 +689,16 @@
       "post": {
         "operationId": "PlexController_test",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestPlexServerDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -352,10 +737,126 @@
         ]
       }
     },
+    "/api/collection-artwork/managed-collections": {
+      "get": {
+        "operationId": "CollectionArtworkController_listManagedCollections",
+        "parameters": [
+          {
+            "name": "plexUserId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "CollectionArtwork"
+        ]
+      }
+    },
+    "/api/collection-artwork/override": {
+      "post": {
+        "operationId": "CollectionArtworkController_uploadOverride",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "CollectionArtwork"
+        ]
+      },
+      "delete": {
+        "operationId": "CollectionArtworkController_deleteOverride",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteArtworkOverrideDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "CollectionArtwork"
+        ]
+      }
+    },
+    "/api/collection-artwork/override/preview": {
+      "get": {
+        "operationId": "CollectionArtworkController_getOverridePreview",
+        "parameters": [
+          {
+            "name": "plexUserId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetKind",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "CollectionArtwork"
+        ]
+      }
+    },
     "/api/radarr/test": {
       "post": {
         "operationId": "RadarrController_test",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestConnectionDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -370,6 +871,16 @@
       "post": {
         "operationId": "SonarrController_test",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestConnectionDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -384,8 +895,32 @@
       "post": {
         "operationId": "TmdbController_test",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestApiKeyDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Tmdb"
+        ]
+      }
+    },
+    "/api/tmdb/movie-filters": {
+      "get": {
+        "operationId": "TmdbController_getMovieFilters",
+        "parameters": [],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -398,6 +933,16 @@
       "post": {
         "operationId": "GoogleController_test",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestGoogleDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -412,6 +957,16 @@
       "post": {
         "operationId": "OpenAiController_test",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestApiKeyDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -419,6 +974,205 @@
         },
         "tags": [
           "OpenAi"
+        ]
+      }
+    },
+    "/api/seerr/test": {
+      "post": {
+        "operationId": "SeerrController_test",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestConnectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Seerr"
+        ]
+      }
+    },
+    "/api/seerr/requests/reset": {
+      "delete": {
+        "operationId": "SeerrController_clearAllRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Seerr"
+        ]
+      }
+    },
+    "/api/arr-instances": {
+      "get": {
+        "operationId": "ArrInstanceController_list",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ArrInstance"
+        ]
+      },
+      "post": {
+        "operationId": "ArrInstanceController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateArrInstanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ArrInstance"
+        ]
+      }
+    },
+    "/api/arr-instances/{id}": {
+      "put": {
+        "operationId": "ArrInstanceController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateArrInstanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ArrInstance"
+        ]
+      },
+      "delete": {
+        "operationId": "ArrInstanceController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ArrInstance"
+        ]
+      }
+    },
+    "/api/arr-instances/{id}/test": {
+      "post": {
+        "operationId": "ArrInstanceController_test",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ArrInstance"
+        ]
+      }
+    },
+    "/api/arr-instances/{id}/options": {
+      "get": {
+        "operationId": "ArrInstanceController_options",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ArrInstance"
         ]
       }
     },
@@ -438,6 +1192,16 @@
       "post": {
         "operationId": "CollectionsController_create",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCollectionDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -519,6 +1283,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCollectionItemDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -573,6 +1347,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportCollectionJsonDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -603,6 +1387,120 @@
         },
         "tags": [
           "collections"
+        ]
+      }
+    },
+    "/api/immaculate-taste-profiles": {
+      "get": {
+        "operationId": "ImmaculateTasteProfileController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ImmaculateTasteProfile"
+        ]
+      },
+      "post": {
+        "operationId": "ImmaculateTasteProfileController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ImmaculateTasteProfile"
+        ]
+      }
+    },
+    "/api/immaculate-taste-profiles/{id}": {
+      "put": {
+        "operationId": "ImmaculateTasteProfileController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ImmaculateTasteProfile"
+        ]
+      },
+      "delete": {
+        "operationId": "ImmaculateTasteProfileController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ImmaculateTasteProfile"
+        ]
+      }
+    },
+    "/api/immaculate-taste-profiles/reorder": {
+      "put": {
+        "operationId": "ImmaculateTasteProfileController_reorder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderProfilesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ImmaculateTasteProfile"
         ]
       }
     },
@@ -670,6 +1568,369 @@
         ]
       }
     },
+    "/api/observatory/immaculate-taste/movies": {
+      "get": {
+        "operationId": "ObservatoryController_listMovies",
+        "parameters": [
+          {
+            "name": "librarySectionKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/tv": {
+      "get": {
+        "operationId": "ObservatoryController_listTv",
+        "parameters": [
+          {
+            "name": "librarySectionKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/decisions": {
+      "post": {
+        "operationId": "ObservatoryController_recordDecisions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservatoryDecisionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/apply": {
+      "post": {
+        "operationId": "ObservatoryController_apply",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservatoryApplyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/rejected/reset": {
+      "delete": {
+        "operationId": "ObservatoryController_resetRejected",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/rejected": {
+      "get": {
+        "operationId": "ObservatoryController_listRejected",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/rejected/{id}": {
+      "delete": {
+        "operationId": "ObservatoryController_deleteRejected",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/watched/movies": {
+      "get": {
+        "operationId": "WatchedObservatoryController_listMovies",
+        "parameters": [
+          {
+            "name": "librarySectionKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "collectionKind",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/watched/tv": {
+      "get": {
+        "operationId": "WatchedObservatoryController_listTv",
+        "parameters": [
+          {
+            "name": "librarySectionKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "collectionKind",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/watched/decisions": {
+      "post": {
+        "operationId": "WatchedObservatoryController_recordDecisions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservatoryWatchedDecisionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/watched/apply": {
+      "post": {
+        "operationId": "WatchedObservatoryController_apply",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservatoryApplyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/immaculate-taste/collections": {
+      "get": {
+        "operationId": "ImmaculateTasteController_listCollections",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "immaculate-taste"
+        ]
+      }
+    },
+    "/api/immaculate-taste/collections/users": {
+      "get": {
+        "operationId": "ImmaculateTasteController_listCollectionUsers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "immaculate-taste"
+        ]
+      }
+    },
+    "/api/immaculate-taste/collections/reset": {
+      "post": {
+        "operationId": "ImmaculateTasteController_resetCollection",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetCollectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "immaculate-taste"
+        ]
+      }
+    },
+    "/api/immaculate-taste/collections/reset-user": {
+      "post": {
+        "operationId": "ImmaculateTasteController_resetUserCollections",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetUserCollectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "immaculate-taste"
+        ]
+      }
+    },
     "/api/jobs": {
       "get": {
         "operationId": "JobsController_listJobs",
@@ -697,6 +1958,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunJobDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -790,6 +2061,39 @@
         ]
       }
     },
+    "/api/jobs/runs/{runId}/cancel": {
+      "post": {
+        "operationId": "JobsController_cancelRun",
+        "parameters": [
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/jobs/runs/{runId}/logs": {
       "get": {
         "operationId": "JobsController_getRunLogs",
@@ -829,6 +2133,58 @@
         ]
       }
     },
+    "/api/jobs/queue": {
+      "get": {
+        "operationId": "JobsController_getQueue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/queue/pause": {
+      "post": {
+        "operationId": "JobsController_pauseQueue",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueuePauseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/queue/resume": {
+      "post": {
+        "operationId": "JobsController_resumeQueue",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/jobs/schedules/{jobId}": {
       "put": {
         "operationId": "JobsController_upsertSchedule",
@@ -842,6 +2198,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertScheduleDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -852,23 +2218,9 @@
         ]
       }
     },
-    "/api/immaculate-taste/collections": {
-      "get": {
-        "operationId": "ImmaculateTasteController_listCollections",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "immaculate-taste"
-        ]
-      }
-    },
-    "/api/immaculate-taste/collections/reset": {
+    "/api/import/netflix": {
       "post": {
-        "operationId": "ImmaculateTasteController_resetCollection",
+        "operationId": "ImportController_uploadNetflixCsv",
         "parameters": [],
         "responses": {
           "201": {
@@ -876,7 +2228,708 @@
           }
         },
         "tags": [
-          "immaculate-taste"
+          "Import"
+        ]
+      }
+    },
+    "/api/import/status": {
+      "get": {
+        "operationId": "ImportController_getImportStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Import"
+        ]
+      }
+    },
+    "/api/cutting-room/rules": {
+      "get": {
+        "operationId": "CuttingRoomController_getRules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      },
+      "put": {
+        "operationId": "CuttingRoomController_putRules",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCuttingRoomRulesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/libraries": {
+      "get": {
+        "operationId": "CuttingRoomController_listLibraries",
+        "parameters": [
+          {
+            "name": "mediaType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/diskspace": {
+      "get": {
+        "operationId": "CuttingRoomController_diskspace",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/analyze": {
+      "post": {
+        "operationId": "CuttingRoomController_analyze",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAnalyzeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots": {
+      "get": {
+        "operationId": "CuttingRoomController_listSnapshots",
+        "parameters": [
+          {
+            "name": "take",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots/{id}": {
+      "get": {
+        "operationId": "CuttingRoomController_getSnapshot",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots/{id}/candidates": {
+      "get": {
+        "operationId": "CuttingRoomController_listCandidates",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxTier",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minScore",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rootFolder",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "watchStatus",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "selectedOnly",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      },
+      "patch": {
+        "operationId": "CuttingRoomController_patchSelection",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchSelectionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots/{id}/rootfolders": {
+      "get": {
+        "operationId": "CuttingRoomController_listSnapshotRootFolders",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots/{id}/selection/auto": {
+      "post": {
+        "operationId": "CuttingRoomController_autoSelect",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoSelectDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots/{id}/prune": {
+      "post": {
+        "operationId": "CuttingRoomController_prune",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPruneDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/snapshots/{id}/stop": {
+      "post": {
+        "operationId": "CuttingRoomController_stop",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/prunes": {
+      "get": {
+        "operationId": "CuttingRoomController_listPrunes",
+        "parameters": [
+          {
+            "name": "take",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restored",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/prunes/{id}/restore": {
+      "post": {
+        "operationId": "CuttingRoomController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/duplicates": {
+      "get": {
+        "operationId": "CuttingRoomController_listDuplicates",
+        "parameters": [
+          {
+            "name": "sectionKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/duplicates/cleanup": {
+      "post": {
+        "operationId": "CuttingRoomController_duplicateCleanup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateCleanupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/large-files": {
+      "get": {
+        "operationId": "CuttingRoomController_listLargeFiles",
+        "parameters": [
+          {
+            "name": "threshold",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectionKeys",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "instanceIds",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/large-files/replace": {
+      "post": {
+        "operationId": "CuttingRoomController_largeFilesReplace",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LargeFilesReplaceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/wanted": {
+      "get": {
+        "operationId": "CuttingRoomController_listWanted",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "instanceId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/cutting-room/wanted/prune": {
+      "post": {
+        "operationId": "CuttingRoomController_wantedPrune",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WantedPruneDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "cutting-room"
+        ]
+      }
+    },
+    "/api/webhooks/secret": {
+      "get": {
+        "operationId": "WebhooksController_getWebhookSecret",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Webhooks"
         ]
       }
     },
@@ -931,7 +2984,7 @@
           },
           "version": {
             "type": "string",
-            "example": "0.0.0.100"
+            "example": "1.7.10-beta-2"
           },
           "buildSha": {
             "type": "object",
@@ -942,25 +2995,126 @@
             "type": "object",
             "example": "2026-01-09T15:54:13.000Z",
             "nullable": true
+          },
+          "publicBasePath": {
+            "type": "string",
+            "example": "/immaculaterr"
           }
         },
         "required": [
           "name",
           "version",
           "buildSha",
-          "buildTime"
+          "buildTime",
+          "publicBasePath"
         ]
+      },
+      "LoginChallengeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LoginProofDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConfigureRecoveryDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResetQuestionsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateSettingsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdatePlexLibrariesDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdatePlexMonitoringUsersDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TestSavedIntegrationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TestPlexServerDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "DeleteArtworkOverrideDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TestConnectionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TestApiKeyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TestGoogleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateArrInstanceDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateArrInstanceDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateCollectionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AddCollectionItemDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ImportCollectionJsonDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateProfileDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateProfileDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ReorderProfilesDto": {
+        "type": "object",
+        "properties": {}
       },
       "UpdatesResponseDto": {
         "type": "object",
         "properties": {
           "currentVersion": {
             "type": "string",
-            "example": "0.0.0.100"
+            "example": "1.7.10-beta-2"
           },
           "latestVersion": {
             "type": "object",
-            "example": "0.0.0.101",
+            "example": "1.7.10-beta-2",
             "nullable": true
           },
           "updateAvailable": {
@@ -978,7 +3132,7 @@
           },
           "latestUrl": {
             "type": "object",
-            "example": "https://github.com/ohmz/Immaculaterr/releases/tag/v0.0.0.101",
+            "example": "https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10-beta-2",
             "nullable": true
           },
           "checkedAt": {
@@ -1001,6 +3155,74 @@
           "checkedAt",
           "error"
         ]
+      },
+      "ObservatoryDecisionsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ObservatoryApplyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ObservatoryWatchedDecisionsDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResetCollectionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResetUserCollectionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RunJobDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CancelRunDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "QueuePauseDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertScheduleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateCuttingRoomRulesDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "StartAnalyzeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AutoSelectDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PatchSelectionDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "StartPruneDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "DuplicateCleanupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LargeFilesReplaceDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "WantedPruneDto": {
+        "type": "object",
+        "properties": {}
       }
     }
   }

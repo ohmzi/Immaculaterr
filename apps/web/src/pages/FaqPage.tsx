@@ -23,14 +23,18 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_SHORTCUT_CHIP_CLASS,
 } from '@/lib/ui-classes';
 import {
   COMMAND_CENTER_CARD_ID_BY_FAQ_SECTION,
+  CUTTING_ROOM_LABEL_BY_PATH,
+  CUTTING_ROOM_PATH_BY_FAQ_ITEM,
+  FEATURE_PAGE_PATH_BY_FAQ_SECTION,
   TASK_MANAGER_CARD_ID_BY_FAQ_SECTION,
+  isCuttingRoomPath,
+  type CuttingRoomFaqItemId,
+  type CuttingRoomPath,
+  type FaqReturnState,
 } from '@/lib/faq-feature-links';
 
 export const FaqPage = () => {
@@ -39,6 +43,7 @@ export const FaqPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [flashSection, setFlashSection] = useState<{ id: string; nonce: number } | null>(null);
+  const [faqSearch, setFaqSearch] = useState('');
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
 
   type FaqItem = {
@@ -92,25 +97,38 @@ export const FaqPage = () => {
   const handleScrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+  // An in-app FAQ button hands over the tab it was pressed on. Only the
+  // question it deep-linked to follows that origin — every other question keeps
+  // its canonical home, so a Large Files answer opened from the Prune Wizard
+  // returns to the wizard while the same answer opened cold returns to the tab.
+  const faqReturnState = (location.state ?? null) as FaqReturnState | null;
+  const featureReturnPath =
+    faqReturnState?.featureReturnTo && isCuttingRoomPath(faqReturnState.featureReturnTo)
+      ? faqReturnState.featureReturnTo
+      : null;
+  const featureReturnAnchor = faqReturnState?.featureReturnAnchor ?? null;
+  const itemFeatureLinkFor = (itemId: string) => {
+    if (!(itemId in CUTTING_ROOM_PATH_BY_FAQ_ITEM)) return null;
+    const canonical: CuttingRoomPath =
+      CUTTING_ROOM_PATH_BY_FAQ_ITEM[itemId as CuttingRoomFaqItemId];
+    const to =
+      featureReturnPath && featureReturnAnchor === itemId ? featureReturnPath : canonical;
+    return { to, label: CUTTING_ROOM_LABEL_BY_PATH[to] };
+  };
+  // Rendered after the card so it paints above it, and only its opacity moves:
+  // a box-shadow animating *behind* a backdrop-blur card repaints that card's
+  // backdrop every frame, and re-blurring a full-height section card cannot
+  // keep up — the card drops out entirely for whole frames while it runs.
   const renderSectionFlash = (sectionId: string) => (
     <AnimatePresence initial={false}>
       {flashSection?.id === sectionId ? (
         <motion.div
           key={`${flashSection.nonce}-${sectionId}-glow`}
-          className="pointer-events-none absolute inset-0 rounded-3xl"
-          initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
-          animate={{
-            boxShadow: [
-              '0 0 0px rgba(250, 204, 21, 0)',
-              '0 0 30px rgba(250, 204, 21, 0.5)',
-              '0 0 0px rgba(250, 204, 21, 0)',
-              '0 0 30px rgba(250, 204, 21, 0.5)',
-              '0 0 0px rgba(250, 204, 21, 0)',
-              '0 0 30px rgba(250, 204, 21, 0.5)',
-              '0 0 0px rgba(250, 204, 21, 0)',
-            ],
-          }}
-          exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-3xl shadow-[0_0_30px_rgba(250,204,21,0.5)]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 0, 1, 0, 1, 0] }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 3.8, ease: 'easeInOut' }}
         />
       ) : null}
@@ -539,6 +557,73 @@ export const FaqPage = () => {
                 Pick Radarr for movie libraries or Sonarr for monitored-series episode cleanup. If
                 the service you choose is disabled, incomplete, or unreachable, Immaculaterr sends
                 you to the matching Vault setup card instead of queueing the run.
+              </p>
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'task-manager-repair-monitored',
+      title: 'Repair Monitored',
+      items: [
+        {
+          id: 'task-manager-repair-monitored-what-does',
+          question: 'What does Repair Monitored do?',
+          answer: (
+            <>
+              <p>
+                It picks up where Confirm Monitored leaves off. For every monitored Radarr movie and
+                Sonarr episode, it confirms the ones Plex can actually play and unmonitors them. Then
+                it looks at the tricky cases: items that Radarr or Sonarr believes it has a file for,
+                but that never showed up in Plex.
+              </p>
+              <p>
+                If that file lives inside a folder Plex already scans, Plex should have picked it up —
+                so the file is treated as unfit (a bad or wrong-titled download). The task tells Plex
+                to rescan just that folder, waits, and checks again. If the movie or episode still is
+                not in Plex, it deletes the unfit file, blocklists that exact release so Radarr or
+                Sonarr does not grab it again, and starts a fresh search for a good copy.
+              </p>
+              <p>
+                If the file is <span className="font-semibold text-white/85">not</span> inside any
+                folder Plex scans, nothing is deleted — the path is just listed in the report so you
+                can fix the library or the download location yourself.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-repair-monitored-when-use',
+          question: 'When should I use it?',
+          answer: (
+            <>
+              <p>
+                Use it when a movie or show looks complete in Radarr or Sonarr but is missing in
+                Plex, or after a bad import grabbed the wrong file. It is safe to schedule off-peak:
+                it only deletes a file after a fresh Plex scan still cannot find the item, it never
+                touches a series that is missing from Plex entirely, and for movies it keeps the file
+                if Plex still matches it by title after the rescan.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'task-manager-repair-monitored-limitations',
+          question: 'Are there any limitations?',
+          answer: (
+            <>
+              <p>
+                Blocklisting relies on Radarr or Sonarr still having the grab history for that item.
+                A wrong import or a manual add has no matching history, so the file is still deleted
+                and re-searched, but it cannot be blocklisted — the report calls this out so you know.
+              </p>
+              <p>
+                Radarr, Sonarr, and Plex all need to point at the same storage. The task works out
+                the path translation automatically (for example{' '}
+                <span className="font-semibold text-white/85">/data</span> to{' '}
+                <span className="font-semibold text-white/85">/media</span>) by comparing your Radarr
+                and Sonarr root folders against your Plex library folders.
               </p>
             </>
           ),
@@ -2838,6 +2923,385 @@ export const FaqPage = () => {
       ],
     },
     {
+      id: 'cutting-room',
+      title: 'Cutting Room',
+      items: [
+        {
+          id: 'cutting-room-overview',
+          question: 'What does Cutting Room do?',
+          answer: (
+            <>
+              <p>
+                The Cutting Room finds the movies and shows nobody on your server is ever going to watch
+                and helps you prune them safely. It scans your selected Plex libraries plus
+                Radarr/Sonarr (and Tautulli when connected), scores every item, and walks you
+                through review before anything is touched.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>Scan → score → set the bar → pick a space target → review → prune.</li>
+                <li>
+                  Pruning deletes files through Radarr/Sonarr but{' '}
+                  <span className="font-semibold text-white/85">keeps the entry</span> —
+                  unmonitored and tagged{' '}
+                  <span className="font-semibold text-white/85">deleted-by-immaculaterr</span>.
+                </li>
+                <li>
+                  Everything lands in Pruned History with one-click Restore
+                  (re-monitors, removes the tag, and triggers a search to re-download).
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-core',
+          question: 'How is the score built?',
+          answer: (
+            <>
+              <p>
+                The core signal is always{' '}
+                <span className="font-semibold text-white/85">
+                  never watched by anyone × time in your library
+                </span>
+                : +25 points per year unwatched, capped at 3 years (+75). Watch history is the
+                union of Plex view counts, the server&apos;s all-account play history, imported
+                history, and Tautulli when connected. Each factor you enable adds points on top,
+                and every candidate shows its reasons as chips (e.g.{' '}
+                <span className="font-semibold text-white/85">
+                  never watched · 3.2y in library · rated 4.4
+                </span>
+                ) so nothing is a black box.
+              </p>
+              <p>
+                The one exception is the{' '}
+                <span className="font-semibold text-white/85">Oversized files</span> card: it is
+                not a scoring signal but a different flow entirely (replace huge files with
+                smaller copies), so selecting it runs alone — the other factors and protections
+                switch off while it is active.
+              </p>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-low-ratings',
+          question: 'How does the Low ratings factor work?',
+          answer: (
+            <>
+              <p>
+                It only applies to never-watched items and asks &ldquo;was this ever going to be
+                good?&rdquo;. The aggregate rating is a{' '}
+                <span className="font-semibold text-white/85">blend of every available source</span>{' '}
+                — Radarr&apos;s IMDb and TMDB ratings (movies), Sonarr&apos;s rating (shows), and
+                Plex&apos;s audience rating — averaged together, with Plex&apos;s critic rating as
+                a last resort.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Highly-regarded titles are exempt:
+                  </span>{' '}
+                  if <em>any</em> source rates the title 7.5★ or higher, it scores zero low-rating
+                  points — full stop. A beloved film with a lukewarm Plex audience score can no
+                  longer be dragged into &ldquo;low rated&rdquo; by the blend. This applies to
+                  movies and shows alike.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Points only start below the bar:
+                  </span>{' '}
+                  ratings of 6.0★+ (movies) or 6.2★+ (shows) score nothing at all. Below that,
+                  points = (6.0 − rating) × 10 for movies, capped at 25 (shows: (6.2 − rating) ×
+                  8, cap 20). Examples for movies: 5.5★ → +5, 5.0★ → +10, 4.0★ → +20, 3.0★ →
+                  capped +25.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Vote confidence:</span> before
+                  scoring, the rating is shrunk toward the 6.0/6.2 bar based on vote count — a
+                  4.2★ with 50 votes scores only ~3 points (too little evidence) while a 4.2★
+                  with 5,000 votes scores ~17. Obscure-but-decent titles are not punished.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Your own Plex rating wins:</span>{' '}
+                  rate something 4★ or lower yourself → +30 points; rate it 8★ or higher → the
+                  item is protected from pruning entirely, regardless of what critics say.
+                </li>
+                <li>No rating found anywhere → +5 (unknown quality is a mild signal).</li>
+                <li>
+                  The reason chips show exactly what was used, e.g.{' '}
+                  <span className="font-semibold text-white/85">rated 4.2 · 48k votes</span> or{' '}
+                  <span className="font-semibold text-white/85">you rated it 2★</span>.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-who-wanted-it',
+          question: 'How does the "Who wanted it" factor work?',
+          answer: (
+            <>
+              <p>
+                It reads the Radarr/Sonarr tags on each never-watched item to judge how much
+                anyone actually wanted it:
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">guest</span> tag (guest requests)
+                  → +20 points.
+                </li>
+                <li>
+                  List-import tags (<span className="font-semibold text-white/85">imdb</span>,{' '}
+                  <span className="font-semibold text-white/85">trakt</span>,{' '}
+                  <span className="font-semibold text-white/85">list-import</span>) → +10 — bulk
+                  imports nobody asked for personally.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">change-of-taste</span> tag → +40 —
+                  you already marked it as no longer your thing.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-unmonitored',
+          question: 'How does the Unmonitored factor work?',
+          answer: (
+            <p>
+              If you already unmonitored the item in Radarr (+10) or Sonarr (+12), you told the
+              system you stopped caring about it — a strong hint it&apos;s safe to prune once
+              it&apos;s also never been watched. Items not tracked by any arr at all get +8.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-ended-shows',
+          question: 'How does the Ended shows factor work?',
+          answer: (
+            <p>
+              A show that finished airing (or was cancelled) and that nobody ever started gets +8
+              points — it is complete, nothing new is coming, and it still never earned a single
+              play. Monitored, still-airing shows are always protected regardless of this factor.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-abandoned',
+          question: 'How does the Abandoned factor work?',
+          answer: (
+            <p>
+              For items someone <em>did</em> start: if 25% or less was watched and nothing was
+              played for over a year, it counts as abandoned — scored 40 points plus 10 per year
+              in the library, and placed in Tier 3. For shows this uses episodes watched vs.
+              total; for movies, resume position vs. runtime.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-factor-watched-long-ago',
+          question: 'How does the Watched long ago factor work (and why is it off by default)?',
+          answer: (
+            <p>
+              It targets items fully watched 18+ months ago (flat 25 points, Tier 4). It is off
+              by default because it carries the highest regret risk — favorites and rewatchables
+              live here. Turn it on only when you need maximum space back, and review Tier 4
+              carefully before pruning.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-tiers',
+          question: 'What do the tiers and the "how low a bar" slider mean?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Tier 1</span> — never watched, 18+
+                months in the library, score ≥ 60. The safest deletions.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Tier 2</span> — never watched, 6+
+                months in the library.
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Tier 3</span> — abandoned partials,
+                plus younger never-watched items (lower confidence).
+              </li>
+              <li>
+                <span className="font-semibold text-white/85">Tier 4</span> — watched, but long
+                ago (rewatch risk — only with the factor enabled).
+              </li>
+              <li>
+                The slider filters the already-scanned results instantly — no re-scan. Counts and
+                reclaimable space update live as you move it.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'cutting-room-protections',
+          question: 'What is always protected from pruning?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Anything watched within your recency window (default 12 months).</li>
+              <li>Anything added within the grace period (default 90 days).</li>
+              <li>Libraries you deselect, and Radarr/Sonarr tags you mark protected.</li>
+              <li>Monitored, still-airing shows.</li>
+              <li>Items on any user&apos;s Plex Watchlist or in Continue Watching.</li>
+              <li>Recent Overseerr/Jellyseerr requests.</li>
+              <li>Anything you personally rated 8★ or higher in Plex.</li>
+              <li>
+                Items tagged{' '}
+                <span className="font-semibold text-white/85">deleted-by-immaculaterr</span> —
+                the default protected-tag pill — so already-pruned entries are never
+                re-processed. You can remove the pill or add your own tags.
+              </li>
+              <li>Items featured in Immaculaterr&apos;s own recommendation collections.</li>
+              <li>
+                At prune time every item is re-checked — anything watched since the scan is
+                skipped automatically.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'cutting-room-auto-select',
+          question: 'How does "Auto-select best value" pick items?',
+          answer: (
+            <p>
+              You set a space target (e.g. 500 GB) and it greedily picks the candidates with the
+              best score-per-gigabyte until the target is reached — the most confidently-prunable
+              space for the fewest regrets. You can still add or remove anything by hand in the
+              review step afterwards.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-prune-safety',
+          question: 'What safety rails does pruning have?',
+          answer: (
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold text-white/85">Dry run</span> rehearses everything
+                and reports the exact would-delete list without touching a single file.
+              </li>
+              <li>A typed confirmation (item count or PRUNE) arms the real run.</li>
+              <li>Deletion happens in small waves with a Stop button between waves.</li>
+              <li>Per-run caps (default 500 items / 5 TB) prevent one-click catastrophes.</li>
+              <li>
+                Files are deleted through Radarr/Sonarr, so their Recycle Bin is honored when
+                configured — the confirm panel tells you whether it&apos;s on.
+              </li>
+            </ul>
+          ),
+        },
+        {
+          id: 'cutting-room-pruned-tag-restore',
+          question: 'What does the deleted-by-immaculaterr tag do, and how does Restore work?',
+          answer: (
+            <p>
+              Pruned items keep their Radarr/Sonarr entry: unmonitored, files deleted, and tagged{' '}
+              <span className="font-semibold text-white/85">deleted-by-immaculaterr</span> — a
+              permanent, visible record inside the arr itself. The Pruned History tab lists every
+              pruned item; Restore re-monitors the entry, removes the tag, and triggers a search
+              so the item re-downloads automatically. Deletion becomes reversible in practice.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-duplicates',
+          question: 'What is the Duplicates tab?',
+          answer: (
+            <p>
+              Movies Plex reports with more than one version (multiple files
+              for the same title). Cleanup keeps exactly one copy per movie —
+              your choice of the largest (best quality) or smallest (most
+              space) — and deletes the extra versions through Plex, which
+              requires Plex&apos;s &ldquo;Allow media deletion&rdquo; server
+              setting. Dry-run rehearses everything first, and a typed
+              confirmation arms the real cleanup.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-wanted-list',
+          question: 'What is the Wanted List tab?',
+          answer: (
+            <p>
+              Monitored Radarr/Sonarr entries that have never downloaded anything — a queue of
+              future downloads you may no longer want. Unmonitor them (keeps the entries) or
+              remove them entirely; either way{' '}
+              <span className="font-semibold text-white/85">no files are ever touched</span>, and
+              every change is recorded in Pruned History.
+            </p>
+          ),
+        },
+        {
+          id: 'cutting-room-large-files',
+          question: 'What is the Large Files tab?',
+          answer: (
+            <>
+              <p>
+                It finds movies and individual episodes whose files exceed a size threshold you
+                pick (default 10 GB per file) and replaces them with smaller copies: the
+                oversized file is deleted, the item is re-monitored, a{' '}
+                <span className="font-semibold text-white/85">size-reduction</span> tag is added
+                in Radarr/Sonarr, and a fresh search is triggered so a leaner copy downloads
+                automatically. It runs in two places: pick the{' '}
+                <span className="font-semibold text-white/85">Oversized files</span> card in the
+                Prune Wizard (it runs alone — libraries, size bar, target, review, then a
+                confirm step), or use the Large Files tab directly for a quick pass.
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Episodes are surgically precise:
+                  </span>{' '}
+                  only the oversized episodes themselves are set to monitored, plus their seasons
+                  and the show — never the whole series or untouched episodes. If S02E05 and
+                  S04E01 are oversized, exactly those two episodes, seasons 2 and 4, and the show
+                  get re-monitored; everything else keeps its current monitoring.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">
+                    Size-capped quality profile:
+                  </span>{' '}
+                  every replaced item is switched to a dedicated profile — movies use{' '}
+                  <span className="font-semibold text-white/85">
+                    Immaculaterr 10GB Movie Cap
+                  </span>{' '}
+                  (releases over 10 GB are rejected outright) and shows use{' '}
+                  <span className="font-semibold text-white/85">
+                    Immaculaterr 3GB Episode Cap
+                  </span>{' '}
+                  (over 3 GB rejected, 1–2 GB preferred). The profiles and their size-rule
+                  custom formats are created in Radarr/Sonarr on the first real run and reused
+                  on every run after, so the re-download and all future upgrades stay small.
+                  One caveat for switched shows: releases are judged by total size, so
+                  full-season packs bigger than the cap are skipped in favor of per-episode
+                  grabs.
+                </li>
+                <li>
+                  <span className="font-semibold text-white/85">Dry-run first:</span> rehearse
+                  the whole replacement without deleting anything; the real run needs a typed
+                  confirmation (dry-runs never create profiles — they only report what would
+                  happen).
+                </li>
+                <li>
+                  Replacements appear in Pruned History as{' '}
+                  <span className="font-semibold text-white/85">replaced for size</span> — no
+                  Restore button because Radarr/Sonarr re-download them automatically.
+                </li>
+                <li>
+                  Tip: make sure your quality profile&apos;s size limits would actually grab a
+                  smaller release, or the search may fetch another giant file.
+                </li>
+              </ul>
+            </>
+          ),
+        },
+      ],
+    },
+    {
       id: 'glossary',
       title: 'Glossary',
       items: [
@@ -2901,6 +3365,27 @@ export const FaqPage = () => {
       ],
     },
   ], [faqLinkClass]);
+
+  const normalizedFaqSearch = faqSearch.trim().toLowerCase();
+  const visibleFaqSections = useMemo(() => {
+    if (!normalizedFaqSearch) return FAQ_SECTIONS;
+    return FAQ_SECTIONS.map((section) => {
+      const sectionMatches = section.title
+        .toLowerCase()
+        .includes(normalizedFaqSearch);
+      const items = sectionMatches
+        ? section.items
+        : section.items.filter((item) =>
+            item.question.toLowerCase().includes(normalizedFaqSearch),
+          );
+      return { ...section, items };
+    }).filter((section) => section.items.length > 0);
+  }, [FAQ_SECTIONS, normalizedFaqSearch]);
+  const visibleFaqCount = useMemo(
+    () =>
+      visibleFaqSections.reduce((sum, section) => sum + section.items.length, 0),
+    [visibleFaqSections],
+  );
 
   useEffect(() => {
     const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
@@ -3127,8 +3612,14 @@ export const FaqPage = () => {
       pill: 'border-rose-400/30 bg-rose-400/10 text-rose-100',
     },
   ] as const;
+  // Opacity carries the card, not the blur. This page stacks thirty very tall
+  // backdrop-filter surfaces and scrolls itself on arrival, and the filter goes
+  // stale after that programmatic scroll — cards render see-through until some
+  // repaint (hovering one) invalidates them. At 85% the card is solid on its
+  // own, so a dropped filter is no longer visible; the small blur is only there
+  // to soften what still shows through.
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/85 p-6 shadow-2xl backdrop-blur-md lg:p-8';
   const answerBodyClass =
     'mt-4 space-y-3 text-sm leading-relaxed text-white/70 [&_code]:rounded-md [&_code]:border [&_code]:border-white/10 [&_code]:bg-black/25 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-white/90 [&_ol]:space-y-1.5 [&_ul]:space-y-1.5';
   const topGlowFadeStyle = {
@@ -3150,17 +3641,7 @@ export const FaqPage = () => {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-sky-400/30 via-indigo-700/45 to-slate-950/70" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-hidden select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto max-w-5xl px-4 pb-20">
@@ -3218,8 +3699,26 @@ export const FaqPage = () => {
                   Browse by feature area, then jump straight to a full answer card below.
                 </div>
               </div>
+              <div className="w-full sm:w-80">
+                <input
+                  type="search"
+                  value={faqSearch}
+                  onChange={(e) => setFaqSearch(e.target.value)}
+                  placeholder="Search questions…"
+                  aria-label="Search FAQ questions"
+                  className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-sky-300/50 focus:outline-none"
+                />
+                {normalizedFaqSearch ? (
+                  <div className="mt-1.5 text-xs text-white/55">
+                    {visibleFaqCount === 0
+                      ? 'No questions match — try a different word.'
+                      : `${visibleFaqCount} answer${visibleFaqCount === 1 ? '' : 's'} match below.`}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
+            {normalizedFaqSearch ? null : (
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               {FAQ_SECTIONS.map((section, index) => {
                 const theme = sectionThemes[index % sectionThemes.length];
@@ -3286,10 +3785,11 @@ export const FaqPage = () => {
                 );
               })}
             </div>
+            )}
           </div>
 
           <div className="mt-6 space-y-6">
-            {FAQ_SECTIONS.map((section, index) => {
+            {visibleFaqSections.map((section, index) => {
               const theme = sectionThemes[index % sectionThemes.length];
               const sectionLabel = `Section ${String(index + 1).padStart(2, '0')}`;
               const commandCenterCardId =
@@ -3304,6 +3804,12 @@ export const FaqPage = () => {
                       section.id as keyof typeof TASK_MANAGER_CARD_ID_BY_FAQ_SECTION
                     ]
                   : null;
+              const featurePagePath =
+                section.id in FEATURE_PAGE_PATH_BY_FAQ_SECTION
+                  ? FEATURE_PAGE_PATH_BY_FAQ_SECTION[
+                      section.id as keyof typeof FEATURE_PAGE_PATH_BY_FAQ_SECTION
+                    ]
+                  : null;
               const featureLink = commandCenterCardId
                 ? {
                     to: `/command-center#${commandCenterCardId}`,
@@ -3314,7 +3820,12 @@ export const FaqPage = () => {
                       to: `/task-manager#job-${taskManagerCardId}`,
                       title: `Open ${section.title} in Task Manager`,
                     }
-                  : null;
+                  : featurePagePath
+                    ? {
+                        to: featurePagePath,
+                        title: `Open ${section.title}`,
+                      }
+                    : null;
               const isFlashingSection = flashSection?.id === section.id;
 
               return (
@@ -3323,7 +3834,6 @@ export const FaqPage = () => {
                   id={section.id}
                   className={`${anchorClass} relative`}
                 >
-                  {renderSectionFlash(section.id)}
                   <div className={`${cardClass} relative overflow-hidden`}>
                     <div
                       className={`pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r ${theme.glow} to-transparent opacity-80`}
@@ -3393,7 +3903,10 @@ export const FaqPage = () => {
                       </div>
 
                       <div className="mt-6 space-y-4">
-                        {section.items.map((item, itemIndex) => (
+                        {section.items.map((item, itemIndex) => {
+                          const itemFeatureLink = itemFeatureLinkFor(item.id);
+
+                          return (
                           <div
                             key={item.id}
                             id={item.id}
@@ -3409,21 +3922,36 @@ export const FaqPage = () => {
                                 >
                                   Q{String(itemIndex + 1).padStart(2, '0')}
                                 </div>
-                                <Link
-                                  to={`${location.pathname}#${item.id}`}
-                                  className="mt-3 block text-lg font-semibold leading-tight text-white transition hover:text-[#fde68a]"
-                                >
-                                  {item.question}
-                                </Link>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <Link
+                                    to={`${location.pathname}#${item.id}`}
+                                    className="min-w-0 text-lg font-semibold leading-tight text-white transition hover:text-[#fde68a]"
+                                  >
+                                    {item.question}
+                                  </Link>
+                                  {itemFeatureLink ? (
+                                    <Link
+                                      to={itemFeatureLink.to}
+                                      className={APP_SHORTCUT_CHIP_CLASS}
+                                      title={`Open ${itemFeatureLink.label}`}
+                                      aria-label={`Open ${itemFeatureLink.label} feature`}
+                                    >
+                                      <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+                                      <span className="max-[420px]:hidden">Feature</span>
+                                    </Link>
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
 
                             <div className={answerBodyClass}>{item.answer}</div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
+                  {renderSectionFlash(section.id)}
                 </div>
               );
             })}

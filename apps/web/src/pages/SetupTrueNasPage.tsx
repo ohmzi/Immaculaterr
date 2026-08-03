@@ -2,12 +2,7 @@ import { motion, useAnimation } from 'motion/react';
 import { ArrowLeft, Check, Copy, Server } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-
-import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
-} from '@/lib/ui-classes';
+import { copyToClipboard } from '@/lib/clipboard';
 
 const TRUENAS_MAIN_APP_HTTPS_YAML = [
   'services:',
@@ -145,22 +140,6 @@ const VERIFY_HTTP_COMPAT_COMMAND = [
   'curl -I http://192.168.122.179:5454',
 ].join('\n');
 
-async function copyToClipboard(text: string) {
-  if (navigator?.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.setAttribute('readonly', '');
-  textArea.style.position = 'fixed';
-  textArea.style.opacity = '0';
-  document.body.appendChild(textArea);
-  textArea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textArea);
-}
-
 export function SetupTrueNasPage() {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
@@ -240,17 +219,7 @@ export function SetupTrueNasPage() {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-sky-400/30 via-indigo-700/45 to-slate-950/70" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-hidden select-text [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">

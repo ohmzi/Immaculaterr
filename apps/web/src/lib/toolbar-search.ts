@@ -3,7 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 
 import { listJobs } from '@/api/jobs';
 
-export type ToolbarSearchArea = 'Command Center' | 'Task Manager' | 'Vault';
+export type ToolbarSearchArea =
+  | 'Command Center'
+  | 'Task Manager'
+  | 'Vault'
+  | 'Cutting Room'
+  | 'Pages'
+  | 'FAQ';
 
 export type ToolbarSearchTarget = {
   id: string;
@@ -139,6 +145,13 @@ export const VAULT_SEARCH_TARGETS: ToolbarSearchTarget[] = [
     hash: 'vault-seerr',
   }),
   createToolbarSearchTarget({
+    id: 'vault-tautulli',
+    title: 'Tautulli',
+    area: 'Vault',
+    route: '/vault',
+    hash: 'vault-tautulli',
+  }),
+  createToolbarSearchTarget({
     id: 'vault-google',
     title: 'Google Search',
     area: 'Vault',
@@ -153,6 +166,114 @@ export const VAULT_SEARCH_TARGETS: ToolbarSearchTarget[] = [
     hash: 'vault-openai',
   }),
 ];
+
+export const CUTTING_ROOM_SEARCH_TARGETS: ToolbarSearchTarget[] = [
+  createToolbarSearchTarget({
+    id: 'cutting-room-wizard',
+    title: 'Cutting Room — Prune Wizard',
+    area: 'Cutting Room',
+    route: '/cutting-room',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-history',
+    title: 'Cutting Room — Pruned History',
+    area: 'Cutting Room',
+    route: '/cutting-room/history',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-wanted',
+    title: 'Cutting Room — Wanted List',
+    area: 'Cutting Room',
+    route: '/cutting-room/wanted',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-free-space',
+    title: 'Free up space',
+    area: 'Cutting Room',
+    route: '/cutting-room',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-large-files',
+    title: 'Cutting Room — Large Files',
+    area: 'Cutting Room',
+    route: '/cutting-room/large-files',
+    hash: '',
+  }),
+  createToolbarSearchTarget({
+    id: 'cutting-room-duplicates',
+    title: 'Cutting Room — Duplicates',
+    area: 'Cutting Room',
+    route: '/cutting-room/duplicates',
+    hash: '',
+  }),
+];
+
+export const PAGE_SEARCH_TARGETS: ToolbarSearchTarget[] = [
+  ['dashboard', 'Dashboard', '/'],
+  ['observatory', 'Observatory', '/observatory'],
+  ['cutting-room', 'Cutting Room', '/cutting-room'],
+  ['command-center', 'Command Center', '/command-center'],
+  ['vault', 'Vault', '/vault'],
+  ['task-manager', 'Task Manager', '/task-manager'],
+  ['rewind', 'Rewind', '/rewind'],
+  ['logs', 'Logs', '/logs'],
+  ['profile', 'Profile', '/profile'],
+  ['faq', 'FAQ', '/faq'],
+  ['setup', 'Setup', '/setup'],
+  ['version-history', 'Version History', '/version-history'],
+].map(([id, title, route]) =>
+  createToolbarSearchTarget({
+    id: `page-${id}`,
+    title,
+    area: 'Pages',
+    route,
+    hash: '',
+  }),
+);
+
+const FAQ_SECTION_SEEDS: Array<[string, string]> = [
+  ['getting-started', 'Getting started'],
+  ['task-manager', 'Task Manager'],
+  ['task-manager-confirm-monitored', 'Confirm Monitored'],
+  ['task-manager-confirm-unmonitored', 'Confirm Unmonitored'],
+  ['task-manager-repair-monitored', 'Repair Monitored'],
+  ['task-manager-cleanup-after-adding-new-content', 'Cleanup After Adding New Content'],
+  ['task-manager-search-monitored', 'Search Monitored'],
+  ['task-manager-tmdb-upcoming-movies', 'TMDB Upcoming Movies'],
+  ['task-manager-rotten-tomatoes-upcoming-movies', 'Rotten Tomatoes Upcoming Movies + TV Shows'],
+  ['task-manager-immaculate-taste-collection', 'Immaculate Taste Collection'],
+  ['task-manager-immaculate-taste-refresher', 'Immaculate Taste Refresher'],
+  ['task-manager-based-on-latest-watched-collection', 'Based on Latest Watched Collection'],
+  ['task-manager-based-on-latest-watched-refresher', 'Based on Latest Watched Refresher'],
+  ['task-manager-fresh-out-of-the-oven', 'Fresh Out Of The Oven'],
+  ['task-manager-import-plex-history', 'Plex Watch History Import'],
+  ['task-manager-import-netflix-history', 'Netflix Watch History Import'],
+  ['recommendations', 'Recommendations'],
+  ['plex-library-selection', 'Plex Library Selection'],
+  ['plex-user-monitoring', 'Plex User Monitoring'],
+  ['immaculate-taste-profiles', 'Immaculate Taste Profiles'],
+  ['collection-posters', 'Collection Posters'],
+  ['updates', 'Updates & versions'],
+  ['security', 'Security & backups'],
+  ['troubleshooting', 'Troubleshooting'],
+  ['cutting-room', 'Cutting Room'],
+  ['glossary', 'Glossary'],
+];
+
+export const FAQ_SEARCH_TARGETS: ToolbarSearchTarget[] = FAQ_SECTION_SEEDS.map(
+  ([id, title]) =>
+    createToolbarSearchTarget({
+      id: `faq-${id}`,
+      title: `FAQ — ${title}`,
+      area: 'FAQ',
+      route: '/faq',
+      hash: id,
+    }),
+);
 
 export function getToolbarSearchRank(
   normalizedTitle: string,
@@ -195,7 +316,14 @@ export function useToolbarSearchTargets() {
   );
 
   const targets = useMemo(
-    () => [...COMMAND_CENTER_SEARCH_TARGETS, ...taskTargets, ...VAULT_SEARCH_TARGETS],
+    () => [
+      ...PAGE_SEARCH_TARGETS,
+      ...COMMAND_CENTER_SEARCH_TARGETS,
+      ...taskTargets,
+      ...VAULT_SEARCH_TARGETS,
+      ...CUTTING_ROOM_SEARCH_TARGETS,
+      ...FAQ_SEARCH_TARGETS,
+    ],
     [taskTargets],
   );
 

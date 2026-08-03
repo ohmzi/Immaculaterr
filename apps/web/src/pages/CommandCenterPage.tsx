@@ -93,6 +93,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { APP_HEADER_STATUS_PILL_BASE_CLASS } from '@/lib/ui-classes';
+import { useUnsavedChangesGuard } from '@/lib/useUnsavedChangesGuard';
 import {
   FAQ_SECTION_BY_COMMAND_CENTER_CARD_ID,
   type CommandCenterFeatureCardId,
@@ -3316,6 +3317,11 @@ export function CommandCenterPage() {
     plexMonitoringUsersQuery.data,
     serverSelectedPlexUserIds,
   ]);
+
+  // Warn on tab close while any section has unsaved edits.
+  useUnsavedChangesGuard(
+    profileDirty || plexLibrarySelectionDirty || plexUserSelectionDirty,
+  );
   const deselectedPlexMonitoringUsers = useMemo<PlexMonitoringDeselectedUser[]>(() => {
     if (!plexMonitoringUsersQuery.data) return [];
     const serverSelectedSet = new Set(serverSelectedPlexUserIds);
@@ -4022,7 +4028,6 @@ export function CommandCenterPage() {
           strokeWidth={2.5}
         />
       }
-      backgroundGradientClass="bg-gradient-to-br from-sky-900/55 via-cyan-900/60 to-slate-900/75"
       subtitle={
         <>
           Tweak, tune, and turbocharge your{' '}

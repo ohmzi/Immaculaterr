@@ -17,7 +17,7 @@ import {
   decodeHtmlEntities,
   normalizeTitleForMatching,
 } from '../lib/title-normalize';
-import { errToMessage } from '../log.utils';
+import { truncateErrorMessage } from '../log.utils';
 import type { JobContext, JobRunResult, JsonObject } from './jobs.types';
 import type { JobReportTaskStatus, JobReportV1 } from './job-report-v1';
 import { issue, metricRow } from './job-report-v1';
@@ -1077,7 +1077,7 @@ export class RottenTomatoesUpcomingMoviesJob {
           break;
         }
       } catch (err) {
-        const error = errToMessage(err);
+        const error = truncateErrorMessage(err);
         sourceFailureCount += 1;
         sourceStats.push({
           url: sourceUrl,
@@ -1117,6 +1117,19 @@ export class RottenTomatoesUpcomingMoviesJob {
           'Rotten Tomatoes movie discovery failed: all movie sources failed or no usable movie cards were parsed.',
         ),
       );
+      // One structured, secret-free diagnostic line users can paste into a
+      // bug report: which source URLs failed, how, and what parsed.
+      await ctx.error('rottenTomatoesUpcomingMovies: movie discovery failed', {
+        sources: sourceStats.map((stat) => ({
+          url: stat.url,
+          failed: stat.failed,
+          error: stat.error,
+          discoveredEntries: stat.discoveredEntries,
+          parseableEntries: stat.parseableEntries,
+        })),
+        parsedTotal: scrapedMovies.length,
+        dedupedTotal: dedupedMovies.length,
+      });
       return {
         sourceStats,
         dedupedMovies,
@@ -1193,7 +1206,7 @@ export class RottenTomatoesUpcomingMoviesJob {
       const existingMovies = await this.radarr.listMovies(radarrConfig);
       radarrIndex = buildRadarrMovieIndex(existingMovies);
     } catch (err) {
-      const error = errToMessage(err);
+      const error = truncateErrorMessage(err);
       reportIssues.push(
         issue(
           'warn',
@@ -1214,7 +1227,7 @@ export class RottenTomatoesUpcomingMoviesJob {
       : await this.pickRadarrDefaults({
           settings,
           radarrConfig,
-        }).catch((err) => ({ error: errToMessage(err) }));
+        }).catch((err) => ({ error: truncateErrorMessage(err) }));
 
     if (routeViaSeerr && !seerrConfig) {
       destinationStats.skipped = dedupedMovies.length;
@@ -1275,7 +1288,7 @@ export class RottenTomatoesUpcomingMoviesJob {
         title: movie.title,
         year: movie.year,
       }).catch(async (err) => {
-        const error = errToMessage(err);
+        const error = truncateErrorMessage(err);
         destinationStats.failed += 1;
         destinationTitles.failedTitles.push(movie.title);
         await ctx.warn(
@@ -1413,7 +1426,7 @@ export class RottenTomatoesUpcomingMoviesJob {
           {
             title: lookupTitle,
             year: lookupYear,
-            error: errToMessage(err),
+            error: truncateErrorMessage(err),
           },
         );
       }
@@ -1496,7 +1509,7 @@ export class RottenTomatoesUpcomingMoviesJob {
           break;
         }
       } catch (err) {
-        const error = errToMessage(err);
+        const error = truncateErrorMessage(err);
         sourceFailureCount += 1;
         sourceStats.push({
           url: sourceUrl,
@@ -1533,6 +1546,18 @@ export class RottenTomatoesUpcomingMoviesJob {
           'Rotten Tomatoes TV discovery failed: all TV sources failed or no score-qualified TV cards were parsed.',
         ),
       );
+      await ctx.error('rottenTomatoesUpcomingMovies: TV discovery failed', {
+        sources: sourceStats.map((stat) => ({
+          url: stat.url,
+          failed: stat.failed,
+          error: stat.error,
+          discoveredEntries: stat.discoveredEntries,
+          parseableEntries: stat.parseableEntries,
+        })),
+        parsedTotal: scrapedShows.length,
+        dedupedTotal: dedupedShows.length,
+        scoreFilteredOut,
+      });
       return {
         sourceStats,
         dedupedShows,
@@ -1617,7 +1642,7 @@ export class RottenTomatoesUpcomingMoviesJob {
         ? await this.pickSonarrDefaults({
             settings,
             sonarrConfig,
-          }).catch((err) => ({ error: errToMessage(err) }))
+          }).catch((err) => ({ error: truncateErrorMessage(err) }))
         : null;
     const plexConfig = this.resolvePlexConfig(settings, secrets);
     const caches: ShowBranchCaches = {
@@ -1701,7 +1726,7 @@ export class RottenTomatoesUpcomingMoviesJob {
         const existingSeries = await this.sonarr.listSeries(sonarrConfig);
         caches.sonarrIndexByTvdb = buildSonarrSeriesIndex(existingSeries);
       } catch (err) {
-        const error = errToMessage(err);
+        const error = truncateErrorMessage(err);
         reportIssues.push(
           issue(
             'warn',
@@ -1727,7 +1752,7 @@ export class RottenTomatoesUpcomingMoviesJob {
           {
             title: show.title,
             year: show.year,
-            error: errToMessage(err),
+            error: truncateErrorMessage(err),
           },
         );
         return null;
@@ -1860,7 +1885,7 @@ export class RottenTomatoesUpcomingMoviesJob {
           {
             title: resolved.title,
             tvdbId: resolved.tvdbId,
-            error: errToMessage(err),
+            error: truncateErrorMessage(err),
           },
         );
       }
@@ -1896,7 +1921,13 @@ export class RottenTomatoesUpcomingMoviesJob {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          Accept: 'text/html,application/xhtml+xml',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          // A browser-like UA avoids the bot-blocking some CDNs apply to
+          // default runtime user agents.
+          'User-Agent':
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         },
         signal: controller.signal,
       });
@@ -2241,7 +2272,7 @@ export class RottenTomatoesUpcomingMoviesJob {
         'rottenTomatoesUpcomingMovies: failed verifying Plex show episode availability',
         {
           showRatingKey: params.showRatingKey,
-          error: errToMessage(err),
+          error: truncateErrorMessage(err),
         },
       );
       return fallback;
@@ -2294,7 +2325,7 @@ export class RottenTomatoesUpcomingMoviesJob {
         'rottenTomatoesUpcomingMovies: failed building Plex TVDB index for reconciliation',
         {
           tvdbId,
-          error: errToMessage(err),
+          error: truncateErrorMessage(err),
         },
       );
       return null;
@@ -2330,7 +2361,7 @@ export class RottenTomatoesUpcomingMoviesJob {
           {
             tvdbId,
             seriesId: params.series.id,
-            error: errToMessage(err),
+            error: truncateErrorMessage(err),
           },
         );
         return null;
@@ -2450,7 +2481,7 @@ export class RottenTomatoesUpcomingMoviesJob {
             {
               tvdbId,
               seriesId: params.series.id,
-              error: errToMessage(err),
+              error: truncateErrorMessage(err),
             },
           );
           return false;
@@ -2509,7 +2540,7 @@ export class RottenTomatoesUpcomingMoviesJob {
             season: parsePositiveInt(params.episode.seasonNumber),
             episode: parsePositiveInt(params.episode.episodeNumber),
             monitored: params.monitored,
-            error: errToMessage(err),
+            error: truncateErrorMessage(err),
           },
         );
         return false;

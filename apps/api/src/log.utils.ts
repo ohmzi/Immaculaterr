@@ -108,6 +108,29 @@ export function maskIp(ip: string | null): string {
   return '***';
 }
 
+// Matches `?api_key=...`/`&token=...`-style pairs anywhere in free text,
+// even outside a parseable URL (e.g. inside an upstream error message).
+const SENSITIVE_TEXT_QUERY_PATTERN = new RegExp(
+  // String.raw keeps the \s escape intact inside the template literal.
+  String.raw`([?&](?:${Array.from(SENSITIVE_QUERY_PARAMS).join('|')})=)[^&\s"']+`,
+  'gi',
+);
+// 32-hex strings are the shape of TMDB/Radarr/Sonarr/Tautulli API keys.
+const HEX32_TOKEN_PATTERN = /\b[0-9a-f]{32}\b/gi;
+
+/**
+ * Strips API keys and tokens from free-form text so error messages and
+ * diagnostics are safe to log and to share in bug reports.
+ */
+export function redactSecretsFromText(value: string): string {
+  return value
+    .replace(SENSITIVE_TEXT_QUERY_PATTERN, '$1REDACTED')
+    .replace(HEX32_TOKEN_PATTERN, 'REDACTED');
+}
+
 export function truncateErrorMessage(err: unknown): string {
-  return truncateForLog(errToMessage(err), LOG_ERROR_MESSAGE_MAX_LENGTH);
+  return truncateForLog(
+    redactSecretsFromText(errToMessage(err)),
+    LOG_ERROR_MESSAGE_MAX_LENGTH,
+  );
 }

@@ -2,6 +2,33 @@
 
 This file tracks notable changes by version.
 
+## 1.7.10-beta-3
+
+- Cutting Room — a new page that finds and prunes the media nobody will ever watch:
+  - Six-step wizard: pick factors and protections, choose Plex libraries, scan once, tune the bar instantly, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.
+  - Scoring blends real watch history (Plex, server history, Tautulli), time in library, vote-confident ratings, personal Plex star-ratings, and request provenance; watchlists, continue-watching, recent requests, and Immaculaterr's own collections are always protected.
+  - Pruning deletes files through Radarr/Sonarr but keeps entries unmonitored and tagged `deleted-by-immaculaterr`; Pruned History offers one-click Restore, and a full dry-run mode rehearses everything without touching files.
+  - Companion tabs: Wanted List cleaner (unmonitor never-downloaded entries; no files touched), Duplicates cleaner (keep one version per movie), and Large Files replacer.
+  - Large Files: movie/episode files over a threshold you pick (default 10 GB) are deleted, re-monitored with surgical precision (episodes: only the affected episodes, their seasons, and the show — never the whole series), tagged `size-reduction`, and re-searched so smaller copies download automatically; recorded in Pruned History as "replaced for size". Available as an exclusive "Oversized files" card in the Prune Wizard (libraries → size bar → target → review → confirm) or as its own tab. Replaced items are switched to auto-created size-capped quality profiles (created on the first real run, reused after): "Immaculaterr 10GB Movie Cap" rejects movie releases over ~10 GB; "Immaculaterr 3GB Episode Cap" rejects episode releases over 3 GB and prefers 1–2 GB — so the re-download and all future upgrades stay small.
+  - Smarter Low ratings factor: points only start below 6.0 (movies) / 6.2 (shows) with vote-confidence shrinkage toward that bar, and any title rated 7.5+ by any single source is exempt — popular and highly-regarded titles are never flagged as low rated.
+  - Large Files hardening: double episodes sharing one file are listed once and deleted exactly once, episode sizes measure the largest single version (not all versions summed), the tab remembers your saved size threshold, and the scan surfaces clear warnings when Plex, a library section, or a Radarr instance could not be reached.
+  - Shift-click range selection in every Cutting Room list: click one row, then shift-click another to select (or clear) everything in between — works in the candidate review, Large Files, Wanted List, and Duplicates.
+- Tautulli is now a first-class optional integration: setup-wizard step, Vault card with connection testing, and a Cutting Room gate dialog that deep-links to Vault when it is not configured.
+- Quality of life across the app:
+  - Cancel queued runs and pause/resume the job queue from Rewind (and cancel from the run detail page).
+  - Relative timestamps everywhere with exact times on hover; reduced-motion support.
+  - Search opens with Ctrl/Cmd+K or "/" and now finds pages and FAQ sections; the FAQ has its own search box.
+  - Logs: pause/resume live tail, adjustable refresh rate, manual refresh, download, per-line copy, and dates on older lines. Run logs: level filter, text search, load-more, and a copyable run ID.
+  - Rewind: load more past 200 runs, expandable and copyable errors, and mobile pull-to-refresh (Logs too).
+  - Filters and tabs are remembered across visits; the Vault shows a retry on load failure and warns about unsaved changes (Command Center warns too).
+  - Observatory arrow-key swiping on both decks plus a pending-sync chip with Apply now.
+  - Wanted List unmonitor runs offer a 12-second Undo; Pruned History shows all-time reclaimed space; release notes are deep-linkable.
+- Reliability and performance:
+  - Tasks fail loudly and honestly: failed scrapes, unreachable Radarr/Sonarr, or all-items-failed runs mark the report task failed instead of hiding behind counters; the large-file replacer no longer reports space freed when nothing was deleted.
+  - Every plex.tv request has a timeout, transient upstream blips (429/503, resets) are retried once on reads, and error text in logs and reports is bounded with API keys redacted.
+  - Faster loading: pages are code-split and fetched on first visit instead of one 1.9 MB bundle, the Logs page polls only new lines, and Cutting Room listings answer from a short cache after the first scan.
+- Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), and refreshing qs.
+
 ## 1.7.10-beta-2
 
 - What's new since 1.7.9:

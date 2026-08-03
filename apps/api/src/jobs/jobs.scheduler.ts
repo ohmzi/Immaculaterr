@@ -20,6 +20,12 @@ const UNSCHEDULABLE_JOB_IDS = new Set<string>([
   'watchedMovieRecommendations',
   // One-time startup migration (no schedule support)
   'collectionResyncUpgrade',
+  // Cutting Room flows are driven from the Cutting Room page (snapshot-scoped input)
+  'cuttingRoomAnalyze',
+  'cuttingRoomPrune',
+  'cuttingRoomWantedPrune',
+  'cuttingRoomDuplicates',
+  'cuttingRoomLargeFiles',
 ]);
 
 @Injectable()

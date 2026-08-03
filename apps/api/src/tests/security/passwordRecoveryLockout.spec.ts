@@ -9,6 +9,7 @@ describe('security/password recovery lockout', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     const first = (
@@ -19,6 +20,7 @@ describe('security/password recovery lockout', () => {
         }) => {
           allowed: boolean;
           attemptsRemaining: number;
+          retryAfterSeconds: number | null;
         };
       }
     ).recordPasswordResetFailure({

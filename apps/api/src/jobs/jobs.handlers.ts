@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { JobContext, JobRunResult } from './jobs.types';
 import { MonitorConfirmJob } from './monitor-confirm.job';
 import { UnmonitorConfirmJob } from './unmonitor-confirm.job';
+import { RepairMonitoredJob } from './repair-monitored.job';
 import { ArrMonitoredSearchJob } from './arr-monitored-search.job';
 import { CleanupAfterAddingNewContentJob } from './cleanup-after-adding-new-content.job';
 import { ImmaculateTasteCollectionJob } from './immaculate-taste-collection.job';
@@ -14,12 +15,18 @@ import { TmdbUpcomingMoviesJob } from './tmdb-upcoming-movies.job';
 import { RottenTomatoesUpcomingMoviesJob } from './rotten-tomatoes-upcoming-movies.job';
 import { ImportNetflixHistoryJob } from './import-netflix-history.job';
 import { ImportPlexHistoryJob } from './import-plex-history.job';
+import { CuttingRoomAnalyzeJob } from './cutting-room-analyze.job';
+import { CuttingRoomPruneJob } from './cutting-room-prune.job';
+import { CuttingRoomWantedPruneJob } from './cutting-room-wanted-prune.job';
+import { CuttingRoomDuplicatesJob } from './cutting-room-duplicates.job';
+import { CuttingRoomLargeFilesJob } from './cutting-room-large-files.job';
 
 @Injectable()
 export class JobsHandlers {
   constructor(
     private readonly monitorConfirmJob: MonitorConfirmJob,
     private readonly unmonitorConfirmJob: UnmonitorConfirmJob,
+    private readonly repairMonitoredJob: RepairMonitoredJob,
     private readonly arrMonitoredSearchJob: ArrMonitoredSearchJob,
     private readonly cleanupAfterAddingNewContentJob: CleanupAfterAddingNewContentJob,
     private readonly immaculateTasteCollectionJob: ImmaculateTasteCollectionJob,
@@ -32,6 +39,11 @@ export class JobsHandlers {
     private readonly rottenTomatoesUpcomingMoviesJob: RottenTomatoesUpcomingMoviesJob,
     private readonly importNetflixHistoryJob: ImportNetflixHistoryJob,
     private readonly importPlexHistoryJob: ImportPlexHistoryJob,
+    private readonly cuttingRoomAnalyzeJob: CuttingRoomAnalyzeJob,
+    private readonly cuttingRoomPruneJob: CuttingRoomPruneJob,
+    private readonly cuttingRoomWantedPruneJob: CuttingRoomWantedPruneJob,
+    private readonly cuttingRoomDuplicatesJob: CuttingRoomDuplicatesJob,
+    private readonly cuttingRoomLargeFilesJob: CuttingRoomLargeFilesJob,
   ) {}
 
   async run(jobId: string, ctx: JobContext): Promise<JobRunResult> {
@@ -40,6 +52,8 @@ export class JobsHandlers {
         return await this.monitorConfirmJob.run(ctx);
       case 'unmonitorConfirm':
         return await this.unmonitorConfirmJob.run(ctx);
+      case 'repairMonitored':
+        return await this.repairMonitoredJob.run(ctx);
       case 'arrMonitoredSearch':
         return await this.arrMonitoredSearchJob.run(ctx);
       case 'tmdbUpcomingMovies':
@@ -64,6 +78,16 @@ export class JobsHandlers {
         return await this.importNetflixHistoryJob.run(ctx);
       case 'importPlexHistory':
         return await this.importPlexHistoryJob.run(ctx);
+      case 'cuttingRoomAnalyze':
+        return await this.cuttingRoomAnalyzeJob.run(ctx);
+      case 'cuttingRoomPrune':
+        return await this.cuttingRoomPruneJob.run(ctx);
+      case 'cuttingRoomWantedPrune':
+        return await this.cuttingRoomWantedPruneJob.run(ctx);
+      case 'cuttingRoomDuplicates':
+        return await this.cuttingRoomDuplicatesJob.run(ctx);
+      case 'cuttingRoomLargeFiles':
+        return await this.cuttingRoomLargeFilesJob.run(ctx);
       default:
         throw new Error(`No handler registered for jobId=${jobId}`);
     }

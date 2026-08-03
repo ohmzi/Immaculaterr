@@ -1,32 +1,47 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from 'react';
 import { motion, useAnimation } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
   Loader2,
+  Pause,
+  Play,
+  Copy as CopyIcon,
   RotateCcw,
   Trash2,
+  X,
 } from 'lucide-react';
 
 import {
+  cancelRun,
   clearRuns,
   getQueueSnapshot,
   listJobs,
   listRuns,
+  pauseQueue,
+  resumeQueue,
   type JobQueueRun,
   type JobRun,
 } from '@/api/jobs';
+import { toast } from 'sonner';
+
+import { copyToClipboard } from '@/lib/clipboard';
+import { usePersistentState } from '@/lib/usePersistentState';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PullToRefresh } from '@/components/PullToRefresh';
 import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
   APP_CARD_ROW_CLASS,
 } from '@/lib/ui-classes';
 import { decodeHtmlEntities } from '@/lib/utils';
+import { RelativeTime } from '@/components/RelativeTime';
 import {
   Select,
   SelectContent,
@@ -53,6 +68,8 @@ const statusPill = (status: string) => {
 };
 
 type RewindRun = JobRun & Partial<JobQueueRun>;
+
+const HISTORY_PAGE_SIZE = 200;
 
 const getRunTimestamp = (run: Pick<JobRun, 'queuedAt' | 'startedAt'>): string => {
   return run.queuedAt || run.startedAt;
@@ -293,13 +310,22 @@ export const RewindPage = () => {
   const queryClient = useQueryClient();
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
-  const [jobId, setJobId] = useState('');
-  const [status, setStatus] = useState('');
-  const [plexUserFilter, setPlexUserFilter] = useState('');
-  const [mediaTypeFilter, setMediaTypeFilter] = useState('');
+  const [jobId, setJobId] = usePersistentState('tcp_rewind_filter_job', '');
+  const [status, setStatus] = usePersistentState('tcp_rewind_filter_status', '');
+  const [plexUserFilter, setPlexUserFilter] = usePersistentState(
+    'tcp_rewind_filter_user',
+    '',
+  );
+  const [mediaTypeFilter, setMediaTypeFilter] = usePersistentState(
+    'tcp_rewind_filter_media',
+    '',
+  );
   const [q, setQ] = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [expandedErrorRunIds, setExpandedErrorRunIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const jobsQuery = useQuery({
     queryKey: ['jobs'],
@@ -309,9 +335,15 @@ export const RewindPage = () => {
     retry: false,
   });
 
-  const historyQuery = useQuery({
+  const historyQuery = useInfiniteQuery({
     queryKey: ['jobRuns', 'rewind'],
-    queryFn: () => listRuns({ take: 200 }),
+    queryFn: ({ pageParam }) =>
+      listRuns({ take: HISTORY_PAGE_SIZE, skip: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.runs.length < HISTORY_PAGE_SIZE
+        ? undefined
+        : allPages.length * HISTORY_PAGE_SIZE,
     staleTime: 2_000,
     refetchInterval: 3_000,
     refetchOnWindowFocus: false,
@@ -328,7 +360,16 @@ export const RewindPage = () => {
   });
 
   const runs = useMemo(() => {
-    const historyRuns = historyQuery.data?.runs ?? [];
+    // Flatten pages and drop duplicates that appear when new runs shift the
+    // page boundaries between fetches.
+    const seenIds = new Set<string>();
+    const historyRuns = (historyQuery.data?.pages ?? [])
+      .flatMap((page) => page.runs)
+      .filter((run) => {
+        if (seenIds.has(run.id)) return false;
+        seenIds.add(run.id);
+        return true;
+      });
     const liveRunsById = new Map<string, RewindRun>();
 
     const activeRun = queueQuery.data?.activeRun;
@@ -363,7 +404,7 @@ export const RewindPage = () => {
       }
       return right.id.localeCompare(left.id);
     });
-  }, [historyQuery.data?.runs, queueQuery.data?.activeRun, queueQuery.data?.pendingRuns]);
+  }, [historyQuery.data?.pages, queueQuery.data?.activeRun, queueQuery.data?.pendingRuns]);
 
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -408,12 +449,15 @@ export const RewindPage = () => {
 
   const clearableRunsCount = useMemo(
     () =>
-      (historyQuery.data?.runs ?? []).filter((run) =>
-        run.status === 'SUCCESS' ||
-        run.status === 'FAILED' ||
-        run.status === 'CANCELLED',
-      ).length,
-    [historyQuery.data?.runs],
+      (historyQuery.data?.pages ?? [])
+        .flatMap((page) => page.runs)
+        .filter(
+          (run) =>
+            run.status === 'SUCCESS' ||
+            run.status === 'FAILED' ||
+            run.status === 'CANCELLED',
+        ).length,
+    [historyQuery.data?.pages],
   );
 
   const clearAllMutation = useMutation({
@@ -423,6 +467,27 @@ export const RewindPage = () => {
       await queryClient.invalidateQueries({ queryKey: ['jobQueue', 'rewind'] });
       setClearAllOpen(false);
     },
+  });
+
+  const cancelRunMutation = useMutation({
+    mutationFn: (runId: string) => cancelRun(runId),
+    onSuccess: async () => {
+      toast.success('Queued run cancelled');
+      await queryClient.invalidateQueries({ queryKey: ['jobRuns', 'rewind'] });
+      await queryClient.invalidateQueries({ queryKey: ['jobQueue', 'rewind'] });
+    },
+    onError: (err) => toast.error((err as Error).message),
+  });
+
+  const queuePaused = queueQuery.data?.paused === true;
+  const queueToggleMutation = useMutation({
+    mutationFn: async () =>
+      queuePaused ? resumeQueue() : pauseQueue('Paused from Rewind'),
+    onSuccess: async () => {
+      toast.success(queuePaused ? 'Queue resumed' : 'Queue paused');
+      await queryClient.invalidateQueries({ queryKey: ['jobQueue', 'rewind'] });
+    },
+    onError: (err) => toast.error((err as Error).message),
   });
   const closeClearAllDialog = useCallback(() => {
     setClearAllOpen(false);
@@ -444,16 +509,16 @@ export const RewindPage = () => {
   }, [titleIconControls, titleIconGlowControls]);
   const handleJobFilterChange = useCallback((value: string) => {
     setJobId(value === 'all' ? '' : value);
-  }, []);
+  }, [setJobId]);
   const handleStatusFilterChange = useCallback((value: string) => {
     setStatus(value === 'any' ? '' : value);
-  }, []);
+  }, [setStatus]);
   const handlePlexUserFilterChange = useCallback((value: string) => {
     setPlexUserFilter(value === 'all' ? '' : value);
-  }, []);
+  }, [setPlexUserFilter]);
   const handleMediaTypeFilterChange = useCallback((value: string) => {
     setMediaTypeFilter(value === 'all' ? '' : value);
-  }, []);
+  }, [setMediaTypeFilter]);
   const handleSearchChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       setQ(event.target.value);
@@ -581,21 +646,15 @@ export const RewindPage = () => {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, violet-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-400/35 via-violet-700/45 to-indigo-900/65" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       {/* History Content */}
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
+        <PullToRefresh
+          onRefresh={() =>
+            Promise.all([historyQuery.refetch(), queueQuery.refetch()])
+          }
+        >
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
             {/* Page Header */}
             <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
@@ -709,11 +768,21 @@ export const RewindPage = () => {
                       <CircleAlert className="mt-0.5 h-5 w-5 text-sky-200" />
                       <div className="min-w-0 text-sm text-sky-100/90">
                         {queueQuery.data?.paused ? (
-                          <div>
-                            Queue is paused.
-                            {queueQuery.data.pauseReason
-                              ? ` ${queueQuery.data.pauseReason}`
-                              : ''}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>
+                              Queue is paused.
+                              {queueQuery.data.pauseReason
+                                ? ` ${queueQuery.data.pauseReason}`
+                                : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => queueToggleMutation.mutate()}
+                              disabled={queueToggleMutation.isPending}
+                              className="rounded-full border border-sky-300/30 bg-sky-400/15 px-3 py-1 text-xs font-bold text-sky-50 transition hover:bg-sky-400/25"
+                            >
+                              Resume
+                            </button>
                           </div>
                         ) : null}
                         {queueQuery.data?.activeRun?.redacted ? (
@@ -736,6 +805,33 @@ export const RewindPage = () => {
                         {`${filtered.length.toLocaleString()} shown`}
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => queueToggleMutation.mutate()}
+                      disabled={queueToggleMutation.isPending}
+                      className={[
+                        'inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation',
+                        'w-full sm:w-auto border',
+                        queuePaused
+                          ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15'
+                          : 'border-white/15 bg-white/5 text-white/75 hover:bg-white/10',
+                      ].join(' ')}
+                      title={
+                        queuePaused
+                          ? 'Resume the job queue'
+                          : 'Pause the job queue — queued runs wait until you resume'
+                      }
+                    >
+                      {queueToggleMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : queuePaused ? (
+                        <Play className="h-4 w-4" />
+                      ) : (
+                        <Pause className="h-4 w-4" />
+                      )}
+                      {queuePaused ? 'Resume queue' : 'Pause queue'}
+                    </button>
 
                     <button
                       type="button"
@@ -797,7 +893,7 @@ export const RewindPage = () => {
                                   </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60 font-mono">
                                     <span className="whitespace-nowrap">
-                                      {new Date(getRunTimestamp(run)).toLocaleString()}
+                                      <RelativeTime value={getRunTimestamp(run)} />
                                     </span>
                                     <span className="text-white/30">•</span>
                                     <span className="whitespace-nowrap">
@@ -830,12 +926,47 @@ export const RewindPage = () => {
                                   >
                                     {run.status}
                                   </span>
+                                  {run.status === 'PENDING' ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        cancelRunMutation.mutate(run.id);
+                                      }}
+                                      disabled={cancelRunMutation.isPending}
+                                      className="inline-flex items-center gap-1 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-100 transition hover:bg-red-500/20"
+                                      title="Cancel this queued run"
+                                    >
+                                      <X className="h-3 w-3" /> Cancel
+                                    </button>
+                                  ) : null}
                                   <ChevronRight className="h-4 w-4 text-white/40 transition-transform group-hover:translate-x-0.5 group-active:translate-x-0.5" />
                                 </div>
                               </div>
                               {errorPreview ? (
-                                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono break-words [overflow-wrap:anywhere]">
-                                  {errorPreview}
+                                <div
+                                  className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200/80 font-mono break-words [overflow-wrap:anywhere]"
+                                  onClick={(e) => {
+                                    if (errorText === errorPreview) return;
+                                    e.preventDefault();
+                                    setExpandedErrorRunIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(run.id)) next.delete(run.id);
+                                      else next.add(run.id);
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  {expandedErrorRunIds.has(run.id)
+                                    ? errorText
+                                    : errorPreview}
+                                  {errorText !== errorPreview ? (
+                                    <span className="ml-1 text-red-100/60 underline decoration-dotted">
+                                      {expandedErrorRunIds.has(run.id)
+                                        ? 'less'
+                                        : 'more'}
+                                    </span>
+                                  ) : null}
                                 </div>
                               ) : pendingNote ? (
                                 <div className="mt-3 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/85 font-mono break-words [overflow-wrap:anywhere]">
@@ -889,7 +1020,7 @@ export const RewindPage = () => {
                                       className="font-mono text-xs text-white/80 underline-offset-4 hover:underline"
                                       to={`/rewind/${run.id}`}
                                     >
-                                      {new Date(getRunTimestamp(run)).toLocaleString()}
+                                      <RelativeTime value={getRunTimestamp(run)} />
                                     </Link>
                                   </td>
                                   <td className="px-3 py-3 text-white/85">
@@ -908,6 +1039,19 @@ export const RewindPage = () => {
                                     >
                                       {run.status}
                                     </span>
+                                    {run.status === 'PENDING' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          cancelRunMutation.mutate(run.id)
+                                        }
+                                        disabled={cancelRunMutation.isPending}
+                                        className="ml-2 inline-flex items-center gap-1 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-100 transition hover:bg-red-500/20"
+                                        title="Cancel this queued run"
+                                      >
+                                        <X className="h-3 w-3" /> Cancel
+                                      </button>
+                                    ) : null}
                                   </td>
                                   <td className="px-3 py-3 text-white/60">
                                     {modeLabel(run)}
@@ -920,7 +1064,61 @@ export const RewindPage = () => {
                                       const msg =
                                         issueSummary(run) || describeBlockedReason(run);
                                       if (!msg) return '';
-                                      return msg.length > 56 ? `${msg.slice(0, 56)}…` : msg;
+                                      const expanded = expandedErrorRunIds.has(run.id);
+                                      const needsExpand = msg.length > 56;
+                                      return (
+                                        <div className="flex items-start gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setExpandedErrorRunIds((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(run.id)) next.delete(run.id);
+                                                else next.add(run.id);
+                                                return next;
+                                              })
+                                            }
+                                            disabled={!needsExpand}
+                                            className={[
+                                              'min-w-0 flex-1 text-left',
+                                              // Collapsed: one ellipsized line so rows stay compact;
+                                              // wrapping only once expanded.
+                                              expanded
+                                                ? 'break-words [overflow-wrap:anywhere]'
+                                                : 'truncate',
+                                              needsExpand
+                                                ? 'cursor-pointer underline decoration-dotted underline-offset-2 hover:text-red-100'
+                                                : 'cursor-default',
+                                            ].join(' ')}
+                                            title={
+                                              needsExpand
+                                                ? expanded
+                                                  ? 'Collapse error'
+                                                  : 'Show full error'
+                                                : undefined
+                                            }
+                                          >
+                                            {msg}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              void copyToClipboard(msg)
+                                                .then(() =>
+                                                  toast.success('Error copied'),
+                                                )
+                                                .catch(() =>
+                                                  toast.error('Copy failed'),
+                                                );
+                                            }}
+                                            className="shrink-0 rounded p-0.5 text-red-200/60 transition hover:text-red-100"
+                                            aria-label="Copy full error"
+                                            title="Copy full error"
+                                          >
+                                            <CopyIcon className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      );
                                     })()}
                                   </td>
                                 </tr>
@@ -929,6 +1127,22 @@ export const RewindPage = () => {
                           </tbody>
                         </table>
                       </div>
+
+                      {historyQuery.hasNextPage ? (
+                        <div className="mt-4 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => void historyQuery.fetchNextPage()}
+                            disabled={historyQuery.isFetchingNextPage}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
+                          >
+                            {historyQuery.isFetchingNextPage ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : null}
+                            Load {HISTORY_PAGE_SIZE} more
+                          </button>
+                        </div>
+                      ) : null}
                     </>
                   ) : (
                     <div className="text-sm text-white/70">No history found.</div>
@@ -937,6 +1151,7 @@ export const RewindPage = () => {
               </div>
             )}
         </div>
+        </PullToRefresh>
       </section>
 
       <ConfirmDialog

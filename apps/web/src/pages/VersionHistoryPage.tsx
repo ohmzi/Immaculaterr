@@ -1,17 +1,33 @@
 import { motion, useAnimation } from 'motion/react';
-import { Tags } from 'lucide-react';
-import { useCallback } from 'react';
+import { Link2, Tags } from 'lucide-react';
+import { useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { toast } from 'sonner';
 
-import {
-  APP_BG_DARK_WASH_CLASS,
-  APP_BG_HIGHLIGHT_CLASS,
-  APP_BG_IMAGE_URL,
-} from '@/lib/ui-classes';
+import { copyToClipboard } from '@/lib/clipboard';
+
 import { formatDisplayVersion, VERSION_HISTORY_ENTRIES } from '@/lib/version-history';
+
+function versionAnchorId(version: string): string {
+  return `v-${version.replace(/[^a-zA-Z0-9.-]+/g, '-')}`;
+}
 
 export function VersionHistoryPage() {
   const titleIconControls = useAnimation();
   const titleIconGlowControls = useAnimation();
+  const location = useLocation();
+
+  // Deep-link support: /version-history#v-1.7.10-beta-3 scrolls to that release.
+  useEffect(() => {
+    const hash = location.hash.replace(/^#/, '');
+    if (!hash) return;
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById(hash)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [location.hash]);
 
   const cardClass =
     'rounded-[32px] border border-white/10 bg-[#0b0c0f]/65 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl lg:p-8';
@@ -36,18 +52,7 @@ export function VersionHistoryPage() {
   }, [titleIconControls, titleIconGlowControls]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
-      {/* Background (landing-page style, amber-tinted) */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <img
-          src={APP_BG_IMAGE_URL}
-          alt=""
-          className="h-full w-full object-cover object-center opacity-80"
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-300/25 via-yellow-700/35 to-slate-950/75" />
-        <div className={`absolute inset-0 ${APP_BG_HIGHLIGHT_CLASS}`} />
-        <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
-      </div>
+    <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
       <section className="relative z-10 min-h-screen overflow-hidden pt-10 lg:pt-16">
         <div className="container mx-auto max-w-5xl px-4 pb-20">
@@ -98,7 +103,11 @@ export function VersionHistoryPage() {
 
           <div className="space-y-6">
             {VERSION_HISTORY_ENTRIES.map((entry, entryIndex) => (
-              <div key={entry.version} className={cardClass}>
+              <div
+                key={entry.version}
+                id={versionAnchorId(entry.version)}
+                className={`${cardClass} scroll-mt-28`}
+              >
                 <div className="flex flex-col gap-4 border-b border-white/8 pb-5 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-amber-200/60">
@@ -117,6 +126,19 @@ export function VersionHistoryPage() {
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/60">
                       {entry.sections.length} section{entry.sections.length === 1 ? '' : 's'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}${window.location.pathname}#${versionAnchorId(entry.version)}`;
+                        void copyToClipboard(url)
+                          .then(() => toast.success('Release link copied'))
+                          .catch(() => toast.error('Copy failed'));
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-white/60 transition hover:bg-white/10 hover:text-white/90"
+                      title="Copy a link to this release"
+                    >
+                      <Link2 className="h-3.5 w-3.5" /> Copy link
+                    </button>
                   </div>
                 </div>
 

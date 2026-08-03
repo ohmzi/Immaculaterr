@@ -572,8 +572,8 @@ describe('TmdbUpcomingMoviesJob', () => {
       return '';
     });
     tmdb.discoverUpcomingMovies.mockImplementation((params) => {
-      if (params.languages.includes('en')) {
-        return [
+      if (params.languages?.includes('en')) {
+        return Promise.resolve([
           {
             tmdbId: 101,
             title: 'EN 1',
@@ -601,9 +601,9 @@ describe('TmdbUpcomingMoviesJob', () => {
             popularity: 800,
             originalLanguage: 'en',
           },
-        ];
+        ]);
       }
-      return [
+      return Promise.resolve([
         {
           tmdbId: 201,
           title: 'FR 1',
@@ -631,7 +631,7 @@ describe('TmdbUpcomingMoviesJob', () => {
           popularity: 700,
           originalLanguage: 'fr',
         },
-      ];
+      ]);
     });
 
     const result = await job.run(ctx);
@@ -738,23 +738,23 @@ describe('TmdbUpcomingMoviesJob', () => {
     tmdb.discoverUpcomingMovies.mockImplementation((params) => {
       const startPage = Number(params.startPage ?? 1);
       if (startPage === 1) {
-        return [
+        return Promise.resolve([
           makeCandidate(1, 'Movie 1', 500),
           makeCandidate(2, 'Movie 2', 450),
           makeCandidate(3, 'Movie 3', 400),
           makeCandidate(4, 'Movie 4', 350),
-        ];
+        ]);
       }
-      return [
+      return Promise.resolve([
         makeCandidate(5, 'Movie 5', 300),
         makeCandidate(6, 'Movie 6', 250),
         makeCandidate(7, 'Movie 7', 200),
         makeCandidate(8, 'Movie 8', 150),
-      ];
+      ]);
     });
     tmdb.getMovieCertification.mockImplementation((params) => {
       const allowed = new Set([1, 5, 6, 7, 8]);
-      return allowed.has(params.tmdbId) ? 'PG-13' : 'R';
+      return Promise.resolve(allowed.has(params.tmdbId) ? 'PG-13' : 'R');
     });
 
     const result = await job.run(ctx);
@@ -830,7 +830,7 @@ describe('TmdbUpcomingMoviesJob', () => {
     tmdb.discoverUpcomingMovies.mockImplementation((params) => {
       const startPage = Number(params.startPage ?? 1);
       if (startPage === 1) {
-        return [
+        return Promise.resolve([
           {
             tmdbId: 101,
             title: 'Already In Plex',
@@ -849,9 +849,9 @@ describe('TmdbUpcomingMoviesJob', () => {
             popularity: 450,
             originalLanguage: 'en',
           },
-        ];
+        ]);
       }
-      return [
+      return Promise.resolve([
         {
           tmdbId: 103,
           title: 'Fresh Movie 2',
@@ -861,7 +861,7 @@ describe('TmdbUpcomingMoviesJob', () => {
           popularity: 400,
           originalLanguage: 'en',
         },
-      ];
+      ]);
     });
 
     const result = await job.run(ctx);

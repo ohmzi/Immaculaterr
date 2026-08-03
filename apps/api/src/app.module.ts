@@ -29,6 +29,7 @@ import { API_STATIC_EXCLUDE_PATH } from './app.constants';
 import { ArrInstanceModule } from './arr-instances/arr-instance.module';
 import { ImmaculateTasteProfileModule } from './immaculate-taste-profiles/immaculate-taste-profile.module';
 import { ImportModule } from './import/import.module';
+import { CuttingRoomModule } from './cutting-room/cutting-room.module';
 import {
   buildAppRenderPath,
   buildPrefixedStaticExcludePath,
@@ -82,6 +83,7 @@ const staticImports = existsSync(webDistPath)
     OpenAiModule,
     SeerrModule,
     ImportModule,
+    CuttingRoomModule,
   ],
   controllers: [AppController],
   providers: [

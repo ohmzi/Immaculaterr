@@ -1,4 +1,5 @@
 import {
+  buildExcludedLibrariesFromSelected,
   buildExcludedSectionKeysFromSelected,
   isPlexLibrarySectionExcluded,
   readConfiguredExcludedSectionKeys,
@@ -107,5 +108,70 @@ describe('plex-library-selection.utils', () => {
         false,
       );
     });
+  });
+});
+
+describe('re-keyed library exclusions', () => {
+  const sections = [
+    { key: '1', title: 'Movies', type: 'movie' },
+    { key: '3', title: 'TV Shows', type: 'show' },
+    { key: '8', title: 'Side Quest', type: 'movie' },
+  ];
+
+  it('follows an exclusion to the new key when the library was re-created', () => {
+    const selection = resolvePlexLibrarySelection({
+      settings: {
+        plex: {
+          librarySelection: {
+            excludedSectionKeys: ['7'],
+            excludedLibraries: [
+              { key: '7', title: 'Side Quest', type: 'movie' },
+            ],
+          },
+        },
+      },
+      sections,
+    });
+    expect(selection.excludedSectionKeys).toEqual(['8']);
+    expect(selection.selectedSectionKeys).toEqual(['1', '3']);
+  });
+
+  it('does not match across types or unrelated titles', () => {
+    const selection = resolvePlexLibrarySelection({
+      settings: {
+        plex: {
+          librarySelection: {
+            excludedLibraries: [
+              { key: '7', title: 'Side Quest', type: 'show' },
+              { key: '9', title: 'Anime', type: 'movie' },
+            ],
+          },
+        },
+      },
+      sections,
+    });
+    expect(selection.excludedSectionKeys).toEqual([]);
+    expect(selection.selectedSectionKeys).toEqual(['1', '8', '3']);
+  });
+
+  it('legacy key-only exclusions still apply when the key exists', () => {
+    const selection = resolvePlexLibrarySelection({
+      settings: {
+        plex: { librarySelection: { excludedSectionKeys: ['8'] } },
+      },
+      sections,
+    });
+    expect(selection.excludedSectionKeys).toEqual(['8']);
+  });
+
+  it('builds title-aware triples from a selection', () => {
+    const triples = buildExcludedLibrariesFromSelected({
+      eligibleLibraries: [
+        { key: '1', title: 'Movies', type: 'movie' },
+        { key: '8', title: 'Side Quest', type: 'movie' },
+      ],
+      selectedSectionKeys: ['1'],
+    });
+    expect(triples).toEqual([{ key: '8', title: 'Side Quest', type: 'movie' }]);
   });
 });

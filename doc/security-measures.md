@@ -67,7 +67,7 @@ Immaculaterr ships with a **Caddy** reverse proxy option that handles HTTPS auto
 
 Multiple layers of rate limiting protect the app from automated attacks:
 
-- **Global API rate limits** — All API endpoints are rate-limited per IP address.
+- **Global API rate limits** — All API endpoints are rate-limited per IP address using a token bucket: a burst allowance absorbs legitimate fast navigation (each screen issues several parallel requests) while the sustained refill rate caps request floods. Both are tunable via `API_RATE_LIMIT_MAX` (sustained per window) and `API_RATE_LIMIT_BURST`.
 - **Auth-specific limits** — Login, registration, and password recovery have stricter, separate limits.
 - **Progressive lockout** — Repeated failed login attempts trigger escalating lockout periods that double with each failure. Lockout state is persisted to the database so it survives restarts — an attacker cannot clear lockouts by restarting the server.
 - **Optional CAPTCHA** — After a configurable number of failed attempts, CAPTCHA verification can be required.
