@@ -46,6 +46,7 @@
     "flatted": "3.4.2",
     "diff": "4.0.4",
     "multer": "2.2.0",
-    "terser-webpack-plugin": "5.3.17"
+    "terser-webpack-plugin": "5.3.17",
+    "shell-quote": "1.10.0"
   }
 }
