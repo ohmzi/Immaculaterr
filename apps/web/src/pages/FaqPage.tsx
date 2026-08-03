@@ -115,25 +115,20 @@ export const FaqPage = () => {
       featureReturnPath && featureReturnAnchor === itemId ? featureReturnPath : canonical;
     return { to, label: CUTTING_ROOM_LABEL_BY_PATH[to] };
   };
+  // Rendered after the card so it paints above it, and only its opacity moves:
+  // a box-shadow animating *behind* a backdrop-blur card repaints that card's
+  // backdrop every frame, and re-blurring a full-height section card cannot
+  // keep up — the card drops out entirely for whole frames while it runs.
   const renderSectionFlash = (sectionId: string) => (
     <AnimatePresence initial={false}>
       {flashSection?.id === sectionId ? (
         <motion.div
           key={`${flashSection.nonce}-${sectionId}-glow`}
-          className="pointer-events-none absolute inset-0 rounded-3xl"
-          initial={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
-          animate={{
-            boxShadow: [
-              '0 0 0px rgba(250, 204, 21, 0)',
-              '0 0 30px rgba(250, 204, 21, 0.5)',
-              '0 0 0px rgba(250, 204, 21, 0)',
-              '0 0 30px rgba(250, 204, 21, 0.5)',
-              '0 0 0px rgba(250, 204, 21, 0)',
-              '0 0 30px rgba(250, 204, 21, 0.5)',
-              '0 0 0px rgba(250, 204, 21, 0)',
-            ],
-          }}
-          exit={{ boxShadow: '0 0 0px rgba(250, 204, 21, 0)' }}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 rounded-3xl shadow-[0_0_30px_rgba(250,204,21,0.5)]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 0, 1, 0, 1, 0] }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 3.8, ease: 'easeInOut' }}
         />
       ) : null}
@@ -3617,8 +3612,14 @@ export const FaqPage = () => {
       pill: 'border-rose-400/30 bg-rose-400/10 text-rose-100',
     },
   ] as const;
+  // Opacity carries the card, not the blur. This page stacks thirty very tall
+  // backdrop-filter surfaces and scrolls itself on arrival, and the filter goes
+  // stale after that programmatic scroll — cards render see-through until some
+  // repaint (hovering one) invalidates them. At 85% the card is solid on its
+  // own, so a dropped filter is no longer visible; the small blur is only there
+  // to soften what still shows through.
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 p-6 shadow-2xl backdrop-blur-2xl lg:p-8';
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/85 p-6 shadow-2xl backdrop-blur-md lg:p-8';
   const answerBodyClass =
     'mt-4 space-y-3 text-sm leading-relaxed text-white/70 [&_code]:rounded-md [&_code]:border [&_code]:border-white/10 [&_code]:bg-black/25 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-white/90 [&_ol]:space-y-1.5 [&_ul]:space-y-1.5';
   const topGlowFadeStyle = {
@@ -3833,7 +3834,6 @@ export const FaqPage = () => {
                   id={section.id}
                   className={`${anchorClass} relative`}
                 >
-                  {renderSectionFlash(section.id)}
                   <div className={`${cardClass} relative overflow-hidden`}>
                     <div
                       className={`pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r ${theme.glow} to-transparent opacity-80`}
@@ -3951,6 +3951,7 @@ export const FaqPage = () => {
                       </div>
                     </div>
                   </div>
+                  {renderSectionFlash(section.id)}
                 </div>
               );
             })}
