@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
@@ -61,6 +61,7 @@ import {
 } from './cutting-room/shared';
 import {
   FaqPill,
+  JumpToActionButton,
   LargeFilesTable,
   TagPillInput,
 } from './cutting-room/shared-components';
@@ -1330,6 +1331,7 @@ function ReviewStep(props: {
 }) {
   const { snapshot, maxTier, onBack, onNext } = props;
   const queryClient = useQueryClient();
+  const actionRowRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<'score' | 'size' | 'scorePerGb' | 'addedAt'>(
     'score',
@@ -1544,8 +1546,13 @@ function ReviewStep(props: {
         </div>
       </div>
 
-      {/* sticky selection footer */}
-      <div className="sticky bottom-3 rounded-2xl border border-[#facc15]/25 bg-black/70 backdrop-blur-xl p-4 flex items-center justify-between">
+      {/* Selection footer. It cannot stick: the wizard card is overflow-hidden,
+          which makes the card itself the scrollport, so JumpToActionButton is
+          what gets the user down here from a long list. */}
+      <div
+        ref={actionRowRef}
+        className="rounded-2xl border border-[#facc15]/25 bg-black/70 backdrop-blur-xl p-4 flex items-center justify-between"
+      >
         <div className="text-sm text-white">
           Selected:{' '}
           <span className="font-bold text-[#facc15]">
@@ -1570,6 +1577,12 @@ function ReviewStep(props: {
           </button>
         </div>
       </div>
+
+      <JumpToActionButton
+        active={snapshot.selectedCount > 0}
+        targetRef={actionRowRef}
+        label="Continue"
+      />
     </div>
   );
 }
@@ -2094,6 +2107,7 @@ function LargeFilesReviewStep(props: {
   onNext: () => void;
 }) {
   const { items, selectedKeys, setSelectedKeys, onBack, onNext } = props;
+  const actionRowRef = useRef<HTMLDivElement>(null);
 
   const selectedCount = useMemo(
     () => items.filter((item) => selectedKeys.has(lfItemKey(item))).length,
@@ -2151,7 +2165,7 @@ function LargeFilesReviewStep(props: {
         </div>
       )}
 
-      <div className="flex justify-between">
+      <div ref={actionRowRef} className="flex justify-between">
         <button
           type="button"
           onClick={onBack}
@@ -2168,6 +2182,12 @@ function LargeFilesReviewStep(props: {
           Continue to confirm
         </button>
       </div>
+
+      <JumpToActionButton
+        active={selectedCount > 0}
+        targetRef={actionRowRef}
+        label="Continue"
+      />
     </div>
   );
 }

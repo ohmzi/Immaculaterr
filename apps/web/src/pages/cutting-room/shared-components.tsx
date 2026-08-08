@@ -1,6 +1,14 @@
-import { useState, type ChangeEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type RefObject,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Info, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowDown, Info, X } from 'lucide-react';
 
 import type { LargeFileItem } from '@/api/cutting-room';
 import type { FaqReturnState } from '@/lib/faq-feature-links';
@@ -96,6 +104,63 @@ export function FaqPill(props: { section: string; label: string }) {
       <Info className="h-3.5 w-3.5 shrink-0" />
       <span className="max-[420px]:hidden">FAQ</span>
     </button>
+  );
+}
+
+/**
+ * Floating shortcut down to a wizard step's action row.
+ *
+ * The candidate lists run to hundreds of rows, so once something is selected the
+ * Continue button can be several screens below the fold. This appears only when
+ * there is a selection *and* the button is not on screen, and scrolls to it.
+ *
+ * Portaled to the body: cutting-room content lives inside a backdrop-filter
+ * card, which would otherwise become the containing block for this fixed button
+ * and clip it away.
+ */
+export function JumpToActionButton(props: {
+  active: boolean;
+  targetRef: RefObject<HTMLElement | null>;
+  label: string;
+}) {
+  const { active, targetRef, label } = props;
+  const [targetOnScreen, setTargetOnScreen] = useState(true);
+
+  useEffect(() => {
+    const target = targetRef.current;
+    if (!active || !target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setTargetOnScreen(entry.isIntersecting),
+      { threshold: 1 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [active, targetRef]);
+
+  const handleClick = useCallback(() => {
+    targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [targetRef]);
+
+  return createPortal(
+    <AnimatePresence>
+      {active && !targetOnScreen ? (
+        <motion.button
+          type="button"
+          onClick={handleClick}
+          initial={{ opacity: 0, y: 16, scale: 0.94 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.94 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="fixed bottom-28 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#facc15]/30 bg-[#0F0B15]/90 px-4 py-3 text-sm font-bold text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] backdrop-blur-xl transition hover:bg-[#15101f]/95 hover:text-[#fde68a] active:scale-95 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
+          aria-label={`Jump to ${label}`}
+          title={`Jump to ${label}`}
+        >
+          <ArrowDown className="h-4 w-4" />
+          {label}
+        </motion.button>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
   );
 }
 
