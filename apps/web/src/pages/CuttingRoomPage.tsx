@@ -1476,7 +1476,7 @@ function ReviewStep(props: {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-white/10 overflow-x-auto">
+      <div className="rounded-2xl border border-white/10 bg-black/25 overflow-x-auto">
         {candidatesQuery.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-white/60 p-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading candidates…
@@ -2142,7 +2142,7 @@ function LargeFilesReviewStep(props: {
           library.
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 bg-black/25 overflow-hidden">
           <LargeFilesTable
             items={items}
             selectedKeys={selectedKeys}
