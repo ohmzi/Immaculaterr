@@ -47,10 +47,14 @@ export function GlassSelect(props: {
     if (!el) return;
     const r = el.getBoundingClientRect();
     const gap = 6;
-    const viewportMargin = 8;
+    // Keeps clear of the fixed mobile topbar/bottom-nav (both z-[1002] in
+    // MobileNavigation.tsx), matching the clearance that component already
+    // reserves for them (top-16 / bottom-28), not just the raw viewport edge.
+    const topMargin = 64;
+    const bottomMargin = 112;
     const preferredMaxHeight = 320;
-    const spaceBelow = window.innerHeight - r.bottom - gap - viewportMargin;
-    const spaceAbove = r.top - gap - viewportMargin;
+    const spaceBelow = window.innerHeight - r.bottom - gap - bottomMargin;
+    const spaceAbove = r.top - gap - topMargin;
 
     if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
       setPos({

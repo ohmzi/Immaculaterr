@@ -29,21 +29,29 @@ export function AnchoredFloatingPanel(props: {
     const anchorEl = getAnchorEl();
     if (!anchorEl) return;
     const r = anchorEl.getBoundingClientRect();
-    const margin = 8;
+    const sideMargin = 8;
+    // Keeps clear of the fixed mobile topbar/bottom-nav (both z-[1002] in
+    // MobileNavigation.tsx), matching the clearance that component already
+    // reserves for them (top-16 / bottom-28), not just the raw viewport edge.
+    const topMargin = 64;
+    const bottomMargin = 112;
     const minUsable = 120;
-    const spaceBelow = window.innerHeight - r.bottom - gap - margin;
-    const spaceAbove = r.top - gap - margin;
+    const spaceBelow = window.innerHeight - r.bottom - gap - bottomMargin;
+    const spaceAbove = r.top - gap - topMargin;
     const openBelow =
       preferredSide === 'bottom'
         ? spaceBelow >= minUsable || spaceBelow >= spaceAbove
         : !(spaceAbove >= minUsable || spaceAbove >= spaceBelow);
 
     const maxHeight = Math.max(minUsable, openBelow ? spaceBelow : spaceAbove);
-    const top = openBelow ? r.bottom + gap : Math.max(margin, r.top - gap - maxHeight);
+    const top = openBelow ? r.bottom + gap : Math.max(topMargin, r.top - gap - maxHeight);
 
     const contentWidth = contentRef.current?.offsetWidth ?? 0;
     const rawLeft = align === 'left' ? r.left : r.right - contentWidth;
-    const left = Math.min(Math.max(rawLeft, margin), Math.max(margin, window.innerWidth - contentWidth - margin));
+    const left = Math.min(
+      Math.max(rawLeft, sideMargin),
+      Math.max(sideMargin, window.innerWidth - contentWidth - sideMargin),
+    );
 
     setPos({ left, top, maxHeight });
   }, [getAnchorEl, align, gap, preferredSide]);

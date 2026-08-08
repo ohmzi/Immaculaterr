@@ -30,10 +30,16 @@ const SelectTrigger = React.forwardRef<
 ));
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 
+// Keeps popper-positioned content from rendering underneath the fixed mobile
+// topbar/bottom-nav (both z-[1002], well above this content's z-50) — matches
+// the clearance MobileNavigation.tsx itself already reserves for those bars
+// (top-16 / bottom-28).
+const SELECT_COLLISION_PADDING = { top: 64, bottom: 112, left: 8, right: 8 };
+
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', ...props }, ref) => (
+>(({ className, children, position = 'popper', collisionPadding = SELECT_COLLISION_PADDING, ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
@@ -46,6 +52,7 @@ const SelectContent = React.forwardRef<
         className,
       )}
       position={position}
+      collisionPadding={collisionPadding}
       {...props}
     >
       <SelectScrollUpButton />
