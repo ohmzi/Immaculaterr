@@ -687,6 +687,94 @@ describe('TmdbUpcomingMoviesJob', () => {
     ).toBe(true);
   });
 
+  it('uses the filter set name in discover facts when the user named it', async () => {
+    const { job, prisma, settings, tmdb } = createJob();
+    const ctx = createContext({ dryRun: true, trigger: 'manual' });
+
+    prisma.jobRun.findMany.mockResolvedValue([]);
+    settings.getInternalSettings.mockResolvedValue({
+      settings: {
+        jobs: {
+          tmdbUpcomingMovies: {
+            routeViaSeerr: true,
+            globalLimit: 4,
+            releaseWindowMonths: 2,
+            filters: [
+              {
+                id: 'f1',
+                name: 'Feel-good comedies',
+                enabled: true,
+                genres: [],
+                languages: ['en'],
+                certifications: [],
+                scoreMin: 6,
+                scoreMax: 10,
+              },
+              {
+                id: 'f2',
+                enabled: true,
+                genres: [],
+                languages: ['fr'],
+                certifications: [],
+                scoreMin: 6,
+                scoreMax: 10,
+              },
+            ],
+          },
+        },
+      },
+      secrets: {
+        tmdb: { apiKey: 'tmdb-key' },
+      },
+    });
+    settings.readServiceSecret.mockImplementation((service) => {
+      if (service === 'tmdb') return 'tmdb-key';
+      return '';
+    });
+    tmdb.discoverUpcomingMovies.mockImplementation((params) => {
+      if (params.languages?.includes('en')) {
+        return Promise.resolve([
+          {
+            tmdbId: 101,
+            title: 'EN 1',
+            releaseDate: '2026-06-10',
+            voteAverage: 8.1,
+            voteCount: 500,
+            popularity: 1000,
+            originalLanguage: 'en',
+          },
+        ]);
+      }
+      return Promise.resolve([
+        {
+          tmdbId: 201,
+          title: 'FR 1',
+          releaseDate: '2026-06-10',
+          voteAverage: 8.2,
+          voteCount: 450,
+          popularity: 950,
+          originalLanguage: 'fr',
+        },
+      ]);
+    });
+
+    const result = await job.run(ctx);
+    const summary = result.summary as unknown as Record<string, unknown>;
+    const tasks = summary.tasks as Array<Record<string, unknown>>;
+    const discoverTask = tasks.find((task) => task.id === 'discover');
+    const discoverFacts = Array.isArray(discoverTask?.facts)
+      ? (discoverTask.facts as Array<Record<string, unknown>>)
+      : [];
+    const factLabels = discoverFacts.map((fact) => fact.label);
+
+    // f1 has a real user-given name, so it should be used verbatim.
+    expect(factLabels).toContain('Feel-good comedies found');
+    // f2 has no name, so it falls back to a readable ordinal rather than the
+    // raw internal filter id ('f2').
+    expect(factLabels).toContain('Filter #2 found');
+    expect(factLabels).not.toContain('Filter #1 found');
+  });
+
   it('expands discovery pages when initial chunk cannot satisfy allocation', async () => {
     const { job, prisma, settings, tmdb } = createJob();
     const ctx = createContext({ dryRun: true, trigger: 'manual' });

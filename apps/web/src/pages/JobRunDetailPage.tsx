@@ -167,6 +167,27 @@ function getFactPresentation(params: {
   return { label, summary: JSON.stringify(value) };
 }
 
+// Older tmdbUpcomingMovies runs stored generic "Filter #N" labels because the
+// job didn't yet carry the user's filter-set name into the report. Rewrite
+// them here using the filter names captured in report.raw.activeFilters so
+// past runs read the same way as new ones, without needing a re-run.
+function remapTmdbUpcomingFilterFactLabel(params: {
+  jobId: string;
+  rawLabel: string;
+  activeFilters: unknown;
+}): string {
+  const { jobId, rawLabel, activeFilters } = params;
+  if (jobId !== 'tmdbUpcomingMovies' || !Array.isArray(activeFilters)) {
+    return rawLabel;
+  }
+  const match = rawLabel.match(/^Filter #(\d+)\s+(.*)$/);
+  if (!match) return rawLabel;
+  const filterRow = activeFilters[Number.parseInt(match[1], 10) - 1];
+  if (!isPlainObject(filterRow)) return rawLabel;
+  const name = pickString(filterRow, 'name');
+  return name ? `${name} ${match[2]}` : rawLabel;
+}
+
 function buildJsonPreview(value: string, visibleLines: number): { text: string; truncated: boolean } {
   const normalized = value.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
@@ -2589,7 +2610,11 @@ export function JobRunDetailPage() {
                                     </div>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       {facts.slice(0, 50).map((f) => {
-                                        const labelRaw = String(f.label ?? '').trim() || 'Fact';
+                                        const labelRaw = remapTmdbUpcomingFilterFactLabel({
+                                          jobId: String(run?.jobId ?? ''),
+                                          rawLabel: String(f.label ?? '').trim() || 'Fact',
+                                          activeFilters: summaryRaw?.['activeFilters'],
+                                        });
                                         const rawValue = (f as Record<string, unknown>).value;
                                         const presentation = getFactPresentation({
                                           jobId: String(run?.jobId ?? ''),

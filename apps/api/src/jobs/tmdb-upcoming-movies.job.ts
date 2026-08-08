@@ -859,9 +859,17 @@ export class TmdbUpcomingMoviesJob {
       { label: 'Window end', value: windowEnd },
       ...activeFilters.flatMap((filter, index) => {
         const filterStats = perFilterStatsById.get(filter.id);
+        // normalizeFilter() backfills a blank name with the filter's id, so a
+        // name equal to the id (or the bare 'Filter' fallback) means the user
+        // never actually named this filter set — fall back to a readable
+        // ordinal instead of surfacing the raw id.
+        const hasMeaningfulName =
+          filter.name && filter.name !== filter.id && filter.name !== 'Filter';
         const filterLabel = usingDefaultBaseline
           ? 'Default baseline filter'
-          : `Filter #${index + 1}`;
+          : hasMeaningfulName
+            ? filter.name
+            : `Filter #${index + 1}`;
         return [
           {
             label: `${filterLabel} found`,
