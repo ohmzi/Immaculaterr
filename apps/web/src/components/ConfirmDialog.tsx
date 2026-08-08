@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { CircleAlert, Loader2, X } from 'lucide-react';
 import { useCallback, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export type ConfirmDialogVariant = 'danger' | 'primary';
 
@@ -51,7 +52,13 @@ export function ConfirmDialog(props: {
     onClose();
   }, [confirming, onClose]);
 
-  return (
+  // Portaled to the body on purpose. Most callers sit inside a card that uses
+  // backdrop-filter, and a backdrop-filter ancestor becomes the containing block
+  // for fixed descendants: the overlay would be laid out against the card,
+  // clipped by its overflow-hidden, and stacked inside the card's own context —
+  // the dialog ends up mispositioned, washed out by the card's blur, and
+  // unclickable. From the body it is a real viewport-level overlay again.
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -146,6 +153,7 @@ export function ConfirmDialog(props: {
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
