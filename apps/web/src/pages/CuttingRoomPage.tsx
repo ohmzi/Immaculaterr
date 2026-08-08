@@ -100,6 +100,12 @@ const LF_STEP_TITLES: Record<WizardStep, string> = {
 };
 const LF_FLOOR_GB = 5;
 
+// The dry-run rehearsal was a testing aid: it is no longer offered or
+// preselected, so both confirm steps go straight to the real run behind the
+// typed confirmation. The rehearsal path is left intact — flip this to true to
+// bring the opt-in checkbox back.
+const DRY_RUN_ENABLED = false;
+
 type TabKey = 'wizard' | 'history' | 'wanted' | 'duplicates' | 'large-files';
 
 export function CuttingRoomPage() {
@@ -1662,7 +1668,7 @@ function ConfirmStep(props: {
   const { snapshot, mediaType, onBack, onDone } = props;
   const queryClient = useQueryClient();
   const [confirmation, setConfirmation] = useState('');
-  const [dryRun, setDryRun] = useState(true);
+  const [dryRun, setDryRun] = useState(DRY_RUN_ENABLED);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pruneRunId, setPruneRunId] = useState<string | null>(null);
 
@@ -1865,23 +1871,25 @@ function ConfirmStep(props: {
         </ul>
       </div>
 
-      <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={dryRun}
-          onChange={() => setDryRun((v) => !v)}
-          className="h-4 w-4 accent-[#facc15]"
-        />
-        <div>
-          <div className="font-bold text-white text-sm">
-            Dry run first (recommended)
+      {DRY_RUN_ENABLED ? (
+        <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={() => setDryRun((v) => !v)}
+            className="h-4 w-4 accent-[#facc15]"
+          />
+          <div>
+            <div className="font-bold text-white text-sm">
+              Dry run first (recommended)
+            </div>
+            <div className="text-xs text-white/60">
+              Rehearse the whole prune and get the exact would-delete list —
+              nothing is touched.
+            </div>
           </div>
-          <div className="text-xs text-white/60">
-            Rehearse the whole prune and get the exact would-delete list —
-            nothing is touched.
-          </div>
-        </div>
-      </label>
+        </label>
+      ) : null}
 
       {!dryRun ? (
         <div>
@@ -2200,7 +2208,7 @@ function LargeFilesConfirmStep(props: {
   const { items, onBack, onDone } = props;
   const queryClient = useQueryClient();
   const [confirmation, setConfirmation] = useState('');
-  const [dryRun, setDryRun] = useState(true);
+  const [dryRun, setDryRun] = useState(DRY_RUN_ENABLED);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
 
@@ -2382,23 +2390,25 @@ function LargeFilesConfirmStep(props: {
         </ul>
       </div>
 
-      <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={dryRun}
-          onChange={() => setDryRun((v) => !v)}
-          className="h-4 w-4 accent-[#facc15]"
-        />
-        <div>
-          <div className="font-bold text-white text-sm">
-            Dry run first (recommended)
+      {DRY_RUN_ENABLED ? (
+        <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={() => setDryRun((v) => !v)}
+            className="h-4 w-4 accent-[#facc15]"
+          />
+          <div>
+            <div className="font-bold text-white text-sm">
+              Dry run first (recommended)
+            </div>
+            <div className="text-xs text-white/60">
+              Rehearse the whole replacement and see the exact would-replace
+              list — nothing is touched.
+            </div>
           </div>
-          <div className="text-xs text-white/60">
-            Rehearse the whole replacement and see the exact would-replace
-            list — nothing is touched.
-          </div>
-        </div>
-      </label>
+        </label>
+      ) : null}
 
       {!dryRun ? (
         <div>
