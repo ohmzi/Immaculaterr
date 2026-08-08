@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, useAnimation } from 'motion/react';
@@ -61,6 +61,7 @@ import {
 } from './cutting-room/shared';
 import {
   FaqPill,
+  JumpToActionButton,
   LargeFilesTable,
   TagPillInput,
 } from './cutting-room/shared-components';
@@ -98,6 +99,12 @@ const LF_STEP_TITLES: Record<WizardStep, string> = {
   confirm: 'Confirm & replace',
 };
 const LF_FLOOR_GB = 5;
+
+// The dry-run rehearsal was a testing aid: it is no longer offered or
+// preselected, so both confirm steps go straight to the real run behind the
+// typed confirmation. The rehearsal path is left intact — flip this to true to
+// bring the opt-in checkbox back.
+const DRY_RUN_ENABLED = false;
 
 type TabKey = 'wizard' | 'history' | 'wanted' | 'duplicates' | 'large-files';
 
@@ -1330,6 +1337,7 @@ function ReviewStep(props: {
 }) {
   const { snapshot, maxTier, onBack, onNext } = props;
   const queryClient = useQueryClient();
+  const actionRowRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<'score' | 'size' | 'scorePerGb' | 'addedAt'>(
     'score',
@@ -1476,7 +1484,7 @@ function ReviewStep(props: {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-white/10 overflow-x-auto">
+      <div className="rounded-2xl border border-white/10 bg-black/25 overflow-x-auto">
         {candidatesQuery.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-white/60 p-4">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading candidates…
@@ -1544,8 +1552,13 @@ function ReviewStep(props: {
         </div>
       </div>
 
-      {/* sticky selection footer */}
-      <div className="sticky bottom-3 rounded-2xl border border-[#facc15]/25 bg-black/70 backdrop-blur-xl p-4 flex items-center justify-between">
+      {/* Selection footer. It cannot stick: the wizard card is overflow-hidden,
+          which makes the card itself the scrollport, so JumpToActionButton is
+          what gets the user down here from a long list. */}
+      <div
+        ref={actionRowRef}
+        className="rounded-2xl border border-[#facc15]/25 bg-black/70 backdrop-blur-xl p-4 flex items-center justify-between"
+      >
         <div className="text-sm text-white">
           Selected:{' '}
           <span className="font-bold text-[#facc15]">
@@ -1570,6 +1583,12 @@ function ReviewStep(props: {
           </button>
         </div>
       </div>
+
+      <JumpToActionButton
+        active={snapshot.selectedCount > 0}
+        targetRef={actionRowRef}
+        label="Continue"
+      />
     </div>
   );
 }
@@ -1649,7 +1668,7 @@ function ConfirmStep(props: {
   const { snapshot, mediaType, onBack, onDone } = props;
   const queryClient = useQueryClient();
   const [confirmation, setConfirmation] = useState('');
-  const [dryRun, setDryRun] = useState(true);
+  const [dryRun, setDryRun] = useState(DRY_RUN_ENABLED);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pruneRunId, setPruneRunId] = useState<string | null>(null);
 
@@ -1852,23 +1871,25 @@ function ConfirmStep(props: {
         </ul>
       </div>
 
-      <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={dryRun}
-          onChange={() => setDryRun((v) => !v)}
-          className="h-4 w-4 accent-[#facc15]"
-        />
-        <div>
-          <div className="font-bold text-white text-sm">
-            Dry run first (recommended)
+      {DRY_RUN_ENABLED ? (
+        <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={() => setDryRun((v) => !v)}
+            className="h-4 w-4 accent-[#facc15]"
+          />
+          <div>
+            <div className="font-bold text-white text-sm">
+              Dry run first (recommended)
+            </div>
+            <div className="text-xs text-white/60">
+              Rehearse the whole prune and get the exact would-delete list —
+              nothing is touched.
+            </div>
           </div>
-          <div className="text-xs text-white/60">
-            Rehearse the whole prune and get the exact would-delete list —
-            nothing is touched.
-          </div>
-        </div>
-      </label>
+        </label>
+      ) : null}
 
       {!dryRun ? (
         <div>
@@ -2094,6 +2115,7 @@ function LargeFilesReviewStep(props: {
   onNext: () => void;
 }) {
   const { items, selectedKeys, setSelectedKeys, onBack, onNext } = props;
+  const actionRowRef = useRef<HTMLDivElement>(null);
 
   const selectedCount = useMemo(
     () => items.filter((item) => selectedKeys.has(lfItemKey(item))).length,
@@ -2142,7 +2164,7 @@ function LargeFilesReviewStep(props: {
           library.
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-white/10 bg-black/25 overflow-hidden">
           <LargeFilesTable
             items={items}
             selectedKeys={selectedKeys}
@@ -2151,7 +2173,7 @@ function LargeFilesReviewStep(props: {
         </div>
       )}
 
-      <div className="flex justify-between">
+      <div ref={actionRowRef} className="flex justify-between">
         <button
           type="button"
           onClick={onBack}
@@ -2168,6 +2190,12 @@ function LargeFilesReviewStep(props: {
           Continue to confirm
         </button>
       </div>
+
+      <JumpToActionButton
+        active={selectedCount > 0}
+        targetRef={actionRowRef}
+        label="Continue"
+      />
     </div>
   );
 }
@@ -2180,7 +2208,7 @@ function LargeFilesConfirmStep(props: {
   const { items, onBack, onDone } = props;
   const queryClient = useQueryClient();
   const [confirmation, setConfirmation] = useState('');
-  const [dryRun, setDryRun] = useState(true);
+  const [dryRun, setDryRun] = useState(DRY_RUN_ENABLED);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
 
@@ -2362,23 +2390,25 @@ function LargeFilesConfirmStep(props: {
         </ul>
       </div>
 
-      <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={dryRun}
-          onChange={() => setDryRun((v) => !v)}
-          className="h-4 w-4 accent-[#facc15]"
-        />
-        <div>
-          <div className="font-bold text-white text-sm">
-            Dry run first (recommended)
+      {DRY_RUN_ENABLED ? (
+        <label className="flex items-center gap-3 p-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={() => setDryRun((v) => !v)}
+            className="h-4 w-4 accent-[#facc15]"
+          />
+          <div>
+            <div className="font-bold text-white text-sm">
+              Dry run first (recommended)
+            </div>
+            <div className="text-xs text-white/60">
+              Rehearse the whole replacement and see the exact would-replace
+              list — nothing is touched.
+            </div>
           </div>
-          <div className="text-xs text-white/60">
-            Rehearse the whole replacement and see the exact would-replace
-            list — nothing is touched.
-          </div>
-        </div>
-      </label>
+        </label>
+      ) : null}
 
       {!dryRun ? (
         <div>

@@ -1,6 +1,14 @@
-import { useState, type ChangeEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type RefObject,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { Info, X } from 'lucide-react';
+import { motion } from 'motion/react';
+import { ArrowDown, Info, X } from 'lucide-react';
 
 import type { LargeFileItem } from '@/api/cutting-room';
 import type { FaqReturnState } from '@/lib/faq-feature-links';
@@ -96,6 +104,89 @@ export function FaqPill(props: { section: string; label: string }) {
       <Info className="h-3.5 w-3.5 shrink-0" />
       <span className="max-[420px]:hidden">FAQ</span>
     </button>
+  );
+}
+
+/**
+ * Vertical band above the viewport bottom that the floating button itself
+ * occupies (its `bottom` offset plus its height, plus breathing room). The
+ * action row only counts as "on screen" once it clears this band, so the button
+ * never hides while still covering the thing it points at — and so the show/hide
+ * decision has ~170px of hysteresis instead of flipping on a single subpixel.
+ */
+const JUMP_BUTTON_CLEARANCE_PX = 168;
+
+/**
+ * Floating shortcut down to a wizard step's action row.
+ *
+ * The candidate lists run to hundreds of rows, so once something is selected the
+ * Continue button can be several screens below the fold. This appears only when
+ * there is a selection *and* the action row is not on screen, and scrolls to it.
+ *
+ * Portaled to the body: cutting-room content lives inside a backdrop-filter
+ * card, which would otherwise become the containing block for this fixed button
+ * and clip it away.
+ *
+ * Stays mounted and animates between shown/hidden rather than mounting through
+ * AnimatePresence: a fixed element gets its own compositor layer, and creating
+ * and tearing that down on every appearance is visible as a hitch. `initial`
+ * is false so the first paint snaps to the hidden state without an entrance.
+ *
+ * Only `transition-colors` here, never Tailwind's `transition` — that shorthand
+ * covers opacity/transform/translate/scale/backdrop-filter, i.e. everything
+ * Motion drives, so the browser would re-interpolate each of Motion's per-frame
+ * writes over 150ms. The rendered value then lags the timeline and gets cut off
+ * mid-fade, which reads as a flash.
+ */
+export function JumpToActionButton(props: {
+  active: boolean;
+  targetRef: RefObject<HTMLElement | null>;
+  label: string;
+}) {
+  const { active, targetRef, label } = props;
+  // Starts true so the button stays hidden until the observer has actually
+  // measured the row. Observed regardless of `active` so the flag can never go
+  // stale between selection cycles and mount the button on an old measurement.
+  const [rowOnScreen, setRowOnScreen] = useState(true);
+
+  useEffect(() => {
+    const target = targetRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setRowOnScreen(entry.isIntersecting),
+      { rootMargin: `0px 0px -${JUMP_BUTTON_CLEARANCE_PX}px 0px` },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [targetRef]);
+
+  const handleClick = useCallback(() => {
+    targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [targetRef]);
+
+  const visible = active && !rowOnScreen;
+
+  return createPortal(
+    <motion.button
+      type="button"
+      onClick={handleClick}
+      initial={false}
+      animate={
+        visible ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 8, scale: 0.96 }
+      }
+      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+      whileTap={{ scale: 0.95 }}
+      style={{ pointerEvents: visible ? 'auto' : 'none' }}
+      className="fixed bottom-28 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#facc15]/30 bg-[#0F0B15]/95 px-4 py-3 text-sm font-bold text-[#facc15] shadow-[0_0_24px_rgba(250,204,21,0.18)] transition-colors hover:bg-[#15101f] hover:text-[#fde68a] touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-[#facc15]/40 sm:bottom-8 sm:right-6"
+      aria-label={`Jump to ${label}`}
+      title={`Jump to ${label}`}
+      aria-hidden={!visible}
+      tabIndex={visible ? 0 : -1}
+    >
+      <ArrowDown className="h-4 w-4" />
+      {label}
+    </motion.button>,
+    document.body,
   );
 }
 

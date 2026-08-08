@@ -53,6 +53,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RadarrLogo, SonarrLogo } from '@/components/ArrLogos';
 import { cn } from '@/components/ui/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { AnchoredFloatingPanel } from '@/components/ui/anchored-floating-panel';
 import { AnalogTimePicker } from '@/components/AnalogTimePicker';
 import { SavingPill } from '@/components/SavingPill';
 import {
@@ -998,6 +999,9 @@ export function TaskManagerPage() {
   const [monthlyDaySelector, setMonthlyDaySelector] = useState<Record<string, boolean>>({});
   const [nextRunsPopup, setNextRunsPopup] = useState<Record<string, boolean>>({});
   const [timePickerOpen, setTimePickerOpen] = useState<Record<string, boolean>>({});
+  const weeklySelectorTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const monthlySelectorTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const nextRunsTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Manual run harness (media-seeded jobs)
   const [movieSeedDialogOpen, setMovieSeedDialogOpen] = useState(false);
@@ -6609,6 +6613,9 @@ export function TaskManagerPage() {
                                 {draft.frequency === 'weekly' && (
                                   <div className="relative z-50 -mt-1">
                                     <motion.button
+                                      ref={(node) => {
+                                        weeklySelectorTriggerRefs.current[job.id] = node;
+                                      }}
                                       initial={{ opacity: 0, y: -10 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       data-job-id={job.id}
@@ -6625,35 +6632,41 @@ export function TaskManagerPage() {
                                     </motion.button>
                                     <AnimatePresence>
                                       {weeklyOpen && (
-                                        <motion.div
-                                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                          transition={{ type: 'spring', stiffness: 250, damping: 22 }}
-                                          onClick={handleStopPropagation}
-                                          className="absolute bottom-full mb-2 left-0 bg-[#1a1625] border border-white/10 rounded-xl p-3 shadow-2xl z-[10000] min-w-[200px]"
+                                        <AnchoredFloatingPanel
+                                          getAnchorEl={() => weeklySelectorTriggerRefs.current[job.id] ?? null}
+                                          preferredSide="top"
+                                          align="left"
                                         >
-                                          <div className="space-y-2">
-                                            {DAYS_OF_WEEK.map((day) => (
-                                              <label
-                                                key={day.value}
-                                                className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors"
-                                              >
-                                                <input
-                                                  type="checkbox"
-                                                  checked={draft.daysOfWeek.includes(day.value)}
-                                                  data-job-id={job.id}
-                                                  data-day-value={day.value}
-                                                  onChange={handleWeeklyDayChange}
-                                                  className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
-                                                />
-                                                <span className="text-sm text-white">
-                                                  {day.label}
-                                                </span>
-                                              </label>
-                                            ))}
-                                          </div>
-                                        </motion.div>
+                                          <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            transition={{ type: 'spring', stiffness: 250, damping: 22 }}
+                                            onClick={handleStopPropagation}
+                                            className="bg-[#1a1625] border border-white/10 rounded-xl p-3 shadow-2xl min-w-[200px]"
+                                          >
+                                            <div className="space-y-2">
+                                              {DAYS_OF_WEEK.map((day) => (
+                                                <label
+                                                  key={day.value}
+                                                  className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors"
+                                                >
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={draft.daysOfWeek.includes(day.value)}
+                                                    data-job-id={job.id}
+                                                    data-day-value={day.value}
+                                                    onChange={handleWeeklyDayChange}
+                                                    className="w-4 h-4 rounded border-white/20 bg-white/5 text-[#facc15] focus:ring-[#facc15] focus:ring-offset-0"
+                                                  />
+                                                  <span className="text-sm text-white">
+                                                    {day.label}
+                                                  </span>
+                                                </label>
+                                              ))}
+                                            </div>
+                                          </motion.div>
+                                        </AnchoredFloatingPanel>
                                       )}
                                     </AnimatePresence>
                                   </div>
@@ -6663,6 +6676,9 @@ export function TaskManagerPage() {
                                 {draft.frequency === 'monthly' && (
                                   <div className="relative z-50 -mt-1">
                                     <motion.button
+                                      ref={(node) => {
+                                        monthlySelectorTriggerRefs.current[job.id] = node;
+                                      }}
                                       initial={{ opacity: 0, y: -10 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       data-job-id={job.id}
@@ -6679,41 +6695,47 @@ export function TaskManagerPage() {
                                     </motion.button>
                                     <AnimatePresence>
                                       {monthlyOpen && (
-                                        <motion.div
-                                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                          transition={{ type: 'spring', stiffness: 250, damping: 22 }}
-                                          onClick={handleStopPropagation}
-                                          className="absolute bottom-full mb-2 left-0 bg-[#1a1625] border border-white/10 rounded-xl p-4 shadow-2xl z-[10000] w-[280px]"
+                                        <AnchoredFloatingPanel
+                                          getAnchorEl={() => monthlySelectorTriggerRefs.current[job.id] ?? null}
+                                          preferredSide="top"
+                                          align="left"
                                         >
-                                          <div className="text-xs text-gray-500 mb-3">
-                                            Select multiple dates (1–28 to avoid shorter months)
-                                          </div>
-                                          <div className="grid grid-cols-7 gap-1">
-                                            {Array.from({ length: 28 }, (_, i) => String(i + 1)).map(
-                                              (day) => {
-                                                const isSelected = draft.daysOfMonth.includes(day);
-                                                return (
-                                                  <button
-                                                    key={day}
-                                                    data-job-id={job.id}
-                                                    data-day-value={day}
-                                                    onClick={handleMonthlyDayToggle}
-                                                    className={cn(
-                                                      'w-8 h-8 rounded-lg text-xs font-medium transition-all',
-                                                      isSelected
-                                                        ? 'bg-[#facc15] text-black'
-                                                        : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                                                    )}
-                                                  >
-                                                    {day}
-                                                  </button>
-                                                );
-                                              }
-                                            )}
-                                          </div>
-                                        </motion.div>
+                                          <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            transition={{ type: 'spring', stiffness: 250, damping: 22 }}
+                                            onClick={handleStopPropagation}
+                                            className="bg-[#1a1625] border border-white/10 rounded-xl p-4 shadow-2xl w-[280px]"
+                                          >
+                                            <div className="text-xs text-gray-500 mb-3">
+                                              Select multiple dates (1–28 to avoid shorter months)
+                                            </div>
+                                            <div className="grid grid-cols-7 gap-1">
+                                              {Array.from({ length: 28 }, (_, i) => String(i + 1)).map(
+                                                (day) => {
+                                                  const isSelected = draft.daysOfMonth.includes(day);
+                                                  return (
+                                                    <button
+                                                      key={day}
+                                                      data-job-id={job.id}
+                                                      data-day-value={day}
+                                                      onClick={handleMonthlyDayToggle}
+                                                      className={cn(
+                                                        'w-8 h-8 rounded-lg text-xs font-medium transition-all',
+                                                        isSelected
+                                                          ? 'bg-[#facc15] text-black'
+                                                          : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                                                      )}
+                                                    >
+                                                      {day}
+                                                    </button>
+                                                  );
+                                                }
+                                              )}
+                                            </div>
+                                          </motion.div>
+                                        </AnchoredFloatingPanel>
                                       )}
                                     </AnimatePresence>
                                   </div>
@@ -6766,6 +6788,9 @@ export function TaskManagerPage() {
                                 </div>
                                 <button
                                   type="button"
+                                  ref={(node) => {
+                                    nextRunsTriggerRefs.current[job.id] = node;
+                                  }}
                                   data-job-id={job.id}
                                   onClick={handleNextRunsToggle}
                                   disabled={!draft.enabled}
@@ -6793,37 +6818,43 @@ export function TaskManagerPage() {
 
                                 <AnimatePresence>
                                   {nextRunsPopup[job.id] && draft.enabled && (
-                                    <motion.div
-                                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                                      transition={{ type: 'spring', stiffness: 250, damping: 22 }}
-                                      onClick={handleStopPropagation}
-                                      className="absolute top-full mt-2 right-0 bg-[#1a1625] border border-white/10 rounded-xl p-4 shadow-2xl z-[10000] min-w-[220px]"
+                                    <AnchoredFloatingPanel
+                                      getAnchorEl={() => nextRunsTriggerRefs.current[job.id] ?? null}
+                                      preferredSide="bottom"
+                                      align="right"
                                     >
-                                      <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                                        Next 5 Runs
-                                      </div>
-                                      <div className="space-y-2">
-                                        {calculateNextRuns(draft, 5).map((run) => (
-                                          <div
-                                            key={run.toISOString()}
-                                            className="flex items-center gap-3 text-sm p-2 rounded-lg bg-white/5"
-                                          >
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                                            <span className="text-white font-medium">
-                                              {run.toLocaleDateString('en-US', {
-                                                month: 'short',
-                                                day: 'numeric',
-                                                year: 'numeric',
-                                              })}
-                                              {' at '}
-                                              {formatTimeDisplay(draft.time)}
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </motion.div>
+                                      <motion.div
+                                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                        transition={{ type: 'spring', stiffness: 250, damping: 22 }}
+                                        onClick={handleStopPropagation}
+                                        className="bg-[#1a1625] border border-white/10 rounded-xl p-4 shadow-2xl min-w-[220px]"
+                                      >
+                                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+                                          Next 5 Runs
+                                        </div>
+                                        <div className="space-y-2">
+                                          {calculateNextRuns(draft, 5).map((run) => (
+                                            <div
+                                              key={run.toISOString()}
+                                              className="flex items-center gap-3 text-sm p-2 rounded-lg bg-white/5"
+                                            >
+                                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                              <span className="text-white font-medium">
+                                                {run.toLocaleDateString('en-US', {
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  year: 'numeric',
+                                                })}
+                                                {' at '}
+                                                {formatTimeDisplay(draft.time)}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </motion.div>
+                                    </AnchoredFloatingPanel>
                                   )}
                                 </AnimatePresence>
                               </div>

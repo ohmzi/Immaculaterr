@@ -24,6 +24,8 @@ import {
   PASSWORD_RECOVERY_QUESTION_COUNT,
   createEmptyPasswordRecoveryDrafts,
 } from '@/lib/password-recovery';
+import { useFocusScrollLock } from '@/lib/useFocusScrollLock';
+import { useVisualViewportPin } from '@/lib/useVisualViewportPin';
 import {
   APP_BG_DARK_WASH_CLASS,
   APP_BG_HIGHLIGHT_CLASS,
@@ -49,6 +51,14 @@ function readNumberField(body: unknown, field: string): number | null {
 // skipcq: JS-0757 - Username autofocus is intentional on the login/register screen.
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+
+  // Keep both screens glued to the visible viewport, and keep their scroll
+  // position put when focus moves between fields, so the card never slides
+  // around as the user fills it in (see the hooks).
+  const pinAuthScreen = useVisualViewportPin<HTMLDivElement>();
+  const pinResetScreen = useVisualViewportPin<HTMLDivElement>();
+  const authScrollLock = useFocusScrollLock<HTMLDivElement>();
+  const resetScrollLock = useFocusScrollLock<HTMLDivElement>();
 
   const bootstrapQuery = useQuery({
     queryKey: ['auth', 'bootstrap'],
@@ -525,7 +535,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     requestResetQuestionsMutation.isPending || resetPasswordMutation.isPending;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+    <div
+      ref={pinAuthScreen}
+      className="fixed inset-x-0 top-0 h-[100dvh] overflow-hidden bg-gray-50 dark:bg-gray-900 select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text"
+    >
       <div className="pointer-events-none fixed inset-0 z-0">
         <img
           src={APP_BG_IMAGE_URL}
@@ -537,312 +550,331 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         <div className={`absolute inset-0 ${APP_BG_DARK_WASH_CLASS}`} />
       </div>
 
-      <div className="relative z-10 min-h-screen flex items-center justify-center px-6 py-10">
-        <div className="w-full max-w-md">
-          <div className={cn(APP_CARD_INTERACTIVE_CLASS, 'p-6 lg:p-8')}>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-start gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
-                    <span className={APP_CARD_ICON_GLOW_CLASS}>
-                      {mode === 'register' ? (
-                        <UserPlus className="w-7 h-7" />
-                      ) : (
-                        <LogIn className="w-7 h-7" />
-                      )}
-                    </span>
-                  </div>
+      {/* Only this container can scroll, and only when the card is taller than
+          the visible viewport — the shell itself never grows past it, so the
+          page can't move. The lock then keeps this container still while focus
+          moves between fields, so the card holds one position throughout. */}
+      <div
+        {...authScrollLock}
+        className="relative z-10 h-full overflow-y-auto overscroll-contain [scroll-behavior:auto]"
+      >
+        <div className="flex min-h-full items-center justify-center px-6 py-10">
+          <div className="w-full max-w-md">
+            <div className={cn(APP_CARD_INTERACTIVE_CLASS, 'p-6 lg:p-8')}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-start gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0F0B15] border border-white/10 flex items-center justify-center shadow-inner shrink-0 text-[#facc15]">
+                      <span className={APP_CARD_ICON_GLOW_CLASS}>
+                        {mode === 'register' ? (
+                          <UserPlus className="w-7 h-7" />
+                        ) : (
+                          <LogIn className="w-7 h-7" />
+                        )}
+                      </span>
+                    </div>
 
-                  <div className="min-w-0">
-                    <h1 className="text-2xl font-semibold text-white tracking-tight">{title}</h1>
-                    <p className="mt-1 text-sm text-white/70 leading-relaxed">{subtitle}</p>
+                    <div className="min-w-0">
+                      <h1 className="text-2xl font-semibold text-white tracking-tight">{title}</h1>
+                      <p className="mt-1 text-sm text-white/70 leading-relaxed">{subtitle}</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <form className="mt-6 space-y-4" onSubmit={handleFormSubmit}>
-              <div className="space-y-2">
-                <label
-                  htmlFor="username"
-                  className="block text-xs font-bold text-white/60 uppercase tracking-wider"
-                >
-                  Username
-                </label>
-                <input
-                  id="username"
-                  name="username"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoFocus
-                  value={username}
-                  onChange={handleUsernameChange}
-                  placeholder="admin"
-                  className={inputClass}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="password"
-                  className="block text-xs font-bold text-white/60 uppercase tracking-wider"
-                >
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                    value={password}
-                    onChange={handlePasswordChange}
-                    className={cn(inputClass, 'pr-12')}
-                  />
-                  <button
-                    type="button"
-                    onClick={handlePasswordToggleClick}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-                {mode === 'register' ? (
-                  <div className="text-xs text-white/50">Use {MIN_PASSWORD_LENGTH}+ characters.</div>
-                ) : null}
-              </div>
-
-              {mode === 'register' && registerStep === 1 ? (
+              <form className="mt-6 space-y-4" onSubmit={handleFormSubmit}>
                 <div className="space-y-2">
                   <label
-                    htmlFor="confirm-password"
+                    htmlFor="username"
                     className="block text-xs font-bold text-white/60 uppercase tracking-wider"
                   >
-                    Confirm Password
+                    Username
                   </label>
                   <input
-                    id="confirm-password"
-                    name="confirm-password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={handleConfirmPasswordChange}
+                    id="username"
+                    name="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    autoCorrect="off"
+                    autoFocus
+                    value={username}
+                    onChange={handleUsernameChange}
+                    placeholder="admin"
                     className={inputClass}
                   />
                 </div>
-              ) : null}
 
-              {mode === 'register' && registerStep === 2 ? (
-                <div className="space-y-3">
-                  {recoveryQuestionsQuery.isLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-white/70">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading security questions...
-                    </div>
-                  ) : recoveryQuestionsQuery.error ? (
-                    <div className="flex items-start gap-2 text-sm text-red-200/90">
-                      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                      Could not load security questions. Refresh and try again.
-                    </div>
-                  ) : (
-                    <PasswordRecoveryQuestionFields
-                      idPrefix="register-recovery"
-                      answers={recoveryDrafts}
-                      questions={recoveryQuestionsQuery.data?.questions ?? []}
-                      inputClassName={inputClass}
-                      onQuestionKeyChange={handleRecoveryQuestionKeyChange}
-                      onAnswerChange={handleRecoveryAnswerChange}
+                <div className="space-y-2">
+                  <label
+                    htmlFor="password"
+                    className="block text-xs font-bold text-white/60 uppercase tracking-wider"
+                  >
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                      value={password}
+                      onChange={handlePasswordChange}
+                      className={cn(inputClass, 'pr-12')}
                     />
-                  )}
+                    <button
+                      type="button"
+                      onClick={handlePasswordToggleClick}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  {mode === 'register' ? (
+                    <div className="text-xs text-white/50">Use {MIN_PASSWORD_LENGTH}+ characters.</div>
+                  ) : null}
+                </div>
 
+                {mode === 'register' && registerStep === 1 ? (
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="confirm-password"
+                      className="block text-xs font-bold text-white/60 uppercase tracking-wider"
+                    >
+                      Confirm Password
+                    </label>
+                    <input
+                      id="confirm-password"
+                      name="confirm-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={handleConfirmPasswordChange}
+                      className={inputClass}
+                    />
+                  </div>
+                ) : null}
+
+                {mode === 'register' && registerStep === 2 ? (
+                  <div className="space-y-3">
+                    {recoveryQuestionsQuery.isLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-white/70">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading security questions...
+                      </div>
+                    ) : recoveryQuestionsQuery.error ? (
+                      <div className="flex items-start gap-2 text-sm text-red-200/90">
+                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                        Could not load security questions. Refresh and try again.
+                      </div>
+                    ) : (
+                      <PasswordRecoveryQuestionFields
+                        idPrefix="register-recovery"
+                        answers={recoveryDrafts}
+                        questions={recoveryQuestionsQuery.data?.questions ?? []}
+                        inputClassName={inputClass}
+                        onQuestionKeyChange={handleRecoveryQuestionKeyChange}
+                        onAnswerChange={handleRecoveryAnswerChange}
+                      />
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPostAuthError(null);
+                        setRegisterStep(1);
+                      }}
+                      className="w-full min-h-[40px] rounded-xl border border-white/15 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10"
+                    >
+                      Back to step 1
+                    </button>
+                  </div>
+                ) : null}
+
+                {showAuthError ? (
+                  <div className="flex items-start gap-2 text-sm text-red-200/90">
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>{showAuthError}</div>
+                  </div>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={submitDisabled}
+                  className={cn(
+                    'w-full min-h-[44px] rounded-xl font-semibold',
+                    'bg-[#facc15] text-black hover:bg-[#fde68a]',
+                    'transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed',
+                    'flex items-center justify-center gap-2',
+                  )}
+                >
+                  {authMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Please wait...
+                    </>
+                  ) : mode === 'register' ? (
+                    registerStep === 1 ? 'Continue to security questions' : 'Create admin login'
+                  ) : (
+                    'Sign in'
+                  )}
+                </button>
+
+                {mode === 'login' ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      setPostAuthError(null);
-                      setRegisterStep(1);
-                    }}
-                    className="w-full min-h-[40px] rounded-xl border border-white/15 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10"
+                    onClick={openResetModal}
+                    className="w-full text-sm text-white/70 hover:text-white/90 underline underline-offset-4"
                   >
-                    Back to step 1
+                    Reset password
                   </button>
-                </div>
-              ) : null}
-
-              {showAuthError ? (
-                <div className="flex items-start gap-2 text-sm text-red-200/90">
-                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div>{showAuthError}</div>
-                </div>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={submitDisabled}
-                className={cn(
-                  'w-full min-h-[44px] rounded-xl font-semibold',
-                  'bg-[#facc15] text-black hover:bg-[#fde68a]',
-                  'transition-all duration-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed',
-                  'flex items-center justify-center gap-2',
-                )}
-              >
-                {authMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Please wait...
-                  </>
-                ) : mode === 'register' ? (
-                  registerStep === 1 ? 'Continue to security questions' : 'Create admin login'
-                ) : (
-                  'Sign in'
-                )}
-              </button>
-
-              {mode === 'login' ? (
-                <button
-                  type="button"
-                  onClick={openResetModal}
-                  className="w-full text-sm text-white/70 hover:text-white/90 underline underline-offset-4"
-                >
-                  Reset password
-                </button>
-              ) : null}
-            </form>
+                ) : null}
+              </form>
+            </div>
           </div>
         </div>
       </div>
 
       {resetOpen ? (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 sm:p-6">
+        <div
+          ref={pinResetScreen}
+          className="fixed inset-x-0 top-0 z-[100000] h-[100dvh] overflow-hidden"
+        >
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b0c0f]/90 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl">
-            <h2 className="text-xl font-semibold text-white">Reset password</h2>
-            <p className="mt-1 text-sm text-white/70">
-              Enter your username, answer 2 randomly selected security questions, and set a new password.
-            </p>
+          <div
+            {...resetScrollLock}
+            className="relative h-full overflow-y-auto overscroll-contain [scroll-behavior:auto]"
+          >
+            <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
+              <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b0c0f]/90 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl">
+                <h2 className="text-xl font-semibold text-white">Reset password</h2>
+                <p className="mt-1 text-sm text-white/70">
+                  Enter your username, answer 2 randomly selected security questions, and set a new password.
+                </p>
 
-            <form className="mt-4 space-y-4" onSubmit={handleResetSubmit}>
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-white/60 uppercase tracking-wider" htmlFor="reset-username">
-                  Username
-                </label>
-                <input
-                  id="reset-username"
-                  name="username"
-                  autoComplete="username"
-                  value={resetUsername}
-                  onChange={handleResetUsernameChange}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className={inputClass}
-                />
-              </div>
+                <form className="mt-4 space-y-4" onSubmit={handleResetSubmit}>
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-white/60 uppercase tracking-wider" htmlFor="reset-username">
+                      Username
+                    </label>
+                    <input
+                      id="reset-username"
+                      name="username"
+                      autoComplete="username"
+                      value={resetUsername}
+                      onChange={handleResetUsernameChange}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className={inputClass}
+                    />
+                  </div>
 
-              {!resetChallenge ? (
-                <button
-                  type="button"
-                  onClick={loadResetQuestions}
-                  disabled={requestResetQuestionsMutation.isPending || !resetUsername.trim()}
-                  className="w-full min-h-[42px] rounded-xl border border-white/20 bg-white/10 text-sm font-semibold text-white hover:bg-white/15 disabled:opacity-60"
-                >
-                  {requestResetQuestionsMutation.isPending ? 'Loading...' : 'Load security questions'}
-                </button>
-              ) : (
-                <>
-                  <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                    {resetChallenge.questions.map((question) => (
-                      <div key={`reset-q-${question.slot}`} className="space-y-1">
+                  {!resetChallenge ? (
+                    <button
+                      type="button"
+                      onClick={loadResetQuestions}
+                      disabled={requestResetQuestionsMutation.isPending || !resetUsername.trim()}
+                      className="w-full min-h-[42px] rounded-xl border border-white/20 bg-white/10 text-sm font-semibold text-white hover:bg-white/15 disabled:opacity-60"
+                    >
+                      {requestResetQuestionsMutation.isPending ? 'Loading...' : 'Load security questions'}
+                    </button>
+                  ) : (
+                    <>
+                      <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                        {resetChallenge.questions.map((question) => (
+                          <div key={`reset-q-${question.slot}`} className="space-y-1">
+                            <label
+                              className="block text-xs font-bold text-white/60 uppercase tracking-wider"
+                              htmlFor={`reset-answer-${question.slot}`}
+                            >
+                              {question.prompt}
+                            </label>
+                            <input
+                              id={`reset-answer-${question.slot}`}
+                              type="text"
+                              autoComplete="off"
+                              value={resetAnswers[question.slot] ?? ''}
+                              onChange={(event) =>
+                                handleResetAnswerChange(question.slot, event.target.value)
+                              }
+                              className={inputClass}
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-2">
                         <label
                           className="block text-xs font-bold text-white/60 uppercase tracking-wider"
-                          htmlFor={`reset-answer-${question.slot}`}
+                          htmlFor="reset-new-password"
                         >
-                          {question.prompt}
+                          New password
                         </label>
                         <input
-                          id={`reset-answer-${question.slot}`}
-                          type="text"
-                          autoComplete="off"
-                          value={resetAnswers[question.slot] ?? ''}
-                          onChange={(event) =>
-                            handleResetAnswerChange(question.slot, event.target.value)
-                          }
+                          id="reset-new-password"
+                          name="new-password"
+                          type="password"
+                          autoComplete="new-password"
+                          value={resetNewPassword}
+                          onChange={handleResetNewPasswordChange}
                           className={inputClass}
                         />
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="space-y-2">
-                    <label
-                      className="block text-xs font-bold text-white/60 uppercase tracking-wider"
-                      htmlFor="reset-new-password"
-                    >
-                      New password
-                    </label>
-                    <input
-                      id="reset-new-password"
-                      name="new-password"
-                      type="password"
-                      autoComplete="new-password"
-                      value={resetNewPassword}
-                      onChange={handleResetNewPasswordChange}
-                      className={inputClass}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <label
+                          className="block text-xs font-bold text-white/60 uppercase tracking-wider"
+                          htmlFor="reset-new-password-confirm"
+                        >
+                          Confirm new password
+                        </label>
+                        <input
+                          id="reset-new-password-confirm"
+                          name="new-password-confirm"
+                          type="password"
+                          autoComplete="new-password"
+                          value={resetConfirmPassword}
+                          onChange={handleResetConfirmPasswordChange}
+                          className={inputClass}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <label
-                      className="block text-xs font-bold text-white/60 uppercase tracking-wider"
-                      htmlFor="reset-new-password-confirm"
-                    >
-                      Confirm new password
-                    </label>
-                    <input
-                      id="reset-new-password-confirm"
-                      name="new-password-confirm"
-                      type="password"
-                      autoComplete="new-password"
-                      value={resetConfirmPassword}
-                      onChange={handleResetConfirmPasswordChange}
-                      className={inputClass}
-                    />
-                  </div>
+                      <button
+                        type="submit"
+                        disabled={resetBusy}
+                        className="w-full min-h-[44px] rounded-xl bg-[#facc15] text-black font-semibold hover:bg-[#fde68a] disabled:opacity-60"
+                      >
+                        {resetPasswordMutation.isPending ? 'Resetting...' : 'Reset password'}
+                      </button>
+                    </>
+                  )}
+
+                  {resetHint ? <div className="text-xs text-white/60">{resetHint}</div> : null}
+
+                  {resetError ? (
+                    <div className="flex items-start gap-2 text-sm text-red-200/90">
+                      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>{resetError}</span>
+                    </div>
+                  ) : null}
 
                   <button
-                    type="submit"
+                    type="button"
+                    onClick={closeResetModal}
                     disabled={resetBusy}
-                    className="w-full min-h-[44px] rounded-xl bg-[#facc15] text-black font-semibold hover:bg-[#fde68a] disabled:opacity-60"
+                    className="w-full min-h-[40px] rounded-xl border border-white/15 bg-white/5 text-sm text-white/80 hover:bg-white/10 disabled:opacity-60"
                   >
-                    {resetPasswordMutation.isPending ? 'Resetting...' : 'Reset password'}
+                    Close
                   </button>
-                </>
-              )}
-
-              {resetHint ? <div className="text-xs text-white/60">{resetHint}</div> : null}
-
-              {resetError ? (
-                <div className="flex items-start gap-2 text-sm text-red-200/90">
-                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{resetError}</span>
-                </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={closeResetModal}
-                disabled={resetBusy}
-                className="w-full min-h-[40px] rounded-xl border border-white/15 bg-white/5 text-sm text-white/80 hover:bg-white/10 disabled:opacity-60"
-              >
-                Close
-              </button>
-            </form>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

@@ -14,8 +14,11 @@ export function fmtDate(iso: string | null): string {
   return Number.isFinite(d.getTime()) ? d.toLocaleDateString() : '—';
 }
 
+// Same frosted surface as the app's standard cards (APP_CARD_INTERACTIVE_CLASS).
+// The 0.60 tint is what makes long tables readable over the poster backdrop —
+// a near-transparent card leaves artwork showing through the rows.
 export const CARD_CLASS =
-  'relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl overflow-hidden';
+  'relative rounded-3xl border border-white/10 bg-[rgba(var(--tcp-surface-rgb),0.60)] backdrop-blur-2xl shadow-2xl overflow-hidden';
 
 /**
  * Chip-style multi-tag input: type a tag and press Enter (or comma) to commit

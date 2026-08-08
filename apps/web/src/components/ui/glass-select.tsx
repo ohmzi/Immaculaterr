@@ -33,9 +33,9 @@ export function GlassSelect(props: {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(
-    null,
-  );
+  const [pos, setPos] = useState<
+    { left: number; top: number; width: number; maxHeight: number } | null
+  >(null);
 
   const selectedLabel = useMemo(() => {
     const found = options.find((o) => o.value === value);
@@ -46,7 +46,27 @@ export function GlassSelect(props: {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setPos({ left: r.left, top: r.bottom + 6, width: r.width });
+    const gap = 6;
+    // Keeps clear of the fixed mobile topbar/bottom-nav (both z-[1002] in
+    // MobileNavigation.tsx), matching the clearance that component already
+    // reserves for them (top-16 / bottom-28), not just the raw viewport edge.
+    const topMargin = 64;
+    const bottomMargin = 112;
+    const preferredMaxHeight = 320;
+    const spaceBelow = window.innerHeight - r.bottom - gap - bottomMargin;
+    const spaceAbove = r.top - gap - topMargin;
+
+    if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
+      setPos({
+        left: r.left,
+        top: r.bottom + gap,
+        width: r.width,
+        maxHeight: Math.max(120, Math.min(preferredMaxHeight, spaceBelow)),
+      });
+    } else {
+      const maxHeight = Math.max(120, Math.min(preferredMaxHeight, spaceAbove));
+      setPos({ left: r.left, top: r.top - gap - maxHeight, width: r.width, maxHeight });
+    }
   };
 
   useLayoutEffect(() => {
@@ -127,7 +147,10 @@ export function GlassSelect(props: {
             role="listbox"
             aria-label={placeholder}
           >
-            <div className="max-h-[320px] overflow-auto p-1">
+            <div
+              className="overflow-auto p-1"
+              style={{ maxHeight: pos.maxHeight, overscrollBehavior: 'contain' }}
+            >
               {/* Placeholder row (disabled) */}
               <div className="px-2 py-1.5 text-xs font-semibold text-white/60">
                 {placeholder}
