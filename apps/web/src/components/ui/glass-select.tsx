@@ -33,9 +33,9 @@ export function GlassSelect(props: {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(
-    null,
-  );
+  const [pos, setPos] = useState<
+    { left: number; top: number; width: number; maxHeight: number } | null
+  >(null);
 
   const selectedLabel = useMemo(() => {
     const found = options.find((o) => o.value === value);
@@ -46,7 +46,23 @@ export function GlassSelect(props: {
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    setPos({ left: r.left, top: r.bottom + 6, width: r.width });
+    const gap = 6;
+    const viewportMargin = 8;
+    const preferredMaxHeight = 320;
+    const spaceBelow = window.innerHeight - r.bottom - gap - viewportMargin;
+    const spaceAbove = r.top - gap - viewportMargin;
+
+    if (spaceBelow >= 160 || spaceBelow >= spaceAbove) {
+      setPos({
+        left: r.left,
+        top: r.bottom + gap,
+        width: r.width,
+        maxHeight: Math.max(120, Math.min(preferredMaxHeight, spaceBelow)),
+      });
+    } else {
+      const maxHeight = Math.max(120, Math.min(preferredMaxHeight, spaceAbove));
+      setPos({ left: r.left, top: r.top - gap - maxHeight, width: r.width, maxHeight });
+    }
   };
 
   useLayoutEffect(() => {
@@ -127,7 +143,10 @@ export function GlassSelect(props: {
             role="listbox"
             aria-label={placeholder}
           >
-            <div className="max-h-[320px] overflow-auto p-1">
+            <div
+              className="overflow-auto p-1"
+              style={{ maxHeight: pos.maxHeight, overscrollBehavior: 'contain' }}
+            >
               {/* Placeholder row (disabled) */}
               <div className="px-2 py-1.5 text-xs font-semibold text-white/60">
                 {placeholder}
