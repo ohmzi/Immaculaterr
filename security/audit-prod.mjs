@@ -13,19 +13,7 @@ import { spawnSync } from 'node:child_process';
 
 const FAIL_SEVERITIES = new Set(['high', 'critical']);
 
-const ALLOWLIST = [
-  {
-    id: 'GHSA-qwww-vcr4-c8h2',
-    package: 'react-router',
-    reason:
-      'RSC Mode CSRF bypass. Only reachable through React Router RSC server actions; ' +
-      'this app is a Vite SPA that mounts BrowserRouter and ships no RSC entry point, ' +
-      'so the vulnerable code path is never loaded. The advisory covers 7.12.0-8.2.0 ' +
-      'and the only fixed release is 8.3.0, a major upgrade of the router. Drop this ' +
-      'entry the moment a 7.x fix ships or the app moves to 8.x.',
-    reviewBy: '2026-11-01',
-  },
-];
+const ALLOWLIST = [];
 
 const runAudit = () => {
   const result = spawnSync(
