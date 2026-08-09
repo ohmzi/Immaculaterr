@@ -638,12 +638,13 @@ export function HeroSection() {
           >
             <div className="relative w-full max-w-[560px]">
               {/* Analytics Card */}
-              <div className="w-full bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-white/5">
+              {/* Frosted like the Cutting Room toggle — the hero art reads through it. */}
+              <div className="w-full bg-black/10 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-md border border-white/10">
                 {/* Card Header */}
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <h3 className="text-white text-lg font-semibold mb-1">Media Analytics</h3>
-                    <p className="text-gray-400 dark:text-gray-500 text-sm">
+                    <p className="text-white/70 text-sm">
                       Collection growth over time
                     </p>
                   </div>
@@ -789,7 +790,7 @@ export function HeroSection() {
                   type="button"
                   onClick={toggleStatsMedia}
                   aria-label={`Toggle stats between Movies and TV Shows. Currently showing ${statsLabel}.`}
-                  className="mt-6 pt-6 border-t border-gray-700 dark:border-gray-600 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="mt-6 pt-6 border-t border-white/10 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                 >
                   <div className="absolute -top-3 right-0">
                     <div
@@ -806,13 +807,13 @@ export function HeroSection() {
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Total Items</p>
+                      <p className="text-white/70 text-xs mb-1">Total Items</p>
                       <p className="text-white font-semibold">
                         {hasData ? statsTotal.toLocaleString() : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">
+                      <p className="text-white/70 text-xs mb-1">
                         Change ({rangeLabel})
                       </p>
                       <p className="text-white font-semibold">
@@ -822,7 +823,7 @@ export function HeroSection() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">
+                      <p className="text-white/70 text-xs mb-1">
                         Growth ({rangeLabel})
                       </p>
                       <p
