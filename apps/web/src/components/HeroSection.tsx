@@ -665,7 +665,12 @@ export function HeroSection() {
                   <div className="w-full sm:w-auto">
                     <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       <div
-                        className="inline-flex items-center gap-1 rounded-xl bg-black/5 border border-black/10 p-1 backdrop-blur-md whitespace-nowrap"
+                        // No backdrop-blur here: the card underneath is already
+                        // frosted, so a second pass buys nothing — and because
+                        // this sits inside the entrance animation, its filter
+                        // would sit dormant until the animation settled and then
+                        // pop in. See the card comment above.
+                        className="inline-flex items-center gap-1 rounded-xl bg-black/5 border border-black/10 p-1 whitespace-nowrap"
                         role="group"
                         aria-label="Select chart time range"
                       >
@@ -812,7 +817,8 @@ export function HeroSection() {
                     <div aria-hidden="true" className="h-px flex-1 bg-black/10" />
                     <div
                       className={[
-                        'shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
+                        // No backdrop-blur — same reason as the range pills.
+                        'shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border',
                         statsMedia === 'movies'
                           ? 'bg-fuchsia-800/10 text-fuchsia-800 border-fuchsia-800/30'
                           : 'bg-blue-800/10 text-blue-800 border-blue-800/30',
