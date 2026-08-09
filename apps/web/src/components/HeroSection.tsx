@@ -12,6 +12,15 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaCh
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
 
+// Series colours for the hero chart. The card is a light yellow-green frost, so
+// the old pair was unreadable against it — measured 1.2:1 for the #facc15
+// movies line and 1.4:1 for the #60a5fa TV line. These two clear ~4.5:1 on the
+// same surface while sitting ~90° apart in hue from each other, and both are
+// far from the yellow-green backdrop. Keep the line, the area fill, the axis
+// label and the footer figures on the same value so the mapping stays obvious.
+const MOVIES_SERIES_COLOR = '#86198f'; // deep magenta (tailwind fuchsia-800)
+const TV_SERIES_COLOR = '#1e40af'; // deep blue (tailwind blue-800)
+
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
 const TIME_RANGE_OPTIONS: Array<{
@@ -220,7 +229,7 @@ function CombinedYAxisTick(props: {
         textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
-        fill="#a16207"
+        fill={MOVIES_SERIES_COLOR}
       >
         {movieText}
       </text>
@@ -230,7 +239,7 @@ function CombinedYAxisTick(props: {
         textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
-        fill="#60a5fa"
+        fill={TV_SERIES_COLOR}
       >
         {tvText}
       </text>
@@ -698,12 +707,12 @@ export function HeroSection() {
                     >
                       <defs>
                         <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#facc15" stopOpacity={0.25}/>
-                          <stop offset="95%" stopColor="#facc15" stopOpacity={0}/>
+                          <stop offset="5%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0}/>
                         </linearGradient>
                         <linearGradient id="colorTv" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.22}/>
-                          <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
+                          <stop offset="5%" stopColor={TV_SERIES_COLOR} stopOpacity={0.18}/>
+                          <stop offset="95%" stopColor={TV_SERIES_COLOR} stopOpacity={0}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
@@ -754,7 +763,7 @@ export function HeroSection() {
                         type="monotone" 
                         dataKey="movies"
                         yAxisId="movies"
-                        stroke="#facc15" 
+                        stroke={MOVIES_SERIES_COLOR}
                         strokeWidth={2.5}
                         fill="url(#colorMovies)" 
                       />
@@ -762,7 +771,7 @@ export function HeroSection() {
                         type="monotone"
                         dataKey="tv"
                         yAxisId="tv"
-                        stroke="#60a5fa"
+                        stroke={TV_SERIES_COLOR}
                         strokeWidth={2.5}
                         fill="url(#colorTv)"
                       />
@@ -801,8 +810,8 @@ export function HeroSection() {
                       className={[
                         'px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
                         statsMedia === 'movies'
-                          ? 'bg-yellow-400/15 text-yellow-700 border-yellow-600/30'
-                          : 'bg-blue-400/10 text-blue-200 border-blue-400/20',
+                          ? 'bg-fuchsia-800/10 text-fuchsia-800 border-fuchsia-800/30'
+                          : 'bg-blue-800/10 text-blue-800 border-blue-800/30',
                       ].join(' ')}
                     >
                       {statsLabel}
@@ -834,10 +843,10 @@ export function HeroSection() {
                         className={[
                           'font-semibold',
                           typeof statsGrowthPct === 'number' && statsGrowthPct < 0
-                            ? 'text-rose-600'
+                            ? 'text-rose-700'
                             : statsMedia === 'movies'
-                              ? 'text-yellow-700'
-                              : 'text-blue-300',
+                              ? 'text-fuchsia-800'
+                              : 'text-blue-800',
                         ].join(' ')}
                       >
                         {hasData && typeof statsGrowthPct === 'number'
