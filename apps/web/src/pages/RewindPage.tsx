@@ -39,6 +39,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import {
   APP_CARD_ROW_CLASS,
+  APP_FILTERS_CARD_MIN_H_CLASS,
 } from '@/lib/ui-classes';
 import { decodeHtmlEntities } from '@/lib/utils';
 import { RelativeTime } from '@/components/RelativeTime';
@@ -723,7 +724,7 @@ export const RewindPage = () => {
             ) : (
               <div className="space-y-6">
                 {/* Filters (desktop: always expanded) */}
-                <div className={`${cardClass} hidden md:block`}>
+                <div className={`${cardClass} ${APP_FILTERS_CARD_MIN_H_CLASS} hidden md:block`}>
                   <div className="mb-6">
                     <div className="text-2xl font-semibold text-white">Filters</div>
                     <div className="mt-2 text-sm text-white/70">

@@ -21,6 +21,7 @@ import { clearServerLogs, listServerLogs, type ServerLogEntry } from '@/api/logs
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import {
+  APP_FILTERS_CARD_MIN_H_CLASS,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
 import {
@@ -416,9 +417,11 @@ export const LogsPage = () => {
     setClearAllOpen(true);
   }, [clearMutation, logs.length]);
 
+  // Same single-row shape as Rewind's filters (grid of five), so both cards
+  // resolve to the same height instead of Logs stacking an extra block.
   const filtersForm = (
-    <div className="space-y-5">
-      <div>
+    <div className="grid gap-4 md:grid-cols-5">
+      <div className="md:col-span-3">
         <div className={labelClass}>Source</div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -467,35 +470,33 @@ export const LogsPage = () => {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <div className={labelClass}>Search</div>
-          <input
-            value={query}
-            onChange={handleQueryChange}
-            placeholder="scrobble, library.new, OFFLINE…"
-            className={inputClass}
-          />
-        </div>
+      <div>
+        <div className={labelClass}>Search</div>
+        <input
+          value={query}
+          onChange={handleQueryChange}
+          placeholder="scrobble, library.new, OFFLINE…"
+          className={inputClass}
+        />
+      </div>
 
-        <div>
-          <div className={labelClass}>Refresh rate</div>
-          <Select
-            value={String(pollMs)}
-            onValueChange={handlePollChange}
-            disabled={paused}
-          >
-            <SelectTrigger className={selectTriggerClass} aria-label="Refresh rate">
-              <SelectValue placeholder="5s" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="2000">Every 2s</SelectItem>
-              <SelectItem value="5000">Every 5s</SelectItem>
-              <SelectItem value="15000">Every 15s</SelectItem>
-              <SelectItem value="60000">Every 60s</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <div className={labelClass}>Refresh rate</div>
+        <Select
+          value={String(pollMs)}
+          onValueChange={handlePollChange}
+          disabled={paused}
+        >
+          <SelectTrigger className={selectTriggerClass} aria-label="Refresh rate">
+            <SelectValue placeholder="5s" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="2000">Every 2s</SelectItem>
+            <SelectItem value="5000">Every 5s</SelectItem>
+            <SelectItem value="15000">Every 15s</SelectItem>
+            <SelectItem value="60000">Every 60s</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
@@ -566,7 +567,7 @@ export const LogsPage = () => {
           ) : (
             <div className="space-y-6">
               {/* Filters (desktop: always expanded) */}
-              <div className={`${cardClass} hidden md:block`}>
+              <div className={`${cardClass} ${APP_FILTERS_CARD_MIN_H_CLASS} hidden md:block`}>
                 <div className="mb-6">
                   <div className="text-2xl font-semibold text-white">Filters</div>
                   <div className="mt-2 text-sm text-white/70">
