@@ -220,7 +220,7 @@ function CombinedYAxisTick(props: {
         textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
-        fill="#facc15"
+        fill="#a16207"
       >
         {movieText}
       </text>
@@ -258,7 +258,7 @@ function MonthXAxisTick(props: {
         y={0}
         dy={16}
         textAnchor={anchor}
-        fill="#9ca3af"
+        fill="rgba(0,0,0,0.6)"
         style={{ fontSize: '12px' }}
       >
         {label}
@@ -647,8 +647,8 @@ export function HeroSection() {
                 {/* Card Header */}
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <h3 className="text-white text-lg font-semibold mb-1">Media Analytics</h3>
-                    <p className="text-white/70 text-sm">
+                    <h3 className="text-black text-lg font-semibold mb-1">Media Analytics</h3>
+                    <p className="text-black/70 text-sm">
                       Collection growth over time
                     </p>
                   </div>
@@ -656,7 +656,7 @@ export function HeroSection() {
                   <div className="w-full sm:w-auto">
                     <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       <div
-                        className="inline-flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1 backdrop-blur-md whitespace-nowrap"
+                        className="inline-flex items-center gap-1 rounded-xl bg-black/5 border border-black/10 p-1 backdrop-blur-md whitespace-nowrap"
                         role="group"
                         aria-label="Select chart time range"
                       >
@@ -673,11 +673,11 @@ export function HeroSection() {
                               title={opt.title}
                               className={[
                                 'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20',
                                 'disabled:opacity-40 disabled:cursor-not-allowed',
                                 selected
-                                  ? 'bg-white/15 text-white'
-                                  : 'text-white/70 hover:text-white hover:bg-white/10',
+                                  ? 'bg-black/15 text-black'
+                                  : 'text-black/70 hover:text-black hover:bg-black/10',
                               ].join(' ')}
                             >
                               {opt.label}
@@ -713,7 +713,7 @@ export function HeroSection() {
                         scale="time"
                         domain={[rangeBounds.startMs, rangeBounds.endMs]}
                         ticks={xAxisTicks}
-                        stroke="#9ca3af" 
+                        stroke="rgba(0,0,0,0.35)"
                         style={{ fontSize: '12px' }}
                         tick={handleXAxisTick}
                         interval={0}
@@ -730,9 +730,9 @@ export function HeroSection() {
                       <YAxis
                         yAxisId="movies"
                         orientation="left"
-                        stroke="#9ca3af"
-                        axisLine={{ stroke: '#9ca3af' }}
-                        tickLine={{ stroke: '#9ca3af' }}
+                        stroke="rgba(0,0,0,0.35)"
+                        axisLine={{ stroke: 'rgba(0,0,0,0.35)' }}
+                        tickLine={{ stroke: 'rgba(0,0,0,0.35)' }}
                         style={{ fontSize: '12px' }}
                         width={yAxisWidth}
                         tickMargin={0}
@@ -794,14 +794,14 @@ export function HeroSection() {
                   type="button"
                   onClick={toggleStatsMedia}
                   aria-label={`Toggle stats between Movies and TV Shows. Currently showing ${statsLabel}.`}
-                  className="mt-6 pt-6 border-t border-white/10 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="mt-6 pt-6 border-t border-black/10 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
                 >
                   <div className="absolute -top-3 right-0">
                     <div
                       className={[
                         'px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
                         statsMedia === 'movies'
-                          ? 'bg-yellow-400/10 text-yellow-200 border-yellow-400/20'
+                          ? 'bg-yellow-400/15 text-yellow-700 border-yellow-600/30'
                           : 'bg-blue-400/10 text-blue-200 border-blue-400/20',
                       ].join(' ')}
                     >
@@ -811,33 +811,33 @@ export function HeroSection() {
 
                   <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <p className="text-white/70 text-xs mb-1">Total Items</p>
-                      <p className="text-white font-semibold">
+                      <p className="text-black/70 text-xs mb-1">Total Items</p>
+                      <p className="text-black font-semibold">
                         {hasData ? statsTotal.toLocaleString() : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-white/70 text-xs mb-1">
+                      <p className="text-black/70 text-xs mb-1">
                         Change ({rangeLabel})
                       </p>
-                      <p className="text-white font-semibold">
+                      <p className="text-black font-semibold">
                         {hasData
                           ? `${statsRangeDelta >= 0 ? '+' : ''}${statsRangeDelta.toLocaleString()}`
                           : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-white/70 text-xs mb-1">
+                      <p className="text-black/70 text-xs mb-1">
                         Growth ({rangeLabel})
                       </p>
                       <p
                         className={[
                           'font-semibold',
                           typeof statsGrowthPct === 'number' && statsGrowthPct < 0
-                            ? 'text-rose-400 dark:text-rose-300'
+                            ? 'text-rose-600'
                             : statsMedia === 'movies'
-                              ? 'text-yellow-400 dark:text-yellow-300'
-                              : 'text-blue-300 dark:text-blue-300',
+                              ? 'text-yellow-700'
+                              : 'text-blue-300',
                         ].join(' ')}
                       >
                         {hasData && typeof statsGrowthPct === 'number'
