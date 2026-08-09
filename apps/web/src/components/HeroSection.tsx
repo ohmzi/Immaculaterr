@@ -630,16 +630,20 @@ export function HeroSection() {
           </motion.div>
 
           {/* Graph */}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.35 }}
-            className="mt-10 flex justify-center w-full"
-          >
+          <div className="mt-10 flex justify-center w-full">
             <div className="relative w-full max-w-[560px]">
-              {/* Analytics Card */}
-              {/* Frosted like the Cutting Room toggle — the hero art reads through it. */}
+              {/* Analytics Card — frosted like the Cutting Room toggle, so the hero
+                  art reads through it. The surface deliberately sits OUTSIDE the
+                  entrance animation: an ancestor mid-transition (opacity < 1, or a
+                  transform) becomes a backdrop root, so backdrop-blur has nothing
+                  to sample and the card renders unfrosted until the animation
+                  settles. Only the contents animate in. */}
               <div className="w-full bg-black/10 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-md border border-white/10">
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.35 }}
+                >
                 {/* Card Header */}
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -853,9 +857,10 @@ export function HeroSection() {
                     />
                   )}
                 </button>
+                </motion.div>
               </div>
             </div>
-          </motion.div>
+          </div>
         </div>
 
         {/* Bottom Badges */}
