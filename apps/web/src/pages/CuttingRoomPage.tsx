@@ -198,10 +198,12 @@ export function CuttingRoomPage() {
               onClick={() => setTab(t.key)}
               className={[
                 APP_PRESSABLE_CLASS,
-                'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition',
+                // Frosted like the cards below (CARD_CLASS) so the tab row reads
+                // as the same surface rather than a flat wash over the posters.
+                'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition backdrop-blur-2xl',
                 tab === t.key
                   ? 'bg-[#facc15]/20 text-[#fde68a] border-[#facc15]/30'
-                  : 'bg-white/10 text-white border-white/15 hover:bg-white/15',
+                  : 'bg-[rgba(var(--tcp-surface-rgb),0.60)] text-white border-white/10 hover:bg-[rgba(var(--tcp-surface-rgb),0.75)] hover:border-white/15',
               ].join(' ')}
             >
               <t.icon className="h-4 w-4" />
