@@ -638,25 +638,11 @@ export function HeroSection() {
                   transform) becomes a backdrop root, so backdrop-blur has nothing
                   to sample and the card renders unfrosted until the animation
                   settles. Only the contents animate in. */}
-              <div className="relative w-full rounded-3xl backdrop-blur-md border border-white/10">
-                {/* Readability wash. The rim carries no tint at all — it is pure
-                    frosted glass — and the black ramps in past the padding so the
-                    chart and figures stay legible over the bright hero art.
-                    closest-side keeps the four edges (and the corners, which sit
-                    past 100%) fully clear. */}
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 rounded-3xl"
-                  style={{
-                    background:
-                      'radial-gradient(ellipse closest-side at 50% 50%, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.62) 45%, rgba(0,0,0,0.34) 76%, rgba(0,0,0,0) 100%)',
-                  }}
-                />
+              <div className="w-full bg-black/10 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-md border border-white/10">
                 <motion.div
                   initial={{ opacity: 0, y: 18 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.35 }}
-                  className="relative p-6 lg:p-8"
                 >
                 {/* Card Header */}
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
