@@ -803,12 +803,16 @@ export function HeroSection() {
                   type="button"
                   onClick={toggleStatsMedia}
                   aria-label={`Toggle stats between Movies and TV Shows. Currently showing ${statsLabel}.`}
-                  className="mt-6 pt-6 border-t border-black/10 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
+                  className="mt-3 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
                 >
-                  <div className="absolute -top-3 right-0">
+                  {/* Divider and legend share one flex row, so the rule simply
+                      fills whatever the pill leaves and always stops short of
+                      it — no overlap at any width, and no measuring needed. */}
+                  <div className="flex items-center gap-3">
+                    <div aria-hidden="true" className="h-px flex-1 bg-black/10" />
                     <div
                       className={[
-                        'px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
+                        'shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
                         statsMedia === 'movies'
                           ? 'bg-fuchsia-800/10 text-fuchsia-800 border-fuchsia-800/30'
                           : 'bg-blue-800/10 text-blue-800 border-blue-800/30',
@@ -818,7 +822,7 @@ export function HeroSection() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="mt-3 grid grid-cols-3 gap-4">
                     <div>
                       <p className="text-black/70 text-xs mb-1">Total Items</p>
                       <p className="text-black font-semibold">
