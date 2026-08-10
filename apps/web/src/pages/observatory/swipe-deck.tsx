@@ -677,7 +677,7 @@ export function SwipeDeckView({
       {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
       <div
         aria-busy={busy}
-        className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible"
+        className="relative mx-auto max-w-3xl h-[max(360px,min(540px,calc(100dvh-25rem)))] md:h-[max(460px,min(720px,calc(100dvh-27rem)))] overflow-visible"
       >
         {api.deck.length ? (
           <div className="relative h-full">
@@ -758,84 +758,94 @@ export function SwipeDeckView({
         )}
       </div>
 
-      <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center gap-3">
-        {api.itemsLeft > 0 ? (
-          <div className="text-xs font-semibold text-white/50 tabular-nums">
-            {api.itemsLeft} left
-          </div>
-        ) : null}
-        <button
-          type="button"
-          onClick={api.swipeLeft}
-          disabled={!topIsItem || busy}
-          className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-rose-400/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label={leftActionLabel}
-          title={leftActionLabel}
-        >
-          <X className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
-          onClick={api.skipTop}
-          disabled={!api.canSkip || busy}
-          className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-white/15 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label="Skip for now — move this card to the back of the deck"
-          title="Skip for now — move this card to the back of the deck"
-        >
-          <SkipForward className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
-          onClick={api.undoLast}
-          disabled={!api.canUndo}
-          className={cn(
-            'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
-            api.canUndo
-              ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
-              : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
-          )}
-          aria-label="Undo last swipe"
-          title={
-            api.canUndo
-              ? 'Undo last swipe'
-              : api.undoUnavailableReason === 'applied'
-                ? 'Already applied to Plex — this can no longer be undone here'
-                : api.undoUnavailableReason === 'busy'
-                  ? 'Saving your last decision…'
-                  : 'Nothing to undo'
-          }
-        >
-          <Undo2 className="h-4 w-4" />
-          Undo
-        </button>
-        <button
-          type="button"
-          onClick={api.swipeRight}
-          disabled={!topIsItem || busy}
-          className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label={rightActionLabel}
-          title={rightActionLabel}
-        >
-          <Check className="h-5 w-5" />
-        </button>
-      </div>
+      {/* Action bar. Sits on its own opaque surface, well clear of the deck —
+          floating translucent buttons vanished into the poster art behind
+          them, and sitting tight under the card they read as part of it. */}
+      <div className="mx-auto max-w-3xl mt-8 md:mt-10 flex flex-col items-center gap-3">
+        <div className="flex items-center gap-3 md:gap-4 rounded-[1.75rem] border border-white/15 bg-[#0b0c0f]/90 px-4 py-3 shadow-2xl backdrop-blur-2xl">
+          <button
+            type="button"
+            onClick={api.swipeLeft}
+            disabled={!topIsItem || busy}
+            className="h-14 w-14 rounded-2xl border-2 flex items-center justify-center transition active:scale-95 border-rose-400/60 bg-rose-500/25 text-rose-50 shadow-lg shadow-rose-900/30 hover:bg-rose-500/40 hover:border-rose-300/80 disabled:opacity-30 disabled:cursor-not-allowed"
+            aria-label={leftActionLabel}
+            title={leftActionLabel}
+          >
+            <X className="h-7 w-7" strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            onClick={api.skipTop}
+            disabled={!api.canSkip || busy}
+            className="h-12 w-12 rounded-2xl border-2 flex items-center justify-center transition active:scale-95 border-white/30 bg-white/15 text-white/90 hover:bg-white/25 disabled:opacity-30 disabled:cursor-not-allowed"
+            aria-label="Skip for now — move this card to the back of the deck"
+            title="Skip for now — move this card to the back of the deck"
+          >
+            <SkipForward className="h-5 w-5" strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            onClick={api.undoLast}
+            disabled={!api.canUndo}
+            className={cn(
+              'h-12 rounded-2xl px-4 border-2 text-sm font-bold transition active:scale-95 flex items-center gap-2',
+              api.canUndo
+                ? 'border-white/30 bg-white/15 text-white hover:bg-white/25'
+                : 'border-white/10 bg-white/5 text-white/30 cursor-not-allowed',
+            )}
+            aria-label="Undo last swipe"
+            title={
+              api.canUndo
+                ? 'Undo last swipe'
+                : api.undoUnavailableReason === 'applied'
+                  ? 'Already applied to Plex — this can no longer be undone here'
+                  : api.undoUnavailableReason === 'busy'
+                    ? 'Saving your last decision…'
+                    : 'Nothing to undo'
+            }
+          >
+            <Undo2 className="h-5 w-5" strokeWidth={2.5} />
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={api.swipeRight}
+            disabled={!topIsItem || busy}
+            className="h-14 w-14 rounded-2xl border-2 flex items-center justify-center transition active:scale-95 border-emerald-400/60 bg-emerald-500/25 text-emerald-50 shadow-lg shadow-emerald-900/30 hover:bg-emerald-500/40 hover:border-emerald-300/80 disabled:opacity-30 disabled:cursor-not-allowed"
+            aria-label={rightActionLabel}
+            title={rightActionLabel}
+          >
+            <Check className="h-7 w-7" strokeWidth={2.5} />
+          </button>
+        </div>
 
-      {/* The arrow-key and undo shortcuts existed but were undiscoverable. */}
-      <div className="mx-auto max-w-3xl mt-3 hidden md:flex items-center justify-center gap-2 text-[11px] text-white/40">
-        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
-          ←
-        </kbd>
-        <span>{api.phase === 'pendingApprovals' ? 'reject' : 'remove'}</span>
-        <span className="text-white/20">·</span>
-        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
-          →
-        </kbd>
-        <span>{api.phase === 'pendingApprovals' ? 'approve' : 'keep'}</span>
-        <span className="text-white/20">·</span>
-        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
-          Z
-        </kbd>
-        <span>undo</span>
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-white/45">
+          {api.itemsLeft > 0 ? (
+            <>
+              <span className="font-bold text-white/70 tabular-nums">
+                {api.itemsLeft} left
+              </span>
+              <span className="hidden md:inline text-white/25">·</span>
+            </>
+          ) : null}
+          {/* The arrow-key and undo shortcuts existed but were undiscoverable. */}
+          <span className="hidden md:inline-flex items-center gap-2">
+            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-sans">
+              ←
+            </kbd>
+            <span>{api.phase === 'pendingApprovals' ? 'reject' : 'remove'}</span>
+            <span className="text-white/25">·</span>
+            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-sans">
+              →
+            </kbd>
+            <span>{api.phase === 'pendingApprovals' ? 'approve' : 'keep'}</span>
+            <span className="text-white/25">·</span>
+            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-sans">
+              Z
+            </kbd>
+            <span>undo</span>
+          </span>
+        </div>
       </div>
     </div>
   );
