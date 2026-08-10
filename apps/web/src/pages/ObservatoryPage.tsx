@@ -1918,7 +1918,15 @@ export function ObservatoryPage() {
                       )}
                     </div>
 
-                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
+                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center gap-3">
+                      {(() => {
+                        const left = deck.filter((c) => c.kind === 'item').length;
+                        return left > 0 ? (
+                          <div className="text-xs font-semibold text-white/50 tabular-nums">
+                            {left} left
+                          </div>
+                        ) : null;
+                      })()}
                       <button
                         type="button"
                         onClick={undoLast}
@@ -2078,7 +2086,15 @@ export function ObservatoryPage() {
                       )}
                     </div>
 
-                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
+                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center gap-3">
+                      {(() => {
+                        const left = watchedDeck.filter((c) => c.kind === 'item').length;
+                        return left > 0 ? (
+                          <div className="text-xs font-semibold text-white/50 tabular-nums">
+                            {left} left
+                          </div>
+                        ) : null;
+                      })()}
                       <button
                         type="button"
                         onClick={undoWatchedLast}
