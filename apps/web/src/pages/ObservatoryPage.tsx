@@ -15,7 +15,7 @@ import {
   useTransform,
   type PanInfo,
 } from 'motion/react';
-import { Telescope, Undo2 } from 'lucide-react';
+import { Check, Telescope, Undo2, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { usePersistentState } from '@/lib/usePersistentState';
@@ -50,7 +50,9 @@ type CardModel =
       sentinel: 'approvalsDone' | 'reviewDone' | 'noData';
       title?: string;
       subtitle?: string;
-      ctaBar?: string;
+      // Label for the CTA button in the sentinel's bottom bar; a default is
+      // derived from the sentinel kind when omitted.
+      ctaLabel?: string;
       message?: string;
     };
 
@@ -74,7 +76,11 @@ type WatchedUndoState = {
 const NOOP = () => undefined;
 
 const LOADING_PLACEHOLDER = (
-  <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
+  <div
+    role="status"
+    aria-label="Loading suggestions"
+    className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl"
+  >
     <div className="absolute inset-0 flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
         <div className="h-10 w-10 rounded-full border-2 border-white/20 border-t-[#facc15] animate-spin" />
@@ -354,19 +360,27 @@ function SwipeCard({
               </div>
             </div>
 
-            {(card.ctaBar ||
-              (card.sentinel === 'approvalsDone'
-                ? 'Swipe right to review suggestions'
-                : null)) && (
-              <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
-                <div className="text-white font-semibold text-sm leading-tight">
-                  {card.ctaBar ??
-                    (card.sentinel === 'approvalsDone'
-                      ? 'Swipe right to review suggestions'
-                      : '')}
-                </div>
-              </div>
-            )}
+            {/* A real button, not instruction text: keyboard and screen-reader
+                users (and anyone who'd rather tap) can advance the flow without
+                performing a drag gesture. */}
+            <div className="absolute inset-x-0 bottom-0 min-h-[64px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center justify-center px-5 py-3">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={onSwipeRight}
+                // Keep this press out of the drag machinery: without it the
+                // card's pointer capture swallows the click.
+                onPointerDown={(e) => e.stopPropagation()}
+                className="h-11 rounded-2xl px-5 border text-sm font-bold transition active:scale-[0.98] border-[#facc15]/30 bg-[#facc15]/15 text-[#fde68a] hover:bg-[#facc15]/25 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {card.ctaLabel ??
+                  (card.sentinel === 'approvalsDone'
+                    ? 'Review suggestions'
+                    : card.sentinel === 'noData'
+                      ? 'Check again'
+                      : 'Restart reviewing')}
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -495,6 +509,9 @@ export function ObservatoryPage() {
 
   const [phase, setPhase] = useState<Phase>('pendingApprovals');
   const [deck, setDeck] = useState<CardModel[]>([]);
+  // Announced via an aria-live region — the only feedback a screen-reader
+  // user gets that a decision was recorded and a new card is on top.
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [undoState, setUndoState] = useState<UndoState>(null);
 
@@ -684,7 +701,6 @@ export function ObservatoryPage() {
     () => ({
       kind: 'sentinel',
       sentinel: 'approvalsDone',
-      ctaBar: 'Swipe right to review suggestions',
     }),
     [],
   );
@@ -694,6 +710,7 @@ export function ObservatoryPage() {
       sentinel: 'reviewDone',
       title: 'Recently watched suggestions have been reviewed',
       subtitle: 'Swipe right to review Change of Taste.',
+      ctaLabel: 'Review Change of Taste',
     }),
     [],
   );
@@ -703,6 +720,7 @@ export function ObservatoryPage() {
       sentinel: 'reviewDone',
       title: 'All suggestions have been reviewed',
       subtitle: 'Swipe right to restart reviewing.',
+      ctaLabel: 'Restart reviewing',
     }),
     [],
   );
@@ -723,6 +741,11 @@ export function ObservatoryPage() {
       sentinel: 'noData',
       title: `${deckLabel}: No suggestions yet`,
       message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Based on Latest Watched Collection manually for ${mediaTypeLabel} to generate suggestions.`,
+      // Right-advance on this card moves the flow along rather than refetching.
+      ctaLabel:
+        watchedCollectionKind === 'recentlyWatched'
+          ? 'Review Change of Taste'
+          : 'Restart reviewing',
     };
   }, [activeLibraryTitle, mediaTab, watchedCollectionKind]);
 
@@ -860,6 +883,17 @@ export function ObservatoryPage() {
     setDeckForApprovals,
     setDeckForReview,
   ]);
+
+  // The empty-deck fallback cards can't advance via the swipe handlers (those
+  // early-return when the deck is empty), so their CTA buttons act directly.
+  const handleWatchedFallbackAdvance = useCallback(() => {
+    if (watchedCollectionKind === 'recentlyWatched') {
+      setWatchedCollectionKind('changeOfTaste');
+      watchedDeckKeyRef.current = null;
+    } else {
+      restartWatchedCycle();
+    }
+  }, [restartWatchedCycle, watchedCollectionKind]);
 
   // Initialize deck only when tab/library changes (avoid re-mounting the whole deck after each swipe/refetch).
   useEffect(() => {
@@ -1340,6 +1374,9 @@ export function ObservatoryPage() {
       card,
       phase: prevPhase,
     });
+    setLiveAnnouncement(
+      `Restored "${card.item.title || `item ${card.item.id}`}" to the deck.`,
+    );
     scheduleApply();
   }, [
     activeLibraryKey,
@@ -1372,6 +1409,9 @@ export function ObservatoryPage() {
       card,
       phase: prevPhase,
     });
+    setLiveAnnouncement(
+      `Restored "${card.item.title || `item ${card.item.id}`}" to the deck.`,
+    );
     scheduleWatchedApply();
   }, [
     activeLibraryKey,
@@ -1428,6 +1468,16 @@ export function ObservatoryPage() {
       card: { kind: 'item', item: top.item },
       phase,
     });
+
+    const verb =
+      action === 'approve'
+        ? 'Approved'
+        : action === 'reject'
+          ? 'Rejected'
+          : action === 'keep'
+            ? 'Kept'
+            : 'Removed';
+    setLiveAnnouncement(`${verb} "${top.item.title || `item ${top.item.id}`}".`);
 
     advanceOneOrSentinel(
       phase === 'pendingApprovals' ? approvalsDoneCard : reviewDoneCard,
@@ -1503,6 +1553,16 @@ export function ObservatoryPage() {
       card: { kind: 'item', item: top.item },
       phase: watchedPhase,
     });
+
+    const verb =
+      action === 'approve'
+        ? 'Approved'
+        : action === 'reject'
+          ? 'Rejected'
+          : action === 'keep'
+            ? 'Kept'
+            : 'Removed';
+    setLiveAnnouncement(`${verb} "${top.item.title || `item ${top.item.id}`}".`);
 
     advanceWatchedOneOrSentinel(
       watchedPhase === 'pendingApprovals'
@@ -1643,6 +1703,10 @@ export function ObservatoryPage() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+      {/* Decision feedback for screen readers; visually the cards animate. */}
+      <div aria-live="polite" role="status" className="sr-only">
+        {liveAnnouncement}
+      </div>
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
           <div className="mb-12">
@@ -1844,7 +1908,10 @@ export function ObservatoryPage() {
 
                   <div className="mt-6">
                     {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
-                    <div className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible">
+                    <div
+                      aria-busy={recordDecisionMutation.isPending || applyMutation.isPending}
+                      className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible"
+                    >
                       {deck.length ? (
                         <div className="relative h-full">
                           {/* Render a small stack: top 3 */}
@@ -1883,6 +1950,7 @@ export function ObservatoryPage() {
                                   // center-origin scaling swallowed nearly all
                                   // of it and the stack read as a single card.
                                   style={{ zIndex: 50 - depth, transformOrigin: 'bottom center' }}
+                                  aria-hidden={!isTop}
                                   className={cn(
                                     'absolute inset-0',
                                     !isTop && 'pointer-events-none',
@@ -1916,7 +1984,7 @@ export function ObservatoryPage() {
                             }
                             phase={phase}
                             onSwipeLeft={NOOP}
-                            onSwipeRight={handleImmaculateSwipeRight}
+                            onSwipeRight={restartCycle}
                           />
                         </div>
                       )}
@@ -1933,6 +2001,28 @@ export function ObservatoryPage() {
                       })()}
                       <button
                         type="button"
+                        onClick={handleImmaculateSwipeLeft}
+                        disabled={
+                          deck[0]?.kind !== 'item' ||
+                          recordDecisionMutation.isPending ||
+                          applyMutation.isPending
+                        }
+                        className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-rose-400/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label={
+                          phase === 'pendingApprovals'
+                            ? 'Reject download request'
+                            : 'Remove from collection'
+                        }
+                        title={
+                          phase === 'pendingApprovals'
+                            ? 'Reject download request'
+                            : 'Remove from collection'
+                        }
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={undoLast}
                         disabled={!canUndo}
                         className={cn(
@@ -1946,6 +2036,28 @@ export function ObservatoryPage() {
                       >
                         <Undo2 className="h-4 w-4" />
                         Undo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleImmaculateSwipeRight}
+                        disabled={
+                          deck[0]?.kind !== 'item' ||
+                          recordDecisionMutation.isPending ||
+                          applyMutation.isPending
+                        }
+                        className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label={
+                          phase === 'pendingApprovals'
+                            ? 'Approve download request'
+                            : 'Keep in collection'
+                        }
+                        title={
+                          phase === 'pendingApprovals'
+                            ? 'Approve download request'
+                            : 'Keep in collection'
+                        }
+                      >
+                        <Check className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
@@ -2031,7 +2143,13 @@ export function ObservatoryPage() {
                   </div>
 
                   <div className="mt-6">
-                    <div className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible">
+                    <div
+                      aria-busy={
+                        recordWatchedDecisionMutation.isPending ||
+                        applyWatchedMutation.isPending
+                      }
+                      className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible"
+                    >
                       {watchedDeck.length ? (
                         <div className="relative h-full">
                           {watchedDeck
@@ -2058,6 +2176,7 @@ export function ObservatoryPage() {
                                   // See the immaculate stack: bottom-origin scale
                                   // keeps the depth rim visible.
                                   style={{ zIndex: 50 - depth, transformOrigin: 'bottom center' }}
+                                  aria-hidden={!isTop}
                                   className={cn(
                                     'absolute inset-0',
                                     !isTop && 'pointer-events-none',
@@ -2086,7 +2205,7 @@ export function ObservatoryPage() {
                             card={makeWatchedNoDataCard()}
                             phase={watchedPhase}
                             onSwipeLeft={NOOP}
-                            onSwipeRight={handleWatchedSwipeRight}
+                            onSwipeRight={handleWatchedFallbackAdvance}
                           />
                         </div>
                       )}
@@ -2103,6 +2222,28 @@ export function ObservatoryPage() {
                       })()}
                       <button
                         type="button"
+                        onClick={handleWatchedSwipeLeft}
+                        disabled={
+                          watchedDeck[0]?.kind !== 'item' ||
+                          recordWatchedDecisionMutation.isPending ||
+                          applyWatchedMutation.isPending
+                        }
+                        className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-rose-400/30 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label={
+                          watchedPhase === 'pendingApprovals'
+                            ? 'Reject download request'
+                            : 'Remove from collection'
+                        }
+                        title={
+                          watchedPhase === 'pendingApprovals'
+                            ? 'Reject download request'
+                            : 'Remove from collection'
+                        }
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={undoWatchedLast}
                         disabled={!canWatchedUndo}
                         className={cn(
@@ -2116,6 +2257,28 @@ export function ObservatoryPage() {
                       >
                         <Undo2 className="h-4 w-4" />
                         Undo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleWatchedSwipeRight}
+                        disabled={
+                          watchedDeck[0]?.kind !== 'item' ||
+                          recordWatchedDecisionMutation.isPending ||
+                          applyWatchedMutation.isPending
+                        }
+                        className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label={
+                          watchedPhase === 'pendingApprovals'
+                            ? 'Approve download request'
+                            : 'Keep in collection'
+                        }
+                        title={
+                          watchedPhase === 'pendingApprovals'
+                            ? 'Approve download request'
+                            : 'Keep in collection'
+                        }
+                      >
+                        <Check className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
