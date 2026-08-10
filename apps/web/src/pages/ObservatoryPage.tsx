@@ -257,8 +257,11 @@ function SwipeCard({
       drag={disabled ? false : 'x'}
       dragElastic={0.2}
       dragMomentum={false}
-      // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
-      style={{ x, rotate, opacity, touchAction: 'pan-x' }}
+      // pan-y: the browser owns vertical panning (so a thumb resting on the
+      // card — which fills most of a phone screen — can still scroll the page)
+      // while Motion direction-locks horizontal drags for the swipe. pan-x
+      // forbade vertical scroll entirely, and the page has no horizontal pan.
+      style={{ x, rotate, opacity, touchAction: 'pan-y' }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerRelease}
       onPointerCancel={handlePointerRelease}
