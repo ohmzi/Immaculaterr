@@ -106,6 +106,9 @@ export type SwipeDeckApi = {
   swipeTopCard: (dir: SwipeDirection) => boolean;
   swipeLeft: () => boolean;
   swipeRight: () => boolean;
+  /** Move the top card to the back of the local deck — no decision recorded. */
+  skipTop: () => void;
+  canSkip: boolean;
   undoLast: () => void;
   canUndo: boolean;
   /** Why undo is unavailable, so the button can say something truthful. */
@@ -541,6 +544,26 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   const swipeRight = useCallback(() => swipeTopCard('right'), [swipeTopCard]);
   const applyNow = useCallback(() => applyMutation.mutate(), [applyMutation]);
 
+  // Purely local reshuffle: the deck previously forced a keep-or-remove on
+  // every card, with no way to defer one you weren't sure about.
+  const canSkip =
+    deck.length > 1 &&
+    deck[0]?.kind === 'item' &&
+    deck.filter((c) => c.kind === 'item').length > 1;
+  const skipTop = useCallback(() => {
+    setDeck((prev) => {
+      if (prev.length < 2) return prev;
+      const [top, ...rest] = prev;
+      if (!top || top.kind !== 'item') return prev;
+      // Sit in front of the end-of-deck sentinel rather than after it.
+      const sentinelAt = rest.findIndex((c) => c.kind === 'sentinel');
+      if (sentinelAt === -1) return [...rest, top];
+      return [...rest.slice(0, sentinelAt), top, ...rest.slice(sentinelAt)];
+    });
+    setLastSwipeDir(1);
+    setLastRestored(null);
+  }, []);
+
   const itemsLeft = useMemo(
     () => deck.filter((c) => c.kind === 'item').length,
     [deck],
@@ -554,6 +577,8 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     swipeTopCard,
     swipeLeft,
     swipeRight,
+    skipTop,
+    canSkip,
     undoLast,
     canUndo,
     undoUnavailableReason,

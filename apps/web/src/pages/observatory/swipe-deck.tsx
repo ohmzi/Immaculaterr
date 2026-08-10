@@ -14,7 +14,7 @@ import {
   useTransform,
   type PanInfo,
 } from 'motion/react';
-import { Check, ChevronUp, ExternalLink, Undo2, X } from 'lucide-react';
+import { Check, ChevronUp, ExternalLink, SkipForward, Undo2, X } from 'lucide-react';
 
 import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
 import { cn } from '@/components/ui/utils';
@@ -773,6 +773,16 @@ export function SwipeDeckView({
           title={leftActionLabel}
         >
           <X className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={api.skipTop}
+          disabled={!api.canSkip || busy}
+          className="h-11 w-11 rounded-2xl border flex items-center justify-center transition active:scale-[0.98] border-white/15 bg-white/5 text-white/70 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label="Skip for now — move this card to the back of the deck"
+          title="Skip for now — move this card to the back of the deck"
+        >
+          <SkipForward className="h-5 w-5" />
         </button>
         <button
           type="button"
