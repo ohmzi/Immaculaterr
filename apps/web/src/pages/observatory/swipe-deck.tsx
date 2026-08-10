@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
@@ -13,10 +14,11 @@ import {
   useTransform,
   type PanInfo,
 } from 'motion/react';
-import { Check, Undo2, X } from 'lucide-react';
+import { Check, ChevronUp, ExternalLink, Undo2, X } from 'lucide-react';
 
 import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
 import { cn } from '@/components/ui/utils';
+import type { ObservatoryItem } from '@/api/observatory';
 import type { CardModel, Phase, SwipeDeckApi } from './use-swipe-deck';
 
 const NOOP = () => undefined;
@@ -60,6 +62,152 @@ function formatRating(v: unknown): string | null {
   return `${rounded.toFixed(1)}/10`;
 }
 
+function formatSentDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/**
+ * The API's raw enums (`pending`/`active`, `none`/`pending`/`approved`/
+ * `rejected`) were rendered verbatim; these turn them into something that
+ * says what it means for the item in front of you.
+ */
+function statusChip(item: ObservatoryItem): { label: string; className: string } {
+  return item.status === 'active'
+    ? {
+        label: 'In your collection',
+        className: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100',
+      }
+    : {
+        label: 'Suggested, not added yet',
+        className: 'border-white/15 bg-white/5 text-white/75',
+      };
+}
+
+function approvalChip(
+  item: ObservatoryItem,
+): { label: string; className: string } | null {
+  switch (item.downloadApproval) {
+    case 'pending':
+      return {
+        label: 'Download awaiting approval',
+        className: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
+      };
+    case 'approved':
+      return {
+        label: 'Download approved',
+        className: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100',
+      };
+    case 'rejected':
+      return {
+        label: 'Download rejected',
+        className: 'border-rose-400/30 bg-rose-400/10 text-rose-200',
+      };
+    default:
+      return null;
+  }
+}
+
+/** TMDB page for the item — movies key off `id`, TV needs the optional `tmdbId`. */
+function tmdbUrl(item: ObservatoryItem): string | null {
+  if (item.mediaType === 'movie') {
+    return item.id > 0 ? `https://www.themoviedb.org/movie/${item.id}` : null;
+  }
+  const tv = item.tmdbId;
+  return typeof tv === 'number' && tv > 0
+    ? `https://www.themoviedb.org/tv/${tv}`
+    : null;
+}
+
+/**
+ * Everything known about the item beyond title + poster. Shared by the desktop
+ * detail pane and the mobile tap-to-expand sheet so they can't drift.
+ */
+function CardDetails({
+  item,
+  phase,
+  onLinkPointerDown,
+}: {
+  item: ObservatoryItem;
+  phase: Phase;
+  onLinkPointerDown: (event: ReactPointerEvent<HTMLAnchorElement>) => void;
+}) {
+  const status = statusChip(item);
+  const approval = approvalChip(item);
+  const sentAt = formatSentDate(
+    item.mediaType === 'movie' ? item.sentToRadarrAt : item.sentToSonarrAt,
+  );
+  const points = Number.isFinite(item.points) ? Math.round(item.points) : null;
+  const url = tmdbUrl(item);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <span
+          className={cn(
+            'rounded-full border px-2.5 py-1 text-[11px] font-bold',
+            status.className,
+          )}
+        >
+          {status.label}
+        </span>
+        {approval ? (
+          <span
+            className={cn(
+              'rounded-full border px-2.5 py-1 text-[11px] font-bold',
+              approval.className,
+            )}
+          >
+            {approval.label}
+          </span>
+        ) : null}
+      </div>
+
+      <dl className="space-y-1 text-sm text-white/70">
+        {points !== null && points > 0 ? (
+          <div className="flex gap-2">
+            <dt>Match strength</dt>
+            <dd className="text-white/90 font-semibold">{points} pts</dd>
+          </div>
+        ) : null}
+        {sentAt ? (
+          <div className="flex gap-2">
+            <dt>Sent to {item.mediaType === 'movie' ? 'Radarr' : 'Sonarr'}</dt>
+            <dd className="text-white/90 font-semibold">{sentAt}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {url ? (
+        // Research before deciding — a wrong left-swipe is a permanent
+        // blocklist entry, and the card alone is thin evidence.
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+          onPointerDown={onLinkPointerDown}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-bold text-white/85 transition hover:bg-white/10"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Look up on TMDB
+        </a>
+      ) : null}
+
+      <div className="text-xs text-white/55 leading-relaxed">
+        {phase === 'pendingApprovals'
+          ? 'Swipe right to approve the download. Swipe left to reject.'
+          : 'Swipe right to keep. Swipe left to remove.'}
+      </div>
+    </div>
+  );
+}
+
 export function SwipeCard({
   card,
   disabled,
@@ -99,6 +247,9 @@ export function SwipeCard({
   const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.22, 0.45]);
 
   const controls = useAnimation();
+  // Mobile has no room for a detail pane, so the metadata lives behind a
+  // pull-up sheet on the caption bar.
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // Defensive pointer-capture handling:
   // Some mobile browsers + heavy drag interactions can end up in a "stuck" state where taps stop
   // dispatching correctly after a swipe interaction. Explicitly capturing/releasing the pointer
@@ -151,6 +302,19 @@ export function SwipeCard({
       // Keep CTA presses out of the drag machinery: without this the card's
       // pointer capture swallows the click.
       event.stopPropagation();
+    },
+    [],
+  );
+  const stopLinkPointerPropagation = useCallback(
+    (event: ReactPointerEvent<HTMLAnchorElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+  const toggleDetails = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      setDetailsOpen((v) => !v);
     },
     [],
   );
@@ -332,18 +496,17 @@ export function SwipeCard({
                 </div>
               )}
 
-              {/* Bottom caption (~10% height) */}
-              <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
-                <div className="w-full flex items-center justify-between gap-3">
-                  <div className="text-white font-semibold text-sm leading-tight line-clamp-1">
+              {/* Bottom caption, expanding into a details sheet on tap */}
+              <div className="absolute inset-x-0 bottom-0 bg-[#0b0c0f]/85 backdrop-blur-2xl border-t border-white/10">
+                <div className="flex min-h-[56px] items-center gap-3 px-5">
+                  <div className="min-w-0 flex-1 text-white font-semibold text-sm leading-tight line-clamp-1">
                     {card.item.title ||
                       (card.item.mediaType === 'movie'
                         ? `TMDB ${card.item.id}`
                         : `TVDB ${card.item.id}`)}
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
-                    {/* Mobile shows no status/approval fields, so this chip is the
-                        only cue for what a swipe does to this card. */}
+                    {/* The mobile caption is the only cue for what a swipe does. */}
                     <div
                       className={cn(
                         'rounded-xl border px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
@@ -359,8 +522,32 @@ export function SwipeCard({
                         {formatRating(card.item.tmdbVoteAvg ?? null)}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onPointerDown={toggleDetails}
+                      aria-expanded={detailsOpen}
+                      aria-label={detailsOpen ? 'Hide details' : 'Show details'}
+                      title={detailsOpen ? 'Hide details' : 'Show details'}
+                      className="rounded-xl border border-white/10 bg-white/5 p-1.5 text-white/70 transition hover:bg-white/10"
+                    >
+                      <ChevronUp
+                        className={cn(
+                          'h-4 w-4 transition-transform',
+                          detailsOpen && 'rotate-180',
+                        )}
+                      />
+                    </button>
                   </div>
                 </div>
+                {detailsOpen ? (
+                  <div className="border-t border-white/10 px-5 py-4">
+                    <CardDetails
+                      item={card.item}
+                      phase={phase}
+                      onLinkPointerDown={stopLinkPointerPropagation}
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -381,38 +568,26 @@ export function SwipeCard({
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/25" />
               </div>
-              <div className="p-10 flex flex-col justify-between h-full">
-                <div>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="text-white text-3xl font-black tracking-tight leading-tight">
-                      {card.item.title ||
-                        (card.item.mediaType === 'movie'
-                          ? `TMDB ${card.item.id}`
-                          : `TVDB ${card.item.id}`)}
+              <div className="p-10 flex flex-col h-full">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="text-white text-3xl font-black tracking-tight leading-tight">
+                    {card.item.title ||
+                      (card.item.mediaType === 'movie'
+                        ? `TMDB ${card.item.id}`
+                        : `TVDB ${card.item.id}`)}
+                  </div>
+                  {formatRating(card.item.tmdbVoteAvg ?? null) && (
+                    <div className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-black text-white/90">
+                      {formatRating(card.item.tmdbVoteAvg ?? null)}
                     </div>
-                    {formatRating(card.item.tmdbVoteAvg ?? null) && (
-                      <div className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-black text-white/90">
-                        {formatRating(card.item.tmdbVoteAvg ?? null)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 text-sm text-white/70">
-                    Status:{' '}
-                    <span className="text-white/90 font-semibold">
-                      {card.item.status}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-sm text-white/70">
-                    Approval:{' '}
-                    <span className="text-white/90 font-semibold">
-                      {card.item.downloadApproval}
-                    </span>
-                  </div>
-                  <div className="mt-6 text-xs text-white/55 leading-relaxed">
-                    {phase === 'pendingApprovals'
-                      ? 'Swipe right to approve the download. Swipe left to reject.'
-                      : 'Swipe right to keep. Swipe left to remove.'}
-                  </div>
+                  )}
+                </div>
+                <div className="mt-5">
+                  <CardDetails
+                    item={card.item}
+                    phase={phase}
+                    onLinkPointerDown={stopLinkPointerPropagation}
+                  />
                 </div>
               </div>
             </div>
