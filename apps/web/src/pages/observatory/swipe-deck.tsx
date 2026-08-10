@@ -126,6 +126,29 @@ function tmdbUrl(item: ObservatoryItem): string | null {
 }
 
 /**
+ * Poster that fades in once decoded. Cards are recycled fast, so a cold image
+ * used to pop in as a hard swap over the placeholder background.
+ */
+function Poster({ src, className }: { src: string; className: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const handleLoad = useCallback(() => setLoaded(true), []);
+  return (
+    <img
+      src={src}
+      alt=""
+      onLoad={handleLoad}
+      decoding="async"
+      className={cn(
+        className,
+        'transition-opacity duration-300',
+        loaded ? 'opacity-100' : 'opacity-0',
+      )}
+      draggable={false}
+    />
+  );
+}
+
+/**
  * Everything known about the item beyond title + poster. Shared by the desktop
  * detail pane and the mobile tap-to-expand sheet so they can't drift.
  */
@@ -297,6 +320,19 @@ export function SwipeCard({
   const handlePointerRelease = useCallback(() => {
     releasePointerCapture();
   }, [releasePointerCapture]);
+  // Tick once when the drag crosses into (or back out of) commit range, so the
+  // threshold is findable without watching the badge. Android-only; iOS Safari
+  // has no vibrate and simply no-ops.
+  const armedRef = useRef(false);
+  const handleDrag = useCallback(
+    (_: unknown, info: PanInfo) => {
+      const past = Math.abs(info.offset.x) > 120;
+      if (past === armedRef.current) return;
+      armedRef.current = past;
+      if (past) navigator.vibrate?.(10);
+    },
+    [],
+  );
   const stopPointerPropagation = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       // Keep CTA presses out of the drag machinery: without this the card's
@@ -379,6 +415,7 @@ export function SwipeCard({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerRelease}
       onPointerCancel={handlePointerRelease}
+      onDrag={handleDrag}
       onDragEnd={handleDragEnd}
       className="relative w-full h-full"
     >
@@ -481,11 +518,9 @@ export function SwipeCard({
             {/* Mobile: full-bleed poster + small caption bar (no extra metadata) */}
             <div className="relative md:hidden h-full">
               {card.item.posterUrl ? (
-                <img
+                <Poster
                   src={card.item.posterUrl}
-                  alt=""
                   className="absolute inset-0 h-full w-full object-contain object-center bg-black/30"
-                  draggable={false}
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/5 text-white/65 px-6 text-center font-semibold">
@@ -555,11 +590,9 @@ export function SwipeCard({
             <div className="hidden md:grid grid-cols-2 h-full">
               <div className="relative h-full bg-black/20">
                 {card.item.posterUrl ? (
-                  <img
+                  <Poster
                     src={card.item.posterUrl}
-                    alt=""
                     className="h-full w-full object-contain object-center"
-                    draggable={false}
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-white/35 text-sm">
@@ -620,6 +653,20 @@ export function SwipeDeckView({
   // longer locks the deck, so rapid triage isn't serialized on the network.
   const busy = api.applyPending;
   const topIsItem = api.deck[0]?.kind === 'item';
+
+  // Warm the posters just past the rendered stack so the 4th card doesn't
+  // arrive cold after three quick swipes.
+  const preloadUrls = api.deck
+    .slice(3, 6)
+    .map((c) => (c.kind === 'item' ? c.item.posterUrl : null))
+    .filter((u): u is string => Boolean(u));
+  useEffect(() => {
+    for (const url of preloadUrls) {
+      const img = new Image();
+      img.src = url;
+    }
+    // Effect keys on the joined list so re-runs track the actual URLs.
+  }, [preloadUrls.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   const leftActionLabel =
     api.phase === 'pendingApprovals' ? 'Reject download request' : 'Remove from collection';
   const rightActionLabel =
@@ -738,7 +785,15 @@ export function SwipeDeckView({
               : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
           )}
           aria-label="Undo last swipe"
-          title={api.canUndo ? 'Undo last swipe' : 'Nothing to undo'}
+          title={
+            api.canUndo
+              ? 'Undo last swipe'
+              : api.undoUnavailableReason === 'applied'
+                ? 'Already applied to Plex — this can no longer be undone here'
+                : api.undoUnavailableReason === 'busy'
+                  ? 'Saving your last decision…'
+                  : 'Nothing to undo'
+          }
         >
           <Undo2 className="h-4 w-4" />
           Undo
@@ -753,6 +808,24 @@ export function SwipeDeckView({
         >
           <Check className="h-5 w-5" />
         </button>
+      </div>
+
+      {/* The arrow-key and undo shortcuts existed but were undiscoverable. */}
+      <div className="mx-auto max-w-3xl mt-3 hidden md:flex items-center justify-center gap-2 text-[11px] text-white/40">
+        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
+          ←
+        </kbd>
+        <span>{api.phase === 'pendingApprovals' ? 'reject' : 'remove'}</span>
+        <span className="text-white/20">·</span>
+        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
+          →
+        </kbd>
+        <span>{api.phase === 'pendingApprovals' ? 'approve' : 'keep'}</span>
+        <span className="text-white/20">·</span>
+        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
+          Z
+        </kbd>
+        <span>undo</span>
       </div>
     </div>
   );

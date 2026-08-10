@@ -108,6 +108,8 @@ export type SwipeDeckApi = {
   swipeRight: () => boolean;
   undoLast: () => void;
   canUndo: boolean;
+  /** Why undo is unavailable, so the button can say something truthful. */
+  undoUnavailableReason: 'nothing' | 'applied' | 'busy';
   recordPending: boolean;
   applyPending: boolean;
   hasPendingApply: boolean;
@@ -154,6 +156,10 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   const [undoState, setUndoState] = useState<DeckUndoState>(null);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [hasPendingApply, setHasPendingApply] = useState(false);
+  // A successful apply commits decisions to Plex and clears the undo slot —
+  // remembered so the button can say "changes applied" instead of the
+  // misleading "nothing to undo".
+  const [undoClearedByApply, setUndoClearedByApply] = useState(false);
   // Exit-throw direction and undo-entrance marker for the view's animations.
   const [lastSwipeDir, setLastSwipeDir] = useState<1 | -1>(1);
   const [lastRestored, setLastRestored] = useState<{
@@ -358,7 +364,10 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     onSuccess: async () => {
       pendingApplyRef.current = false;
       setHasPendingApply(false);
-      setUndoState(null);
+      setUndoState((prev) => {
+        if (prev) setUndoClearedByApply(true);
+        return null;
+      });
       await invalidateAfterApply();
     },
     onError: (err) => {
@@ -411,6 +420,13 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     undoState?.deckKey === deckKey &&
     !recordMutation.isPending &&
     !applyMutation.isPending;
+
+  const undoUnavailableReason: 'nothing' | 'applied' | 'busy' =
+    undoState && undoState.deckKey === deckKey
+      ? 'busy'
+      : undoClearedByApply
+        ? 'applied'
+        : 'nothing';
 
   const undoLast = useCallback(() => {
     if (!undoState) return;
@@ -482,6 +498,7 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
         card: { kind: 'item', item: top.item },
         action,
       });
+      setUndoClearedByApply(false);
 
       recordMutation.mutate({
         id: top.item.id,
@@ -539,6 +556,7 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     swipeRight,
     undoLast,
     canUndo,
+    undoUnavailableReason,
     recordPending: recordMutation.isPending,
     applyPending: applyMutation.isPending,
     hasPendingApply,

@@ -61,7 +61,8 @@ export function ObservatoryPage() {
   const [watchedCollectionKind, setWatchedCollectionKind] =
     useState<WatchedCollectionKind>('recentlyWatched');
 
-  const swipeTopCardRef = useRef<((dir: SwipeDirection) => void) | null>(null);
+  const swipeTopCardRef = useRef<((dir: SwipeDirection) => boolean) | null>(null);
+  const undoLastRef = useRef<(() => void) | null>(null);
 
   // IMPORTANT:
   // We intentionally do not enable global scroll-snap on html/body here.
@@ -548,18 +549,22 @@ export function ObservatoryPage() {
   // Keep the latest swipe handler available to the keyboard listener (without re-binding listeners).
   const immaculateSwipeTopCard = immaculateDeck.swipeTopCard;
   const watchedSwipeTopCard = watchedDeck.swipeTopCard;
+  const immaculateUndoLast = immaculateDeck.undoLast;
+  const watchedUndoLast = watchedDeck.undoLast;
   useEffect(() => {
-    swipeTopCardRef.current =
-      activeCollectionTab === 'immaculate' ? immaculateSwipeTopCard : watchedSwipeTopCard;
+    const isImmaculate = activeCollectionTab === 'immaculate';
+    swipeTopCardRef.current = isImmaculate ? immaculateSwipeTopCard : watchedSwipeTopCard;
+    undoLastRef.current = isImmaculate ? immaculateUndoLast : watchedUndoLast;
   });
 
-  // Keyboard shortcuts: ArrowLeft/ArrowRight behave like swipes on the top card.
+  // Keyboard shortcuts: ArrowLeft/ArrowRight swipe the top card, Z undoes.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.repeat) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const isUndoKey = e.key === 'z' || e.key === 'Z';
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && !isUndoKey) return;
 
       const t = e.target as HTMLElement | null;
       if (t) {
@@ -585,6 +590,10 @@ export function ObservatoryPage() {
       }
 
       e.preventDefault();
+      if (isUndoKey) {
+        undoLastRef.current?.();
+        return;
+      }
       swipeTopCardRef.current?.(e.key === 'ArrowLeft' ? 'left' : 'right');
     };
 
