@@ -639,13 +639,6 @@ export function ObservatoryPage() {
     },
     [activeCollectionTab, mediaTab, restartWatchedFromBeginning],
   );
-  const handleApplyNow = useCallback(() => {
-    if (activeCollectionTab === 'immaculate') immaculateDeck.applyNow();
-    else watchedDeck.applyNow();
-  }, [activeCollectionTab, immaculateDeck, watchedDeck]);
-
-  const activeDeck = activeCollectionTab === 'immaculate' ? immaculateDeck : watchedDeck;
-
   return (
     <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
       {/* Decision feedback for screen readers; visually the cards animate. */}
@@ -730,25 +723,6 @@ export function ObservatoryPage() {
               </button>
             ))}
           </div>
-
-          {activeDeck.hasPendingApply ? (
-            <div className="mb-6 flex items-center justify-center">
-              <div className="flex items-center gap-3 rounded-full border border-[#facc15]/25 bg-[#facc15]/10 px-4 py-2 text-xs font-semibold text-[#fde68a]">
-                <span>
-                  Decisions recorded — they sync to Plex automatically in the
-                  background.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleApplyNow}
-                  disabled={activeDeck.applyPending}
-                  className="rounded-full border border-[#facc15]/35 bg-[#facc15]/20 px-3 py-1 font-bold text-[#facc15] transition hover:bg-[#facc15]/30 disabled:opacity-50"
-                >
-                  {activeDeck.applyPending ? 'Applying…' : 'Apply now'}
-                </button>
-              </div>
-            </div>
-          ) : null}
 
           <div className="min-h-[300px]">
             <AnimatePresence mode="wait">

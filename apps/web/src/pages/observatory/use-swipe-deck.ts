@@ -114,9 +114,8 @@ export type SwipeDeckApi = {
   /** Why undo is unavailable, so the button can say something truthful. */
   undoUnavailableReason: 'nothing' | 'applied' | 'busy';
   recordPending: boolean;
+  /** True while a batched Radarr/Sonarr/Plex sync is in flight — informational only, never gates input. */
   applyPending: boolean;
-  hasPendingApply: boolean;
-  applyNow: () => void;
   restartCycle: () => void;
   resetDeckKey: () => void;
   /** Direction of the most recent removal, driving AnimatePresence exit throws. */
@@ -158,7 +157,6 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   const [deck, setDeck] = useState<CardModel[]>([]);
   const [undoState, setUndoState] = useState<DeckUndoState>(null);
   const [approvalRequired, setApprovalRequired] = useState(false);
-  const [hasPendingApply, setHasPendingApply] = useState(false);
   // A successful apply commits decisions to Plex and clears the undo slot —
   // remembered so the button can say "changes applied" instead of the
   // misleading "nothing to undo".
@@ -173,11 +171,20 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   // render-phase init below both reads and adjusts it).
   const [initializedKey, setInitializedKey] = useState<string | null>(null);
 
-  const pendingApplyRef = useRef(false);
-  const applyTimerRef = useRef<number | null>(null);
-  // Latest scheduler for the apply mutation's onError — the mutation is
-  // declared before the scheduler, which in turn references the mutation.
-  const scheduleApplyRef = useRef<(() => void) | null>(null);
+  // Apply is fired immediately after every decision instead of on a timer.
+  // applyInFlightRef tracks a mutation actually in progress; applyQueuedRef
+  // records "another swipe landed while that was running" so exactly one
+  // follow-up apply covers everything, instead of one call per swipe.
+  const applyInFlightRef = useRef(false);
+  const applyQueuedRef = useRef(false);
+  // Backoff timer for a failed apply — retries once, shortly, rather than
+  // hammering a genuinely-down Radarr/Sonarr in a tight loop.
+  const retryTimerRef = useRef<number | null>(null);
+  // Indirection so applyMutation's own onError/onSettled can re-fire it
+  // without referencing `applyMutation` from inside its own option object —
+  // that self-reference defeats the React Compiler's memoization of any
+  // callback (like triggerApply below) that also depends on applyMutation.
+  const applyMutateRef = useRef<() => void>(() => undefined);
 
   // Pure deck composition, shared by the render-phase init (which reads render
   // props) and the event-time builders (which read the ref for freshness).
@@ -307,14 +314,15 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
       return await recordDecision({ id: params.id, action: params.action });
     },
     onSuccess: (_data, vars) => {
-      pendingApplyRef.current = true;
-      setHasPendingApply(true);
       // Keep the cache truthful for sentinel-time rebuilds without blocking
       // the next swipe on refetches: drop the item synchronously, converge
       // with server truth in the background. (The awaited invalidation here
       // was what serialized rapid triage behind two GETs per swipe.)
       if (vars.action !== 'undo') removeItemFromLists(vars.id);
       void invalidateLists();
+      // Fire the real Radarr/Sonarr/Plex sync now that the decision is
+      // durable, rather than waiting on a timer — see triggerApply below.
+      triggerApply();
     },
     onError: (err, vars) => {
       // The deck advanced optimistically; the server never saw this decision.
@@ -365,8 +373,6 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   const applyMutation = useMutation({
     mutationFn: async () => applyDecisions(),
     onSuccess: async () => {
-      pendingApplyRef.current = false;
-      setHasPendingApply(false);
       setUndoState((prev) => {
         if (prev) setUndoClearedByApply(true);
         return null;
@@ -374,41 +380,63 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
       await invalidateAfterApply();
     },
     onError: (err) => {
-      // Without this, a failed Plex sync was completely silent and the batch
-      // never retried while the page sat idle.
+      // Without this, a failed Plex sync was completely silent and never
+      // retried while the page sat idle.
       toast.error(
         err instanceof Error
-          ? `Couldn't apply your review to Plex — retrying in 2 minutes. ${err.message}`
-          : "Couldn't apply your review to Plex — retrying in 2 minutes.",
+          ? `Couldn't sync your last decisions to Plex — retrying shortly. ${err.message}`
+          : "Couldn't sync your last decisions to Plex — retrying shortly.",
       );
-      // pendingApplyRef stays true; re-arm the timer so the batch retries.
-      scheduleApplyRef.current?.();
+      // A single short backoff, not a hot loop: if Radarr/Sonarr is
+      // genuinely down, hammering it on every failed attempt doesn't help.
+      // A real swipe in the meantime re-triggers immediately anyway.
+      if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = window.setTimeout(() => {
+        retryTimerRef.current = null;
+        applyMutateRef.current();
+      }, 5_000);
+    },
+    onSettled: () => {
+      // Coalesce: if swipes landed while this call was in flight, run
+      // exactly one follow-up instead of one apply per swipe.
+      if (applyQueuedRef.current) {
+        applyQueuedRef.current = false;
+        applyMutateRef.current();
+      } else {
+        applyInFlightRef.current = false;
+      }
     },
   });
 
-  const scheduleApply = useCallback(() => {
-    if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
-    applyTimerRef.current = window.setTimeout(() => {
-      if (!pendingApplyRef.current) return;
-      applyMutation.mutate();
-    }, 120_000);
-  }, [applyMutation]);
-
-  // Keep the apply-retry ref pointing at the latest scheduler (the apply
-  // mutation's onError fires long after any given render).
+  // Keep the ref pointing at the latest mutate closure.
   useEffect(() => {
-    scheduleApplyRef.current = scheduleApply;
+    applyMutateRef.current = () => applyMutation.mutate();
   });
+
+  // Fire the batched Radarr/Sonarr/Plex sync right away instead of on a
+  // timer. A call already in flight absorbs anything that lands next —
+  // see the mutation's onSettled above — so rapid swiping never produces
+  // one overlapping external call per card.
+  const triggerApply = useCallback(() => {
+    if (applyInFlightRef.current) {
+      applyQueuedRef.current = true;
+      return;
+    }
+    applyInFlightRef.current = true;
+    applyMutateRef.current();
+  }, []);
 
   // Flush on deck-context change and unmount (best-effort): the cleanup runs
   // with the previous context's applyDecisions closure, so the old library's
-  // pending batch is what gets applied.
+  // pending batch is what gets applied. Only needed when work is queued but
+  // nothing is actually in flight to pick it up — if a call is still
+  // running, its own onSettled will apply the queued swipe regardless of
+  // whether this component is still mounted.
   useEffect(() => {
     return () => {
-      if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
-      if (pendingApplyRef.current) {
-        pendingApplyRef.current = false;
-        setHasPendingApply(false);
+      if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
+      if (applyQueuedRef.current && !applyInFlightRef.current) {
+        applyQueuedRef.current = false;
         void Promise.resolve(applyDecisions())
           .then(() => invalidateAfterApply())
           .catch(() => undefined);
@@ -457,17 +485,20 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
       deckKey,
     });
     announce(`Restored "${card.item.title || `item ${card.item.id}`}" to the deck.`);
-    scheduleApply();
-  }, [announce, deckKey, recordMutation, scheduleApply, undoState]);
+    // No triggerApply() here — recordMutation.onSuccess fires it once the
+    // undo is actually durable server-side. Calling it synchronously here
+    // would apply the pre-undo state before the undo POST even resolves.
+  }, [announce, deckKey, recordMutation, undoState]);
 
   const swipeTopCard = useCallback(
     (dir: SwipeDirection): boolean => {
       if (!active) return false;
       if (!librarySectionKey) return false;
       if (!deck.length) return false;
-      // Swiping no longer waits on the previous decision's POST — only the
-      // batched apply sync blocks, and that runs rarely.
-      if (applyMutation.isPending) return false;
+      // Neither the record POST nor the Radarr/Sonarr/Plex apply call blocks
+      // swiping — apply now fires on every decision (see triggerApply) and
+      // coalesces internally, so gating input on it would serialize rapid
+      // triage behind the network exactly like before.
 
       const top = deck[0];
       if (!top) return false;
@@ -518,14 +549,12 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
       setLastSwipeDir(dir === 'right' ? 1 : -1);
       setLastRestored(null);
       advanceOneOrSentinel(sentinelForPhase(phase));
-      scheduleApply();
       return true;
     },
     [
       active,
       advanceOneOrSentinel,
       announce,
-      applyMutation.isPending,
       deck,
       deckKey,
       librarySectionKey,
@@ -534,7 +563,6 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
       recordMutation,
       resetDeckKey,
       restartCycle,
-      scheduleApply,
       sentinelForPhase,
       setDeckForReview,
     ],
@@ -542,7 +570,6 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
 
   const swipeLeft = useCallback(() => swipeTopCard('left'), [swipeTopCard]);
   const swipeRight = useCallback(() => swipeTopCard('right'), [swipeTopCard]);
-  const applyNow = useCallback(() => applyMutation.mutate(), [applyMutation]);
 
   // Purely local reshuffle: the deck previously forced a keep-or-remove on
   // every card, with no way to defer one you weren't sure about.
@@ -584,8 +611,6 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     undoUnavailableReason,
     recordPending: recordMutation.isPending,
     applyPending: applyMutation.isPending,
-    hasPendingApply,
-    applyNow,
     restartCycle,
     resetDeckKey,
     lastSwipeDir,

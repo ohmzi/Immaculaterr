@@ -14,7 +14,15 @@ import {
   useTransform,
   type PanInfo,
 } from 'motion/react';
-import { Check, ChevronUp, ExternalLink, SkipForward, Undo2, X } from 'lucide-react';
+import {
+  Check,
+  ChevronUp,
+  ExternalLink,
+  Loader2,
+  SkipForward,
+  Undo2,
+  X,
+} from 'lucide-react';
 
 import { APP_BG_IMAGE_URL } from '@/lib/ui-classes';
 import { cn } from '@/components/ui/utils';
@@ -649,9 +657,9 @@ export function SwipeDeckView({
   /** Advance action for the fallback card — the deck handlers no-op on an empty deck. */
   onFallbackAdvance: () => void;
 }) {
-  // Only the batched apply blocks interaction — a decision POST in flight no
-  // longer locks the deck, so rapid triage isn't serialized on the network.
-  const busy = api.applyPending;
+  // Neither the record POST nor the Radarr/Sonarr/Plex apply call locks the
+  // deck — apply now fires right after every decision and runs entirely in
+  // the background, so rapid triage is never serialized on the network.
   const topIsItem = api.deck[0]?.kind === 'item';
 
   // Warm the posters just past the rendered stack so the 4th card doesn't
@@ -676,7 +684,8 @@ export function SwipeDeckView({
     <div className="mt-6">
       {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
       <div
-        aria-busy={busy}
+        // Informational only — a sync in flight never blocks interaction.
+        aria-busy={api.applyPending}
         className="relative mx-auto max-w-3xl h-[max(340px,min(540px,calc(100dvh-27rem)))] md:h-[max(440px,min(720px,calc(100dvh-30rem)))] overflow-visible"
       >
         {api.deck.length ? (
@@ -732,7 +741,7 @@ export function SwipeDeckView({
                     >
                       <SwipeCard
                         card={card}
-                        disabled={!isTop || busy}
+                        disabled={!isTop}
                         phase={api.phase}
                         onSwipeLeft={api.swipeLeft}
                         onSwipeRight={api.swipeRight}
@@ -791,7 +800,7 @@ export function SwipeDeckView({
           <button
             type="button"
             onClick={api.swipeLeft}
-            disabled={!topIsItem || busy}
+            disabled={!topIsItem}
             className="h-16 w-16 rounded-full border flex items-center justify-center transition active:scale-95 border-rose-300/50 bg-rose-500/20 text-rose-100 shadow-[0_8px_24px_-10px_rgba(244,63,94,0.9)] hover:bg-rose-500/35 hover:border-rose-200/70 disabled:opacity-25 disabled:cursor-not-allowed disabled:shadow-none"
             aria-label={leftActionLabel}
             title={leftActionLabel}
@@ -801,7 +810,7 @@ export function SwipeDeckView({
           <button
             type="button"
             onClick={api.swipeRight}
-            disabled={!topIsItem || busy}
+            disabled={!topIsItem}
             className="h-16 w-16 rounded-full border flex items-center justify-center transition active:scale-95 border-emerald-300/50 bg-emerald-500/20 text-emerald-100 shadow-[0_8px_24px_-10px_rgba(16,185,129,0.9)] hover:bg-emerald-500/35 hover:border-emerald-200/70 disabled:opacity-25 disabled:cursor-not-allowed disabled:shadow-none"
             aria-label={rightActionLabel}
             title={rightActionLabel}
@@ -811,7 +820,7 @@ export function SwipeDeckView({
           <button
             type="button"
             onClick={api.skipTop}
-            disabled={!api.canSkip || busy}
+            disabled={!api.canSkip}
             className="h-12 w-12 rounded-full border flex items-center justify-center transition active:scale-95 border-white/20 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed"
             aria-label="Skip for now — move this card to the back of the deck"
             title="Skip for now — move this card to the back of the deck"
@@ -822,14 +831,24 @@ export function SwipeDeckView({
 
         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-white/40">
           {api.itemsLeft > 0 ? (
+            <span className="font-semibold text-white/60 tabular-nums">
+              {api.itemsLeft} left
+            </span>
+          ) : null}
+          {/* Purely informational — a sync in flight never blocks anything. */}
+          {api.applyPending ? (
             <>
-              <span className="font-semibold text-white/60 tabular-nums">
-                {api.itemsLeft} left
+              {api.itemsLeft > 0 ? <span className="text-white/20">·</span> : null}
+              <span className="inline-flex items-center gap-1 text-white/50">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Syncing…
               </span>
-              <span className="hidden md:inline text-white/20">·</span>
             </>
           ) : null}
           {/* The arrow-key and undo shortcuts existed but were undiscoverable. */}
+          {api.itemsLeft > 0 || api.applyPending ? (
+            <span className="hidden md:inline text-white/20">·</span>
+          ) : null}
           <span className="hidden md:inline-flex items-center gap-2">
             <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
               ←
