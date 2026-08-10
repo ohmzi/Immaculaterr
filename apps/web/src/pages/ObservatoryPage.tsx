@@ -1392,6 +1392,16 @@ export function ObservatoryPage() {
         ) {
           return;
         }
+        // Arrow keys inside any interactive control (GlassSelect's listbox of
+        // buttons, the Undo button, tabs, links) are navigation, not swipe
+        // intent — without this, arrowing through the library dropdown records
+        // irreversible approve/reject decisions.
+        if (
+          typeof t.closest === 'function' &&
+          t.closest('button, a, [role="listbox"], [role="option"], [tabindex]')
+        ) {
+          return;
+        }
       }
 
       e.preventDefault();
