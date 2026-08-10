@@ -120,13 +120,18 @@ function SwipeCard({
   const allowLeft = card.kind !== 'sentinel';
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-10, 0, 10]);
-  const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0, 1, 1, 1, 0]);
+  // Floor at 0.35 while dragging: the card (and the badges/tints inside it)
+  // must stay visible under the finger — the throw animation owns the fade
+  // to zero once a swipe commits.
+  const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0.35, 1, 1, 1, 0.35]);
   // Badges reach full opacity exactly at the commit threshold (120), so a
   // fully lit badge always means "release commits this".
   const likeOpacity = useTransform(x, [40, 120], [0, 1]);
   const nopeOpacity = useTransform(x, [-120, -40], [1, 0]);
-  const greenTintOpacity = useTransform(x, [0, 70, 180], [0, 0.14, 0.28]);
-  const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.14, 0.28]);
+  // The tint layers are /40-alpha fills, so the effective tint is motion
+  // opacity × 0.4 — the old 0.28 ceiling meant a barely-there 11%.
+  const greenTintOpacity = useTransform(x, [0, 70, 180], [0, 0.22, 0.45]);
+  const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.22, 0.45]);
 
   const controls = useAnimation();
   const leavingRef = useRef(false);
@@ -263,7 +268,6 @@ function SwipeCard({
     <motion.div
       animate={controls}
       drag={disabled ? false : 'x'}
-      dragElastic={0.2}
       dragMomentum={false}
       // pan-y: the browser owns vertical panning (so a thumb resting on the
       // card — which fills most of a phone screen — can still scroll the page)
@@ -277,33 +281,38 @@ function SwipeCard({
       className="relative w-full h-full"
     >
       <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
-        {/* Swipe tint feedback */}
+        {/* Swipe tint feedback. Sentinels only answer to right swipes, so the
+            red layer would promise a rejection that never happens. */}
         <div className="pointer-events-none absolute inset-0 z-20">
           <motion.div
             style={{ opacity: greenTintOpacity }}
             className="absolute inset-0 bg-emerald-400/40"
           />
-          <motion.div
-            style={{ opacity: redTintOpacity }}
-            className="absolute inset-0 bg-rose-400/40"
-          />
+          {allowLeft ? (
+            <motion.div
+              style={{ opacity: redTintOpacity }}
+              className="absolute inset-0 bg-rose-400/40"
+            />
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-black/15 via-transparent to-black/10" />
         </div>
 
-        <div className="absolute inset-0 pointer-events-none z-30">
-          <motion.div
-            style={{ opacity: likeOpacity }}
-            className="absolute top-6 left-6 rounded-xl border border-emerald-400/40 bg-emerald-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-emerald-100"
-          >
-            {rightLabel}
-          </motion.div>
-          <motion.div
-            style={{ opacity: nopeOpacity }}
-            className="absolute top-6 right-6 rounded-xl border border-rose-400/40 bg-rose-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-rose-100"
-          >
-            {leftLabel}
-          </motion.div>
-        </div>
+        {card.kind !== 'sentinel' ? (
+          <div className="absolute inset-0 pointer-events-none z-30">
+            <motion.div
+              style={{ opacity: likeOpacity }}
+              className="absolute top-8 left-6 -rotate-12 rounded-xl border-2 border-emerald-400/60 bg-emerald-400/15 px-4 py-1.5 text-xl md:text-2xl font-black uppercase tracking-wider text-emerald-100"
+            >
+              {rightLabel}
+            </motion.div>
+            <motion.div
+              style={{ opacity: nopeOpacity }}
+              className="absolute top-8 right-6 rotate-12 rounded-xl border-2 border-rose-400/60 bg-rose-400/15 px-4 py-1.5 text-xl md:text-2xl font-black uppercase tracking-wider text-rose-100"
+            >
+              {leftLabel}
+            </motion.div>
+          </div>
+        ) : null}
 
         {card.kind === 'sentinel' ? (
           // Sentinel cards are styled like movie cards so the deck never "ends".
