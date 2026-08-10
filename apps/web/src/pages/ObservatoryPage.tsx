@@ -21,6 +21,7 @@ import {
   listWatchedTvObservatory,
   recordImmaculateTasteDecisions,
   recordWatchedDecisions,
+  type ObservatoryItem,
   type WatchedCollectionKind,
 } from '@/api/observatory';
 import { cn } from '@/components/ui/utils';
@@ -304,6 +305,21 @@ export function ObservatoryPage() {
       }),
     [activeLibraryKey, mediaTab],
   );
+  const immaculateRemoveItemFromLists = useCallback(
+    (id: number) => {
+      const strip = (old: { items: ObservatoryItem[] } | undefined) =>
+        old ? { ...old, items: old.items.filter((i) => i.id !== id) } : old;
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        ['observatory', 'immaculateTaste', mediaTab, activeLibraryKey, 'pendingApproval'],
+        strip,
+      );
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        ['observatory', 'immaculateTaste', mediaTab, activeLibraryKey, 'review'],
+        strip,
+      );
+    },
+    [activeLibraryKey, mediaTab, queryClient],
+  );
   const immaculateInvalidateLists = useCallback(
     () =>
       Promise.all([
@@ -348,6 +364,7 @@ export function ObservatoryPage() {
     onSentinelRight: immaculateOnSentinelRight,
     recordDecision: immaculateRecordDecision,
     applyDecisions: immaculateApplyDecisions,
+    removeItemFromLists: immaculateRemoveItemFromLists,
     invalidateLists: immaculateInvalidateLists,
     invalidateAfterApply: immaculateInvalidateAfterApply,
     announce: setLiveAnnouncement,
@@ -421,6 +438,35 @@ export function ObservatoryPage() {
       }),
     [activeLibraryKey, mediaTab],
   );
+  const watchedRemoveItemFromLists = useCallback(
+    (id: number) => {
+      const strip = (old: { items: ObservatoryItem[] } | undefined) =>
+        old ? { ...old, items: old.items.filter((i) => i.id !== id) } : old;
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        [
+          'observatory',
+          'watched',
+          mediaTab,
+          activeLibraryKey,
+          watchedCollectionKind,
+          'pendingApproval',
+        ],
+        strip,
+      );
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        [
+          'observatory',
+          'watched',
+          mediaTab,
+          activeLibraryKey,
+          watchedCollectionKind,
+          'review',
+        ],
+        strip,
+      );
+    },
+    [activeLibraryKey, mediaTab, queryClient, watchedCollectionKind],
+  );
   const watchedInvalidateLists = useCallback(
     () =>
       Promise.all([
@@ -468,6 +514,7 @@ export function ObservatoryPage() {
     onSentinelRight: watchedOnSentinelRight,
     recordDecision: watchedRecordDecision,
     applyDecisions: watchedApplyDecisions,
+    removeItemFromLists: watchedRemoveItemFromLists,
     invalidateLists: watchedInvalidateLists,
     invalidateAfterApply: watchedInvalidateAfterApply,
     announce: setLiveAnnouncement,

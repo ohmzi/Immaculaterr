@@ -78,6 +78,12 @@ export type UseSwipeDeckConfig = {
     action: DecisionAction | 'undo';
   }) => Promise<unknown>;
   applyDecisions: () => Promise<unknown>;
+  /**
+   * Surgically drop a decided item from both cached lists. Runs synchronously
+   * on record success so sentinel-time rebuilds see truthful data without
+   * waiting on refetches — the background invalidation converges the rest.
+   */
+  removeItemFromLists: (id: number) => void;
   /** Invalidate this deck's two list queries (after record success/failure). */
   invalidateLists: () => Promise<unknown>;
   /** Invalidate whatever a successful apply refreshes. */
@@ -92,9 +98,14 @@ export type SwipeDeckApi = {
   deck: CardModel[];
   phase: Phase;
   itemsLeft: number;
-  swipeTopCard: (dir: SwipeDirection) => void;
-  swipeLeft: () => void;
-  swipeRight: () => void;
+  /**
+   * Perform a swipe on the top card. Returns true when the swipe was handled
+   * (deck advanced / sentinel chained) so gesture code can spring the card
+   * back when nothing happened.
+   */
+  swipeTopCard: (dir: SwipeDirection) => boolean;
+  swipeLeft: () => boolean;
+  swipeRight: () => boolean;
   undoLast: () => void;
   canUndo: boolean;
   recordPending: boolean;
@@ -103,6 +114,10 @@ export type SwipeDeckApi = {
   applyNow: () => void;
   restartCycle: () => void;
   resetDeckKey: () => void;
+  /** Direction of the most recent removal, driving AnimatePresence exit throws. */
+  lastSwipeDir: 1 | -1;
+  /** Set when Undo restores a card, so the view can slide it in from where it left. */
+  lastRestored: { cardKey: string; dir: 1 | -1 } | null;
 };
 
 function buildDeck(items: ObservatoryItem[]): CardModel[] {
@@ -128,6 +143,7 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     onSentinelRight,
     recordDecision,
     applyDecisions,
+    removeItemFromLists,
     invalidateLists,
     invalidateAfterApply,
     announce,
@@ -138,6 +154,12 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   const [undoState, setUndoState] = useState<DeckUndoState>(null);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [hasPendingApply, setHasPendingApply] = useState(false);
+  // Exit-throw direction and undo-entrance marker for the view's animations.
+  const [lastSwipeDir, setLastSwipeDir] = useState<1 | -1>(1);
+  const [lastRestored, setLastRestored] = useState<{
+    cardKey: string;
+    dir: 1 | -1;
+  } | null>(null);
   // Which deckKey the current deck was built for (state, not a ref: the
   // render-phase init below both reads and adjusts it).
   const [initializedKey, setInitializedKey] = useState<string | null>(null);
@@ -211,11 +233,18 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   // plain refetches, so a mid-session invalidation can't resurrect
   // already-swiped cards.
   if (!active) {
-    if (initializedKey !== null || deck.length || undoState || approvalRequired) {
+    if (
+      initializedKey !== null ||
+      deck.length ||
+      undoState ||
+      approvalRequired ||
+      lastRestored
+    ) {
       setInitializedKey(null);
       setDeck([]);
       setUndoState(null);
       setApprovalRequired(false);
+      setLastRestored(null);
     }
   } else if (librarySectionKey && (pendingData || reviewData)) {
     const approval =
@@ -228,6 +257,7 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     if (initializedKey !== deckKey) {
       setInitializedKey(deckKey);
       setUndoState(null);
+      setLastRestored(null);
       setApprovalRequired(approval);
       if (approval) {
         setPhase('pendingApprovals');
@@ -267,10 +297,15 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     }) => {
       return await recordDecision({ id: params.id, action: params.action });
     },
-    onSuccess: async () => {
+    onSuccess: (_data, vars) => {
       pendingApplyRef.current = true;
       setHasPendingApply(true);
-      await invalidateLists();
+      // Keep the cache truthful for sentinel-time rebuilds without blocking
+      // the next swipe on refetches: drop the item synchronously, converge
+      // with server truth in the background. (The awaited invalidation here
+      // was what serialized rapid triage behind two GETs per swipe.)
+      if (vars.action !== 'undo') removeItemFromLists(vars.id);
+      void invalidateLists();
     },
     onError: (err, vars) => {
       // The deck advanced optimistically; the server never saw this decision.
@@ -369,6 +404,8 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     };
   }, [applyDecisions, invalidateAfterApply]);
 
+  // Undo still waits for an in-flight record POST: an undo racing its own
+  // decision to the server could be processed first and silently lose.
   const canUndo =
     Boolean(undoState) &&
     undoState?.deckKey === deckKey &&
@@ -379,13 +416,18 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     if (!undoState) return;
     if (undoState.deckKey !== deckKey) return;
 
-    const { card, phase: prevPhase } = undoState;
+    const { card, phase: prevPhase, action } = undoState;
     setUndoState(null);
     setPhase(prevPhase);
     setDeck((prev) => {
       // If we currently show a sentinel because the deck ran out, replace it with the restored card.
       const rest = prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
       return [card, ...rest];
+    });
+    // Let the view slide the card in from the side it was thrown out.
+    setLastRestored({
+      cardKey: `${card.item.mediaType}:${card.item.id}`,
+      dir: action === 'approve' || action === 'keep' ? 1 : -1,
     });
 
     recordMutation.mutate({
@@ -400,25 +442,29 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   }, [announce, deckKey, recordMutation, scheduleApply, undoState]);
 
   const swipeTopCard = useCallback(
-    (dir: SwipeDirection) => {
-      if (!active) return;
-      if (!librarySectionKey) return;
-      if (!deck.length) return;
-      if (recordMutation.isPending || applyMutation.isPending) return;
+    (dir: SwipeDirection): boolean => {
+      if (!active) return false;
+      if (!librarySectionKey) return false;
+      if (!deck.length) return false;
+      // Swiping no longer waits on the previous decision's POST — only the
+      // batched apply sync blocks, and that runs rarely.
+      if (applyMutation.isPending) return false;
 
       const top = deck[0];
-      if (!top) return;
+      if (!top) return false;
 
       // Sentinel: only Right is meaningful.
       if (top.kind === 'sentinel') {
-        if (dir === 'left') return;
+        if (dir === 'left') return false;
         setUndoState(null);
+        setLastSwipeDir(1);
+        setLastRestored(null);
         onSentinelRight(top.sentinel, {
           setDeckForReview,
           restartCycle,
           resetDeckKey,
         });
-        return;
+        return true;
       }
 
       const action: DecisionAction =
@@ -449,8 +495,11 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
         `${DECISION_VERB[action]} "${top.item.title || `item ${top.item.id}`}".`,
       );
 
+      setLastSwipeDir(dir === 'right' ? 1 : -1);
+      setLastRestored(null);
       advanceOneOrSentinel(sentinelForPhase(phase));
       scheduleApply();
+      return true;
     },
     [
       active,
@@ -496,5 +545,7 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     applyNow,
     restartCycle,
     resetDeckKey,
+    lastSwipeDir,
+    lastRestored,
   };
 }

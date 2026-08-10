@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
+  AnimatePresence,
   motion,
   useAnimation,
   useMotionValue,
@@ -19,6 +20,19 @@ import { cn } from '@/components/ui/utils';
 import type { CardModel, Phase, SwipeDeckApi } from './use-swipe-deck';
 
 const NOOP = () => undefined;
+
+// One exit path for every removal — pointer throw, keyboard, action buttons,
+// undo replacing the top card — driven by the deck's last swipe direction via
+// AnimatePresence custom. zIndex lifts the leaver above the incoming top card.
+const STACK_EXIT_VARIANTS = {
+  exit: (dir: 1 | -1) => ({
+    x: dir * 560,
+    rotate: dir * 18,
+    opacity: 0,
+    zIndex: 60,
+    transition: { type: 'spring' as const, stiffness: 520, damping: 34, mass: 0.55 },
+  }),
+};
 
 function LoadingPlaceholder() {
   return (
@@ -59,8 +73,10 @@ export function SwipeCard({
   // but "keep in the collection" during review — the badges and hint copy must
   // say which one, or the gesture is mislabeled for half the session.
   phase?: Phase;
-  onSwipeLeft: () => void;
-  onSwipeRight: () => void;
+  // A false return means "nothing happened" — the card springs back instead of
+  // being left stranded at its drag offset. void counts as handled.
+  onSwipeLeft: () => boolean | void;
+  onSwipeRight: () => boolean | void;
 }) {
   const rightLabel = phase === 'pendingApprovals' ? 'Approve' : 'Keep';
   const leftLabel = phase === 'pendingApprovals' ? 'Reject' : 'Remove';
@@ -83,7 +99,6 @@ export function SwipeCard({
   const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.22, 0.45]);
 
   const controls = useAnimation();
-  const leavingRef = useRef(false);
   // Defensive pointer-capture handling:
   // Some mobile browsers + heavy drag interactions can end up in a "stuck" state where taps stop
   // dispatching correctly after a swipe interaction. Explicitly capturing/releasing the pointer
@@ -109,20 +124,8 @@ export function SwipeCard({
   }, []);
 
   const threshold = 120;
-  const throwX = 520;
-  const throwRotate = 18;
   const springBack = useMemo(
     () => ({ type: 'spring' as const, stiffness: 420, damping: 28 }),
-    [],
-  );
-  // Faster "throw" so the next card becomes interactive sooner.
-  const springThrow = useMemo(
-    () => ({
-      type: 'spring' as const,
-      stiffness: 520,
-      damping: 34,
-      mass: 0.55,
-    }),
     [],
   );
   const handlePointerDown = useCallback(
@@ -155,7 +158,6 @@ export function SwipeCard({
     (_: unknown, info: PanInfo) => {
       // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
       releasePointerCapture();
-      if (leavingRef.current) return;
       if (disabled) {
         // disabled can flip mid-drag (the debounced apply firing); without a
         // spring-back the card strands frozen at its drag offset.
@@ -165,45 +167,28 @@ export function SwipeCard({
       // A flick is intent too: project ~250ms of release velocity onto the
       // offset so a fast short flick commits and a slow overshoot still counts.
       const projectedX = info.offset.x + info.velocity.x * 0.25;
+      const springHome = () => {
+        void controls.start({ x: 0, rotate: 0, transition: springBack });
+      };
+      // Commit immediately: the deck advances and this card unmounts through
+      // the stack's AnimatePresence exit throw (which starts from the drag
+      // offset, since this inner transform is preserved during the exit).
+      // The old imperative throw-then-advance kept the next card locked out
+      // until the animation finished — and its .finally reset was the source
+      // of the boomerang/blink glitches.
       if (info.offset.x > threshold || projectedX > threshold) {
-        leavingRef.current = true;
-        void controls
-          .start({
-            x: throwX,
-            rotate: throwRotate,
-            opacity: 0,
-            transition: springThrow,
-          })
-          .then(() => onSwipeRight())
-          .finally(() => {
-            leavingRef.current = false;
-            x.set(0);
-            void controls.set({ x: 0, rotate: 0, opacity: 1 });
-          });
+        if (onSwipeRight() === false) springHome();
         return;
       }
       if (info.offset.x < -threshold || projectedX < -threshold) {
         if (!allowLeft) {
-          void controls.start({ x: 0, rotate: 0, transition: springBack });
+          springHome();
           return;
         }
-        leavingRef.current = true;
-        void controls
-          .start({
-            x: -throwX,
-            rotate: -throwRotate,
-            opacity: 0,
-            transition: springThrow,
-          })
-          .then(() => onSwipeLeft())
-          .finally(() => {
-            leavingRef.current = false;
-            x.set(0);
-            void controls.set({ x: 0, rotate: 0, opacity: 1 });
-          });
+        if (onSwipeLeft() === false) springHome();
         return;
       }
-      void controls.start({ x: 0, rotate: 0, transition: springBack });
+      springHome();
     },
     [
       allowLeft,
@@ -213,11 +198,7 @@ export function SwipeCard({
       onSwipeRight,
       releasePointerCapture,
       springBack,
-      springThrow,
       threshold,
-      throwRotate,
-      throwX,
-      x,
     ],
   );
 
@@ -460,7 +441,9 @@ export function SwipeDeckView({
   /** Advance action for the fallback card — the deck handlers no-op on an empty deck. */
   onFallbackAdvance: () => void;
 }) {
-  const busy = api.recordPending || api.applyPending;
+  // Only the batched apply blocks interaction — a decision POST in flight no
+  // longer locks the deck, so rapid triage isn't serialized on the network.
+  const busy = api.applyPending;
   const topIsItem = api.deck[0]?.kind === 'item';
   const leftActionLabel =
     api.phase === 'pendingApprovals' ? 'Reject download request' : 'Remove from collection';
@@ -477,44 +460,65 @@ export function SwipeDeckView({
         {api.deck.length ? (
           <div className="relative h-full">
             {/* Render a small stack: top 3 */}
-            {api.deck
-              .slice(0, 3)
-              .reverse()
-              .map((card, idx, arr) => {
-                const isTop = idx === arr.length - 1;
-                const depth = arr.length - 1 - idx;
-                // Make the waiting-deck feel obvious (without being distracting).
-                const scale = 1 - depth * 0.045;
-                const y = depth * 18;
-                const opacity = 1 - depth * 0.14;
-                const rotate = depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
-                return (
-                  <motion.div
-                    key={
-                      card.kind === 'sentinel'
-                        ? `${api.deckKey}:sentinel:${card.sentinel}`
-                        : `${api.deckKey}:${card.item.mediaType}:${card.item.id}`
-                    }
-                    initial={false}
-                    animate={{ scale, y, opacity, rotate }}
-                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                    // Scale about the bottom edge so the y-offset shows as a real
-                    // rim below the top card — center-origin scaling swallowed
-                    // nearly all of it and the stack read as a single card.
-                    style={{ zIndex: 50 - depth, transformOrigin: 'bottom center' }}
-                    aria-hidden={!isTop}
-                    className={cn('absolute inset-0', !isTop && 'pointer-events-none')}
-                  >
-                    <SwipeCard
-                      card={card}
-                      disabled={!isTop || busy}
-                      phase={api.phase}
-                      onSwipeLeft={api.swipeLeft}
-                      onSwipeRight={api.swipeRight}
-                    />
-                  </motion.div>
-                );
-              })}
+            <AnimatePresence initial={false} custom={api.lastSwipeDir}>
+              {api.deck
+                .slice(0, 3)
+                .reverse()
+                .map((card, idx, arr) => {
+                  const isTop = idx === arr.length - 1;
+                  const depth = arr.length - 1 - idx;
+                  // Make the waiting-deck feel obvious (without being distracting).
+                  const scale = 1 - depth * 0.045;
+                  const y = depth * 18;
+                  const opacity = 1 - depth * 0.14;
+                  const rotate = depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
+                  const restored =
+                    card.kind === 'item' &&
+                    api.lastRestored?.cardKey ===
+                      `${card.item.mediaType}:${card.item.id}`
+                      ? api.lastRestored
+                      : null;
+                  return (
+                    <motion.div
+                      key={
+                        card.kind === 'sentinel'
+                          ? `${api.deckKey}:sentinel:${card.sentinel}`
+                          : `${api.deckKey}:${card.item.mediaType}:${card.item.id}`
+                      }
+                      // Undo mounts the restored card sliding in from the side
+                      // it was thrown out; everything else appears in place.
+                      initial={
+                        restored
+                          ? {
+                              x: restored.dir * 560,
+                              rotate: restored.dir * 18,
+                              opacity: 0,
+                            }
+                          : false
+                      }
+                      animate={{ scale, y, opacity, rotate, x: 0 }}
+                      exit="exit"
+                      variants={STACK_EXIT_VARIANTS}
+                      custom={api.lastSwipeDir}
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                      // Scale about the bottom edge so the y-offset shows as a real
+                      // rim below the top card — center-origin scaling swallowed
+                      // nearly all of it and the stack read as a single card.
+                      style={{ zIndex: 50 - depth, transformOrigin: 'bottom center' }}
+                      aria-hidden={!isTop}
+                      className={cn('absolute inset-0', !isTop && 'pointer-events-none')}
+                    >
+                      <SwipeCard
+                        card={card}
+                        disabled={!isTop || busy}
+                        phase={api.phase}
+                        onSwipeLeft={api.swipeLeft}
+                        onSwipeRight={api.swipeRight}
+                      />
+                    </motion.div>
+                  );
+                })}
+            </AnimatePresence>
           </div>
         ) : isLoading ? (
           <div className="absolute inset-0">
