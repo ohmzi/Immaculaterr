@@ -677,7 +677,7 @@ export function SwipeDeckView({
       {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
       <div
         aria-busy={busy}
-        className="relative mx-auto max-w-3xl h-[max(360px,min(540px,calc(100dvh-25rem)))] md:h-[max(460px,min(720px,calc(100dvh-27rem)))] overflow-visible"
+        className="relative mx-auto max-w-3xl h-[max(340px,min(540px,calc(100dvh-27rem)))] md:h-[max(440px,min(720px,calc(100dvh-30rem)))] overflow-visible"
       >
         {api.deck.length ? (
           <div className="relative h-full">
@@ -758,40 +758,22 @@ export function SwipeDeckView({
         )}
       </div>
 
-      {/* Action bar. Sits on its own opaque surface, well clear of the deck —
-          floating translucent buttons vanished into the poster art behind
-          them, and sitting tight under the card they read as part of it. */}
-      <div className="mx-auto max-w-3xl mt-8 md:mt-10 flex flex-col items-center gap-3">
-        <div className="flex items-center gap-3 md:gap-4 rounded-[1.75rem] border border-white/15 bg-[#0b0c0f]/90 px-4 py-3 shadow-2xl backdrop-blur-2xl">
-          <button
-            type="button"
-            onClick={api.swipeLeft}
-            disabled={!topIsItem || busy}
-            className="h-14 w-14 rounded-2xl border-2 flex items-center justify-center transition active:scale-95 border-rose-400/60 bg-rose-500/25 text-rose-50 shadow-lg shadow-rose-900/30 hover:bg-rose-500/40 hover:border-rose-300/80 disabled:opacity-30 disabled:cursor-not-allowed"
-            aria-label={leftActionLabel}
-            title={leftActionLabel}
-          >
-            <X className="h-7 w-7" strokeWidth={2.5} />
-          </button>
-          <button
-            type="button"
-            onClick={api.skipTop}
-            disabled={!api.canSkip || busy}
-            className="h-12 w-12 rounded-2xl border-2 flex items-center justify-center transition active:scale-95 border-white/30 bg-white/15 text-white/90 hover:bg-white/25 disabled:opacity-30 disabled:cursor-not-allowed"
-            aria-label="Skip for now — move this card to the back of the deck"
-            title="Skip for now — move this card to the back of the deck"
-          >
-            <SkipForward className="h-5 w-5" strokeWidth={2.5} />
-          </button>
+      {/* Action bar. Circular controls on a matching pill, well clear of the
+          deck: floating translucent squares vanished into the poster art and
+          read as part of the card. The two decisions sit large in the middle,
+          flanked by the smaller undo/skip utilities, so the hierarchy is
+          legible before any of the labels are. */}
+      <div className="mx-auto max-w-3xl mt-10 md:mt-14 flex flex-col items-center gap-4">
+        <div className="flex items-center gap-3 md:gap-4 rounded-full border border-white/10 bg-[#0b0c0f]/75 px-4 py-3 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
           <button
             type="button"
             onClick={api.undoLast}
             disabled={!api.canUndo}
             className={cn(
-              'h-12 rounded-2xl px-4 border-2 text-sm font-bold transition active:scale-95 flex items-center gap-2',
+              'h-12 w-12 rounded-full border flex items-center justify-center transition active:scale-95',
               api.canUndo
-                ? 'border-white/30 bg-white/15 text-white hover:bg-white/25'
-                : 'border-white/10 bg-white/5 text-white/30 cursor-not-allowed',
+                ? 'border-amber-300/40 bg-amber-400/15 text-amber-100 hover:bg-amber-400/25 hover:border-amber-200/60'
+                : 'border-white/10 bg-white/5 text-white/25 cursor-not-allowed',
             )}
             aria-label="Undo last swipe"
             title={
@@ -804,43 +786,62 @@ export function SwipeDeckView({
                     : 'Nothing to undo'
             }
           >
-            <Undo2 className="h-5 w-5" strokeWidth={2.5} />
-            Undo
+            <Undo2 className="h-5 w-5" strokeWidth={2.25} />
+          </button>
+          <button
+            type="button"
+            onClick={api.swipeLeft}
+            disabled={!topIsItem || busy}
+            className="h-16 w-16 rounded-full border flex items-center justify-center transition active:scale-95 border-rose-300/50 bg-rose-500/20 text-rose-100 shadow-[0_8px_24px_-10px_rgba(244,63,94,0.9)] hover:bg-rose-500/35 hover:border-rose-200/70 disabled:opacity-25 disabled:cursor-not-allowed disabled:shadow-none"
+            aria-label={leftActionLabel}
+            title={leftActionLabel}
+          >
+            <X className="h-7 w-7" strokeWidth={2.25} />
           </button>
           <button
             type="button"
             onClick={api.swipeRight}
             disabled={!topIsItem || busy}
-            className="h-14 w-14 rounded-2xl border-2 flex items-center justify-center transition active:scale-95 border-emerald-400/60 bg-emerald-500/25 text-emerald-50 shadow-lg shadow-emerald-900/30 hover:bg-emerald-500/40 hover:border-emerald-300/80 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="h-16 w-16 rounded-full border flex items-center justify-center transition active:scale-95 border-emerald-300/50 bg-emerald-500/20 text-emerald-100 shadow-[0_8px_24px_-10px_rgba(16,185,129,0.9)] hover:bg-emerald-500/35 hover:border-emerald-200/70 disabled:opacity-25 disabled:cursor-not-allowed disabled:shadow-none"
             aria-label={rightActionLabel}
             title={rightActionLabel}
           >
-            <Check className="h-7 w-7" strokeWidth={2.5} />
+            <Check className="h-7 w-7" strokeWidth={2.25} />
+          </button>
+          <button
+            type="button"
+            onClick={api.skipTop}
+            disabled={!api.canSkip || busy}
+            className="h-12 w-12 rounded-full border flex items-center justify-center transition active:scale-95 border-white/20 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed"
+            aria-label="Skip for now — move this card to the back of the deck"
+            title="Skip for now — move this card to the back of the deck"
+          >
+            <SkipForward className="h-5 w-5" strokeWidth={2.25} />
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-white/45">
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-white/40">
           {api.itemsLeft > 0 ? (
             <>
-              <span className="font-bold text-white/70 tabular-nums">
+              <span className="font-semibold text-white/60 tabular-nums">
                 {api.itemsLeft} left
               </span>
-              <span className="hidden md:inline text-white/25">·</span>
+              <span className="hidden md:inline text-white/20">·</span>
             </>
           ) : null}
           {/* The arrow-key and undo shortcuts existed but were undiscoverable. */}
           <span className="hidden md:inline-flex items-center gap-2">
-            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-sans">
+            <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
               ←
             </kbd>
             <span>{api.phase === 'pendingApprovals' ? 'reject' : 'remove'}</span>
-            <span className="text-white/25">·</span>
-            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-sans">
+            <span className="text-white/20">·</span>
+            <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
               →
             </kbd>
             <span>{api.phase === 'pendingApprovals' ? 'approve' : 'keep'}</span>
-            <span className="text-white/25">·</span>
-            <kbd className="rounded border border-white/20 bg-white/10 px-1.5 py-0.5 font-sans">
+            <span className="text-white/20">·</span>
+            <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-sans">
               Z
             </kbd>
             <span>undo</span>
