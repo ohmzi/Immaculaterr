@@ -99,14 +99,21 @@ function formatRating(v: unknown): string | null {
 function SwipeCard({
   card,
   disabled,
+  phase = 'review',
   onSwipeLeft,
   onSwipeRight,
 }: {
   card: CardModel;
   disabled?: boolean;
+  // A right-swipe means "approve this download request" during pendingApprovals
+  // but "keep in the collection" during review — the badges and hint copy must
+  // say which one, or the gesture is mislabeled for half the session.
+  phase?: Phase;
   onSwipeLeft: () => void;
   onSwipeRight: () => void;
 }) {
+  const rightLabel = phase === 'pendingApprovals' ? 'Approve' : 'Keep';
+  const leftLabel = phase === 'pendingApprovals' ? 'Reject' : 'Remove';
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-10, 0, 10]);
   const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0, 1, 1, 1, 0]);
@@ -266,13 +273,13 @@ function SwipeCard({
             style={{ opacity: likeOpacity }}
             className="absolute top-6 left-6 rounded-xl border border-emerald-400/40 bg-emerald-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-emerald-100"
           >
-            Keep
+            {rightLabel}
           </motion.div>
           <motion.div
             style={{ opacity: nopeOpacity }}
             className="absolute top-6 right-6 rounded-xl border border-rose-400/40 bg-rose-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-rose-100"
           >
-            Remove
+            {leftLabel}
           </motion.div>
         </div>
 
@@ -359,11 +366,25 @@ function SwipeCard({
                         ? `TMDB ${card.item.id}`
                         : `TVDB ${card.item.id}`)}
                   </div>
-                  {formatRating(card.item.tmdbVoteAvg ?? null) && (
-                    <div className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/90">
-                      {formatRating(card.item.tmdbVoteAvg ?? null)}
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    {/* Mobile shows no status/approval fields, so this chip is the
+                        only cue for what a swipe does to this card. */}
+                    <div
+                      className={cn(
+                        'rounded-xl border px-2 py-1 text-[10px] font-bold uppercase tracking-wider',
+                        phase === 'pendingApprovals'
+                          ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                          : 'border-white/10 bg-white/5 text-white/60',
+                      )}
+                    >
+                      {phase === 'pendingApprovals' ? 'Request' : 'Cleanup'}
                     </div>
-                  )}
+                    {formatRating(card.item.tmdbVoteAvg ?? null) && (
+                      <div className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/90">
+                        {formatRating(card.item.tmdbVoteAvg ?? null)}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -413,7 +434,9 @@ function SwipeCard({
                   </span>
                 </div>
                 <div className="mt-6 text-xs text-white/55 leading-relaxed">
-                  Swipe right to keep. Swipe left to remove.
+                  {phase === 'pendingApprovals'
+                    ? 'Swipe right to approve the download. Swipe left to reject.'
+                    : 'Swipe right to keep. Swipe left to remove.'}
                 </div>
                 </div>
               </div>
@@ -448,7 +471,9 @@ export function ObservatoryPage() {
     useState<WatchedCollectionKind>('recentlyWatched');
   const [watchedPhase, setWatchedPhase] = useState<Phase>('pendingApprovals');
   const [watchedDeck, setWatchedDeck] = useState<CardModel[]>([]);
-  const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
+  // Value currently unread (the mode pill is phase-driven); the setter keeps the
+  // watched init effect symmetric with the immaculate one.
+  const [, setWatchedApprovalRequired] = useState(false);
   const [watchedUndoState, setWatchedUndoState] = useState<WatchedUndoState>(null);
 
   const pendingApplyRef = useRef(false);
@@ -1627,10 +1652,22 @@ export function ObservatoryPage() {
                     </div>
                   </div>
 
-                  <div className="mb-6 text-xs text-white/55">
-                    {approvalRequired
-                      ? 'Approval is ON. Pending download requests show first.'
-                      : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
+                  <div className="mb-6 flex flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider',
+                        phase === 'pendingApprovals'
+                          ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                          : 'border-white/15 bg-white/5 text-white/70',
+                      )}
+                    >
+                      {phase === 'pendingApprovals' ? 'Download requests' : 'Cleanup'}
+                    </span>
+                    <span className="text-xs text-white/55">
+                      {phase === 'pendingApprovals'
+                        ? 'Swipe right to approve the download · swipe left to reject.'
+                        : 'Swipe right to keep · swipe left to remove.'}
+                    </span>
                   </div>
 
                   <div className="mt-6">
@@ -1682,6 +1719,7 @@ export function ObservatoryPage() {
                                       recordDecisionMutation.isPending ||
                                       applyMutation.isPending
                                     }
+                                    phase={phase}
                                     onSwipeLeft={handleImmaculateSwipeLeft}
                                     onSwipeRight={handleImmaculateSwipeRight}
                                   />
@@ -1700,6 +1738,7 @@ export function ObservatoryPage() {
                                 ? makeNoDataCard()
                                 : reviewDoneCard
                             }
+                            phase={phase}
                             onSwipeLeft={NOOP}
                             onSwipeRight={handleImmaculateSwipeRight}
                           />
@@ -1789,10 +1828,22 @@ export function ObservatoryPage() {
                     </div>
                   </div>
 
-                  <div className="mb-6 text-xs text-white/55">
-                    {watchedApprovalRequired
-                      ? 'Approval is ON. Pending download requests show first.'
-                      : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
+                  <div className="mb-6 flex flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider',
+                        watchedPhase === 'pendingApprovals'
+                          ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                          : 'border-white/15 bg-white/5 text-white/70',
+                      )}
+                    >
+                      {watchedPhase === 'pendingApprovals' ? 'Download requests' : 'Cleanup'}
+                    </span>
+                    <span className="text-xs text-white/55">
+                      {watchedPhase === 'pendingApprovals'
+                        ? 'Swipe right to approve the download · swipe left to reject.'
+                        : 'Swipe right to keep · swipe left to remove.'}
+                    </span>
                   </div>
 
                   <div className="mt-6">
@@ -1833,6 +1884,7 @@ export function ObservatoryPage() {
                                       recordWatchedDecisionMutation.isPending ||
                                       applyWatchedMutation.isPending
                                     }
+                                    phase={watchedPhase}
                                     onSwipeLeft={handleWatchedSwipeLeft}
                                     onSwipeRight={handleWatchedSwipeRight}
                                   />
@@ -1846,6 +1898,7 @@ export function ObservatoryPage() {
                         <div className="absolute inset-0">
                           <SwipeCard
                             card={makeWatchedNoDataCard()}
+                            phase={watchedPhase}
                             onSwipeLeft={NOOP}
                             onSwipeRight={handleWatchedSwipeRight}
                           />
