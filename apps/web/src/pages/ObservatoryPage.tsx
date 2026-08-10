@@ -513,6 +513,10 @@ export function ObservatoryPage() {
   const applyTimerRef = useRef<number | null>(null);
   const deckKeyRef = useRef<string | null>(null);
   const swipeTopCardRef = useRef<((dir: 'left' | 'right') => void) | null>(null);
+  // Latest schedule fns for the apply mutations' onError — the mutations are
+  // declared before the schedulers, which in turn reference the mutations.
+  const scheduleApplyRef = useRef<(() => void) | null>(null);
+  const scheduleWatchedApplyRef = useRef<(() => void) | null>(null);
 
   const watchedPendingApplyRef = useRef(false);
   const watchedApplyTimerRef = useRef<number | null>(null);
@@ -992,6 +996,9 @@ export function ObservatoryPage() {
       librarySectionKey: string;
       id: number;
       action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
+      // Carried for the onError rollback only — never sent to the API.
+      card?: { kind: 'item'; item: ObservatoryItem };
+      phase?: Phase;
     }) => {
       return await recordImmaculateTasteDecisions({
         librarySectionKey: params.librarySectionKey,
@@ -1023,10 +1030,53 @@ export function ObservatoryPage() {
         }),
       ]);
     },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to save swipe decision',
-      );
+    onError: (err, vars) => {
+      // The deck advanced optimistically; the server never saw this decision.
+      // Reconcile the local deck instead of leaving them divergent — but only
+      // if the user is still looking at the same deck.
+      const card = vars.card;
+      if (
+        card &&
+        vars.mediaType === mediaTab &&
+        vars.librarySectionKey === activeLibraryKey
+      ) {
+        if (vars.action === 'undo') {
+          // Undo failed: the original decision still stands server-side, so
+          // take the optimistically-restored card back out.
+          toast.error(
+            err instanceof Error
+              ? `Undo failed — the original decision still stands. ${err.message}`
+              : 'Undo failed — the original decision still stands.',
+          );
+          setDeck((prev) => {
+            const rest = prev.filter(
+              (c) => !(c.kind === 'item' && c.item.id === card.item.id),
+            );
+            if (rest.length) return rest;
+            return [
+              vars.phase === 'pendingApprovals' ? approvalsDoneCard : reviewDoneCard,
+            ];
+          });
+        } else {
+          toast.error(
+            err instanceof Error
+              ? `Swipe not saved — the card is back in the deck. ${err.message}`
+              : 'Swipe not saved — the card is back in the deck.',
+          );
+          if (vars.phase) setPhase(vars.phase);
+          setDeck((prev) => {
+            const rest =
+              prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
+            return [card, ...rest];
+          });
+          // The undo slot points at this failed decision — clear it.
+          setUndoState(null);
+        }
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : 'Failed to save swipe decision',
+        );
+      }
       // Best-effort: reload server truth.
       void Promise.all([
         queryClient.invalidateQueries({
@@ -1058,6 +1108,9 @@ export function ObservatoryPage() {
       collectionKind: WatchedCollectionKind;
       id: number;
       action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
+      // Carried for the onError rollback only — never sent to the API.
+      card?: { kind: 'item'; item: ObservatoryItem };
+      phase?: Phase;
     }) => {
       return await recordWatchedDecisions({
         librarySectionKey: params.librarySectionKey,
@@ -1092,10 +1145,54 @@ export function ObservatoryPage() {
         }),
       ]);
     },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to save swipe decision',
-      );
+    onError: (err, vars) => {
+      // Mirror of the immaculate deck's rollback: reconcile the optimistic
+      // deck with a server that never saw the decision.
+      const card = vars.card;
+      if (
+        card &&
+        vars.mediaType === mediaTab &&
+        vars.librarySectionKey === activeLibraryKey &&
+        vars.collectionKind === watchedCollectionKind
+      ) {
+        if (vars.action === 'undo') {
+          toast.error(
+            err instanceof Error
+              ? `Undo failed — the original decision still stands. ${err.message}`
+              : 'Undo failed — the original decision still stands.',
+          );
+          setWatchedDeck((prev) => {
+            const rest = prev.filter(
+              (c) => !(c.kind === 'item' && c.item.id === card.item.id),
+            );
+            if (rest.length) return rest;
+            return [
+              vars.phase === 'pendingApprovals'
+                ? watchedApprovalsDoneCard
+                : vars.collectionKind === 'recentlyWatched'
+                  ? watchedNextDeckCard
+                  : watchedRestartCard,
+            ];
+          });
+        } else {
+          toast.error(
+            err instanceof Error
+              ? `Swipe not saved — the card is back in the deck. ${err.message}`
+              : 'Swipe not saved — the card is back in the deck.',
+          );
+          if (vars.phase) setWatchedPhase(vars.phase);
+          setWatchedDeck((prev) => {
+            const rest =
+              prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
+            return [card, ...rest];
+          });
+          setWatchedUndoState(null);
+        }
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : 'Failed to save swipe decision',
+        );
+      }
       void Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
@@ -1137,6 +1234,17 @@ export function ObservatoryPage() {
         queryClient.invalidateQueries({ queryKey: ['immaculateTasteCollections'] }),
       ]);
     },
+    onError: (err) => {
+      // Without this, a failed Plex sync was completely silent and the batch
+      // never retried while the page sat idle.
+      toast.error(
+        err instanceof Error
+          ? `Couldn't apply your review to Plex — retrying in 2 minutes. ${err.message}`
+          : "Couldn't apply your review to Plex — retrying in 2 minutes.",
+      );
+      // pendingApplyRef stays true; re-arm the timer so the batch retries.
+      scheduleApplyRef.current?.();
+    },
   });
 
   const applyWatchedMutation = useMutation({
@@ -1155,6 +1263,14 @@ export function ObservatoryPage() {
           queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey],
         }),
       ]);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error
+          ? `Couldn't apply your review to Plex — retrying in 2 minutes. ${err.message}`
+          : "Couldn't apply your review to Plex — retrying in 2 minutes.",
+      );
+      scheduleWatchedApplyRef.current?.();
     },
   });
 
@@ -1179,6 +1295,13 @@ export function ObservatoryPage() {
       });
     }, 120_000);
   }, [activeCollectionTab, activeLibraryKey, applyWatchedMutation, mediaTab]);
+
+  // Keep the apply-retry refs pointing at the latest schedulers (the apply
+  // mutations' onError fires long after any given render).
+  useEffect(() => {
+    scheduleApplyRef.current = scheduleApply;
+    scheduleWatchedApplyRef.current = scheduleWatchedApply;
+  });
 
   const canUndo =
     Boolean(undoState) &&
@@ -1214,6 +1337,8 @@ export function ObservatoryPage() {
       librarySectionKey: activeLibraryKey,
       id: card.item.id,
       action: 'undo',
+      card,
+      phase: prevPhase,
     });
     scheduleApply();
   }, [
@@ -1244,6 +1369,8 @@ export function ObservatoryPage() {
       collectionKind,
       id: card.item.id,
       action: 'undo',
+      card,
+      phase: prevPhase,
     });
     scheduleWatchedApply();
   }, [
@@ -1298,6 +1425,8 @@ export function ObservatoryPage() {
       librarySectionKey: activeLibraryKey,
       id: top.item.id,
       action,
+      card: { kind: 'item', item: top.item },
+      phase,
     });
 
     advanceOneOrSentinel(
@@ -1371,6 +1500,8 @@ export function ObservatoryPage() {
       collectionKind: watchedCollectionKind,
       id: top.item.id,
       action,
+      card: { kind: 'item', item: top.item },
+      phase: watchedPhase,
     });
 
     advanceWatchedOneOrSentinel(
