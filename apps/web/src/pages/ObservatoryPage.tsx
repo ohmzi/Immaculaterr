@@ -13,6 +13,7 @@ import {
   useAnimation,
   useMotionValue,
   useTransform,
+  type PanInfo,
 } from 'motion/react';
 import { Telescope, Undo2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -117,8 +118,10 @@ function SwipeCard({
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-10, 0, 10]);
   const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0, 1, 1, 1, 0]);
-  const likeOpacity = useTransform(x, [40, 140], [0, 1]);
-  const nopeOpacity = useTransform(x, [-140, -40], [1, 0]);
+  // Badges reach full opacity exactly at the commit threshold (120), so a
+  // fully lit badge always means "release commits this".
+  const likeOpacity = useTransform(x, [40, 120], [0, 1]);
+  const nopeOpacity = useTransform(x, [-120, -40], [1, 0]);
   const greenTintOpacity = useTransform(x, [0, 70, 180], [0, 0.14, 0.28]);
   const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.14, 0.28]);
 
@@ -184,12 +187,20 @@ function SwipeCard({
     releasePointerCapture();
   }, [releasePointerCapture]);
   const handleDragEnd = useCallback(
-    (_: unknown, info: { offset: { x: number } }) => {
+    (_: unknown, info: PanInfo) => {
       // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
       releasePointerCapture();
-      if (disabled) return;
       if (leavingRef.current) return;
-      if (info.offset.x > threshold) {
+      if (disabled) {
+        // disabled can flip mid-drag (the debounced apply firing); without a
+        // spring-back the card strands frozen at its drag offset.
+        void controls.start({ x: 0, rotate: 0, transition: springBack });
+        return;
+      }
+      // A flick is intent too: project ~250ms of release velocity onto the
+      // offset so a fast short flick commits and a slow overshoot still counts.
+      const projectedX = info.offset.x + info.velocity.x * 0.25;
+      if (info.offset.x > threshold || projectedX > threshold) {
         leavingRef.current = true;
         void controls
           .start({
@@ -206,7 +217,7 @@ function SwipeCard({
           });
         return;
       }
-      if (info.offset.x < -threshold) {
+      if (info.offset.x < -threshold || projectedX < -threshold) {
         leavingRef.current = true;
         void controls
           .start({
