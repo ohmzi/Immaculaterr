@@ -115,6 +115,9 @@ function SwipeCard({
 }) {
   const rightLabel = phase === 'pendingApprovals' ? 'Approve' : 'Keep';
   const leftLabel = phase === 'pendingApprovals' ? 'Reject' : 'Remove';
+  // Every sentinel ignores left swipes in the page handlers, so committing the
+  // throw animation would just teleport the card back — spring home instead.
+  const allowLeft = card.kind !== 'sentinel';
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 0, 200], [-10, 0, 10]);
   const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0, 1, 1, 1, 0]);
@@ -218,6 +221,10 @@ function SwipeCard({
         return;
       }
       if (info.offset.x < -threshold || projectedX < -threshold) {
+        if (!allowLeft) {
+          void controls.start({ x: 0, rotate: 0, transition: springBack });
+          return;
+        }
         leavingRef.current = true;
         void controls
           .start({
@@ -237,6 +244,7 @@ function SwipeCard({
       void controls.start({ x: 0, rotate: 0, transition: springBack });
     },
     [
+      allowLeft,
       controls,
       disabled,
       onSwipeLeft,
