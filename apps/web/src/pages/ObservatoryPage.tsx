@@ -1844,7 +1844,7 @@ export function ObservatoryPage() {
 
                   <div className="mt-6">
                     {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
-                    <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
+                    <div className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible">
                       {deck.length ? (
                         <div className="relative h-full">
                           {/* Render a small stack: top 3 */}
@@ -2031,7 +2031,7 @@ export function ObservatoryPage() {
                   </div>
 
                   <div className="mt-6">
-                    <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
+                    <div className="relative mx-auto max-w-3xl h-[max(380px,min(540px,calc(100dvh-21rem)))] md:h-[max(480px,min(720px,calc(100dvh-23rem)))] overflow-visible">
                       {watchedDeck.length ? (
                         <div className="relative h-full">
                           {watchedDeck
