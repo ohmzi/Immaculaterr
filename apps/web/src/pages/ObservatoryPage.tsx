@@ -1878,7 +1878,11 @@ export function ObservatoryPage() {
                                     stiffness: 420,
                                     damping: 34,
                                   }}
-                                  style={{ zIndex: 50 - depth }}
+                                  // Scale about the bottom edge so the y-offset
+                                  // shows as a real rim below the top card —
+                                  // center-origin scaling swallowed nearly all
+                                  // of it and the stack read as a single card.
+                                  style={{ zIndex: 50 - depth, transformOrigin: 'bottom center' }}
                                   className={cn(
                                     'absolute inset-0',
                                     !isTop && 'pointer-events-none',
@@ -2051,7 +2055,9 @@ export function ObservatoryPage() {
                                   initial={false}
                                   animate={{ scale, y, opacity, rotate }}
                                   transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                                  style={{ zIndex: 50 - depth }}
+                                  // See the immaculate stack: bottom-origin scale
+                                  // keeps the depth rim visible.
+                                  style={{ zIndex: 50 - depth, transformOrigin: 'bottom center' }}
                                   className={cn(
                                     'absolute inset-0',
                                     !isTop && 'pointer-events-none',
