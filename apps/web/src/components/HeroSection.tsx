@@ -506,6 +506,7 @@ export function HeroSection() {
   const tvRangeDelta = hasRangeDelta ? tvTotal - tvRangeStart : 0;
 
   const hasData = series.length > 0 && (moviesTotal > 0 || tvTotal > 0);
+  const isEmptyState = !hasData && !growthQuery.isLoading;
 
   const [statsMedia, setStatsMedia] = useState<'movies' | 'tv'>('movies');
   const moviesHasStats = moviesTotal > 0;
@@ -659,8 +660,18 @@ export function HeroSection() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.35 }}
                 >
-                {/* Card Header */}
-                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                {/* Card Header — centered, and the (all-disabled) range pills
+                    drop out entirely, when there's genuinely no data. A
+                    right-pinned control row fights a centered title, and
+                    disabled pills over an empty chart don't do anything for
+                    the reader anyway. */}
+                <div
+                  className={
+                    isEmptyState
+                      ? 'mb-6 flex flex-col items-center text-center'
+                      : 'mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'
+                  }
+                >
                   <div className="min-w-0">
                     <h3 className="text-black text-lg font-semibold mb-1">Media Analytics</h3>
                     <p className="text-black/70 text-sm">
@@ -668,45 +679,47 @@ export function HeroSection() {
                     </p>
                   </div>
 
-                  <div className="w-full sm:w-auto">
-                    <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      <div
-                        // No backdrop-blur here: the card underneath is already
-                        // frosted, so a second pass buys nothing — and because
-                        // this sits inside the entrance animation, its filter
-                        // would sit dormant until the animation settled and then
-                        // pop in. See the card comment above.
-                        className="inline-flex items-center gap-1 rounded-xl bg-black/5 border border-black/10 p-1 whitespace-nowrap"
-                        role="group"
-                        aria-label="Select chart time range"
-                      >
-                        {TIME_RANGE_OPTIONS.map((opt) => {
-                          const selected = timeRange === opt.key;
-                          return (
-                            <button
-                              key={opt.key}
-                              type="button"
-                              data-range-key={opt.key}
-                              onClick={handleTimeRangeChange}
-                              disabled={!hasData}
-                              aria-pressed={selected}
-                              title={opt.title}
-                              className={[
-                                'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20',
-                                'disabled:opacity-40 disabled:cursor-not-allowed',
-                                selected
-                                  ? 'bg-black/15 text-black'
-                                  : 'text-black/70 hover:text-black hover:bg-black/10',
-                              ].join(' ')}
-                            >
-                              {opt.label}
-                            </button>
-                          );
-                        })}
+                  {!isEmptyState && (
+                    <div className="w-full sm:w-auto">
+                      <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div
+                          // No backdrop-blur here: the card underneath is already
+                          // frosted, so a second pass buys nothing — and because
+                          // this sits inside the entrance animation, its filter
+                          // would sit dormant until the animation settled and then
+                          // pop in. See the card comment above.
+                          className="inline-flex items-center gap-1 rounded-xl bg-black/5 border border-black/10 p-1 whitespace-nowrap"
+                          role="group"
+                          aria-label="Select chart time range"
+                        >
+                          {TIME_RANGE_OPTIONS.map((opt) => {
+                            const selected = timeRange === opt.key;
+                            return (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                data-range-key={opt.key}
+                                onClick={handleTimeRangeChange}
+                                disabled={!hasData}
+                                aria-pressed={selected}
+                                title={opt.title}
+                                className={[
+                                  'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
+                                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20',
+                                  'disabled:opacity-40 disabled:cursor-not-allowed',
+                                  selected
+                                    ? 'bg-black/15 text-black'
+                                    : 'text-black/70 hover:text-black hover:bg-black/10',
+                                ].join(' ')}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Chart */}
@@ -825,22 +838,21 @@ export function HeroSection() {
                       </div>
                     </motion.div>
                   ) : (
-                    // Finished empty state (not a blur-over-broken-chart hack):
-                    // matches the light frosted card it sits in, rather than the
-                    // old dark gradient + lock icon that read as a paywall gate
-                    // pasted over a half-rendered chart.
+                    // Finished empty state: no nested card/chip chrome — just the
+                    // icon and message sitting directly on the Media Analytics
+                    // card itself. Boxed panels here (bordered frame, white chip)
+                    // only added visual clutter without the card losing its own
+                    // legibility, so they're gone.
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.3 }}
-                      className="absolute inset-0 rounded-xl border border-black/10 bg-black/5 flex flex-col items-center justify-center gap-3 px-6"
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
                     >
-                      <div className="p-3.5 rounded-2xl bg-black/10 border border-black/10">
-                        <LineChartIcon className="w-6 h-6 text-black/50" />
-                      </div>
+                      <LineChartIcon className="w-6 h-6 text-black/50" strokeWidth={2} />
                       <div className="text-center">
                         <p className="text-black font-medium text-sm">No data available yet</p>
-                        <p className="text-black/60 text-xs mt-1 max-w-[280px]">
+                        <p className="text-black/60 text-xs mt-1 max-w-[260px]">
                           Growth trends will show up here once your library has history to track.
                         </p>
                       </div>
