@@ -7,7 +7,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { ArrowRight, ChevronRight, Lock } from 'lucide-react';
+import { ArrowRight, ChevronRight, LineChart as LineChartIcon, Loader2 } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
@@ -20,6 +20,13 @@ import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrow
 // label and the footer figures on the same value so the mapping stays obvious.
 const MOVIES_SERIES_COLOR = '#86198f'; // deep magenta (tailwind fuchsia-800)
 const TV_SERIES_COLOR = '#1e40af'; // deep blue (tailwind blue-800)
+
+// Static up-and-to-the-right silhouette for the chart's loading skeleton —
+// echoes the shape of a real growth curve without claiming to be real data.
+// Fixed values (not random) so the skeleton doesn't jitter on re-render.
+const SKELETON_BAR_HEIGHTS = [
+  18, 22, 20, 28, 26, 34, 30, 40, 38, 48, 44, 54, 50, 60, 58, 68, 64, 74, 70, 80, 78, 88, 84, 94,
+];
 
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
@@ -499,7 +506,6 @@ export function HeroSection() {
   const tvRangeDelta = hasRangeDelta ? tvTotal - tvRangeStart : 0;
 
   const hasData = series.length > 0 && (moviesTotal > 0 || tvTotal > 0);
-  const showBlur = !hasData;
 
   const [statsMedia, setStatsMedia] = useState<'movies' | 'tv'>('movies');
   const moviesHasStats = moviesTotal > 0;
@@ -705,98 +711,137 @@ export function HeroSection() {
 
                 {/* Chart */}
                 <div className="w-full h-[240px] relative min-w-0 overflow-hidden">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <AreaChart
-                      data={dailySeries}
-                      margin={{ top: 8, right: 0, bottom: 8, left: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorTv" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={TV_SERIES_COLOR} stopOpacity={0.18}/>
-                          <stop offset="95%" stopColor={TV_SERIES_COLOR} stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                      <XAxis 
-                        dataKey="x"
-                        type="number"
-                        scale="time"
-                        domain={[rangeBounds.startMs, rangeBounds.endMs]}
-                        ticks={xAxisTicks}
-                        stroke="rgba(0,0,0,0.35)"
-                        style={{ fontSize: '12px' }}
-                        tick={handleXAxisTick}
-                        interval={0}
-                        minTickGap={0}
-                        tickMargin={10}
-                        padding={{ left: 0, right: 0 }}
-                      />
-                      <YAxis
-                        yAxisId="tv"
-                        hide
-                        domain={tvScale.domain}
-                        ticks={tvScale.ticks}
-                      />
-                      <YAxis
-                        yAxisId="movies"
-                        orientation="left"
-                        stroke="rgba(0,0,0,0.35)"
-                        axisLine={{ stroke: 'rgba(0,0,0,0.35)' }}
-                        tickLine={{ stroke: 'rgba(0,0,0,0.35)' }}
-                        style={{ fontSize: '12px' }}
-                        width={yAxisWidth}
-                        tickMargin={0}
-                        tick={handleYAxisTick}
-                        domain={moviesScale.domain}
-                        ticks={moviesScale.ticks}
-                      />
-                      <Tooltip 
-                        labelFormatter={handleTooltipLabel}
-                        formatter={handleTooltipValue}
-                        contentStyle={{ 
-                          backgroundColor: '#1f2937', 
-                          border: '1px solid #374151',
-                          borderRadius: '12px',
-                          color: '#fff'
-                        }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="movies"
-                        yAxisId="movies"
-                        stroke={MOVIES_SERIES_COLOR}
-                        strokeWidth={2.5}
-                        fill="url(#colorMovies)" 
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="tv"
-                        yAxisId="tv"
-                        stroke={TV_SERIES_COLOR}
-                        strokeWidth={2.5}
-                        fill="url(#colorTv)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                  
-                  {/* Blur Overlay */}
-                  {showBlur && (
-                    <motion.div 
+                  {hasData ? (
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                      <AreaChart
+                        data={dailySeries}
+                        margin={{ top: 8, right: 0, bottom: 8, left: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorTv" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={TV_SERIES_COLOR} stopOpacity={0.18}/>
+                            <stop offset="95%" stopColor={TV_SERIES_COLOR} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                        <XAxis
+                          dataKey="x"
+                          type="number"
+                          scale="time"
+                          domain={[rangeBounds.startMs, rangeBounds.endMs]}
+                          ticks={xAxisTicks}
+                          stroke="rgba(0,0,0,0.35)"
+                          style={{ fontSize: '12px' }}
+                          tick={handleXAxisTick}
+                          interval={0}
+                          minTickGap={0}
+                          tickMargin={10}
+                          padding={{ left: 0, right: 0 }}
+                        />
+                        <YAxis
+                          yAxisId="tv"
+                          hide
+                          domain={tvScale.domain}
+                          ticks={tvScale.ticks}
+                        />
+                        <YAxis
+                          yAxisId="movies"
+                          orientation="left"
+                          stroke="rgba(0,0,0,0.35)"
+                          axisLine={{ stroke: 'rgba(0,0,0,0.35)' }}
+                          tickLine={{ stroke: 'rgba(0,0,0,0.35)' }}
+                          style={{ fontSize: '12px' }}
+                          width={yAxisWidth}
+                          tickMargin={0}
+                          tick={handleYAxisTick}
+                          domain={moviesScale.domain}
+                          ticks={moviesScale.ticks}
+                        />
+                        <Tooltip
+                          labelFormatter={handleTooltipLabel}
+                          formatter={handleTooltipValue}
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: '1px solid #374151',
+                            borderRadius: '12px',
+                            color: '#fff'
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="movies"
+                          yAxisId="movies"
+                          stroke={MOVIES_SERIES_COLOR}
+                          strokeWidth={2.5}
+                          fill="url(#colorMovies)"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="tv"
+                          yAxisId="tv"
+                          stroke={TV_SERIES_COLOR}
+                          strokeWidth={2.5}
+                          fill="url(#colorTv)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : growthQuery.isLoading ? (
+                    // Skeleton state: an inert silhouette of the chart the user is
+                    // about to see, not a paywall/lock treatment. Grid lines echo
+                    // the real CartesianGrid so nothing jumps when data lands.
+                    <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.3 }}
-                      className="pointer-events-none absolute inset-0 backdrop-blur-xl bg-gradient-to-br from-gray-900/60 via-gray-800/50 to-gray-900/60 rounded-xl flex flex-col items-center justify-center border border-white/5"
+                      className="absolute inset-0 rounded-xl border border-black/10 bg-black/5 overflow-hidden"
                     >
-                      <div className="bg-yellow-400/10 p-4 rounded-2xl backdrop-blur-sm border border-yellow-400/20 mb-3">
-                        <Lock className="w-6 h-6 text-yellow-400" />
+                      <div className="absolute inset-0 flex flex-col justify-between py-3">
+                        {[0, 1, 2, 3].map((i) => (
+                          <div key={i} className="h-px bg-black/10" />
+                        ))}
                       </div>
-                      <div className="text-center px-4">
-                        <p className="text-white font-medium">
-                          {growthQuery.isLoading ? 'Loading…' : 'No Data Available'}
+                      <div className="absolute inset-x-4 bottom-3 top-8 flex items-end gap-[3px]">
+                        {SKELETON_BAR_HEIGHTS.map((h, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 rounded-t-sm bg-black/10"
+                            style={{ height: `${h}%` }}
+                          />
+                        ))}
+                      </div>
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-0 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 border border-black/10 shadow-sm">
+                          <Loader2 className="w-3.5 h-3.5 text-black/60 animate-spin" />
+                          <span className="text-black/70 text-xs font-medium">Loading library history…</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    // Finished empty state (not a blur-over-broken-chart hack):
+                    // matches the light frosted card it sits in, rather than the
+                    // old dark gradient + lock icon that read as a paywall gate
+                    // pasted over a half-rendered chart.
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute inset-0 rounded-xl border border-black/10 bg-black/5 flex flex-col items-center justify-center gap-3 px-6"
+                    >
+                      <div className="p-3.5 rounded-2xl bg-black/10 border border-black/10">
+                        <LineChartIcon className="w-6 h-6 text-black/50" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-black font-medium text-sm">No data available yet</p>
+                        <p className="text-black/60 text-xs mt-1 max-w-[280px]">
+                          Growth trends will show up here once your library has history to track.
                         </p>
                       </div>
                     </motion.div>
@@ -865,16 +910,6 @@ export function HeroSection() {
                       </p>
                     </div>
                   </div>
-                  
-                  {/* Blur Overlay for Stats */}
-                  {showBlur && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.3, delay: 0.1 }}
-                      className="pointer-events-none absolute inset-0 backdrop-blur-lg bg-gradient-to-r from-gray-900/50 via-gray-800/40 to-gray-900/50 rounded-lg border border-white/5"
-                    />
-                  )}
                 </button>
                 </motion.div>
               </div>
