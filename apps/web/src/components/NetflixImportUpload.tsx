@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState, type DragEvent } from 'react';
+import {
+  useCallback,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, FileUp, Loader2, CheckCircle2 } from 'lucide-react';
 import { uploadNetflixCsv, type ImportUploadResponse } from '@/api/import';
@@ -57,11 +63,13 @@ export function NetflixImportUpload({
   const validateAndSetFile = useCallback((file: File | null) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.csv')) {
+      setSelectedFile(null);
       setState('error');
       setErrorMessage('Only .csv files are accepted');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
+      setSelectedFile(null);
       setState('error');
       setErrorMessage('File exceeds the 5 MB limit');
       return;
@@ -70,6 +78,18 @@ export function NetflixImportUpload({
     setErrorMessage(null);
     setState('idle');
   }, []);
+
+  const openFilePicker = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+  const handleDropZoneKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      inputRef.current?.click();
+    },
+    [],
+  );
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -182,8 +202,12 @@ export function NetflixImportUpload({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-        className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${
+        onClick={openFilePicker}
+        onKeyDown={handleDropZoneKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-label="Choose a Netflix viewing-history CSV file to upload"
+        className={`group relative flex cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${
           compact ? 'p-6' : 'p-10'
         } ${
           state === 'dragging'
