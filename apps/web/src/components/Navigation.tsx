@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -280,6 +281,26 @@ export function Navigation() {
   const handleNavItemMouseLeave = useCallback(() => {
     setHoveredIndex(null);
   }, []);
+  // Hover alone cannot open these — a keyboard user has no mouseenter to give.
+  // Clicking the trigger toggles the same state, so pointer and keyboard drive
+  // one code path instead of two.
+  const handleNavItemToggle = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const raw = event.currentTarget.dataset.navIndex;
+      const index = Number.parseInt(raw ?? '', 10);
+      if (!Number.isFinite(index)) return;
+      setHoveredIndex((current) => (current === index ? null : index));
+    },
+    [],
+  );
+  // Escape closes from anywhere inside the item, trigger or dropdown entry.
+  const handleNavItemKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Escape') return;
+      setHoveredIndex(null);
+    },
+    [],
+  );
   const handleDropdownClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const to = event.currentTarget.dataset.to;
@@ -412,9 +433,15 @@ export function Navigation() {
                     data-nav-index={String(index)}
                     onMouseEnter={handleNavItemMouseEnter}
                     onMouseLeave={handleNavItemMouseLeave}
+                    onKeyDown={handleNavItemKeyDown}
                   >
                     <button
                       ref={getButtonRefHandler(index)}
+                      type="button"
+                      data-nav-index={String(index)}
+                      aria-haspopup={item.dropdown ? true : undefined}
+                      aria-expanded={item.dropdown ? hoveredIndex === index : undefined}
+                      onClick={handleNavItemToggle}
                       className="relative px-5 py-2.5 text-sm text-white/90 hover:text-white active:text-white transition-all duration-300 rounded-2xl overflow-hidden group active:scale-[0.98]"
                     >
                       {/* Glassy button background */}
