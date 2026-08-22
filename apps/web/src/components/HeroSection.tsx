@@ -8,7 +8,13 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { ArrowRight, ChevronRight, LineChart as LineChartIcon, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  ChevronRight,
+  LineChart as LineChartIcon,
+  Loader2,
+} from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
@@ -514,7 +520,12 @@ export function HeroSection() {
   const tvRangeDelta = hasRangeDelta ? tvTotal - tvRangeStart : 0;
 
   const hasData = series.length > 0 && (moviesTotal > 0 || tvTotal > 0);
-  const isEmptyState = !hasData && !growthQuery.isLoading;
+  const isEmptyState = !hasData && !growthQuery.isLoading && !growthQuery.isError;
+
+  const { refetch: refetchGrowth } = growthQuery;
+  const handleGrowthRetry = useCallback(() => {
+    void refetchGrowth();
+  }, [refetchGrowth]);
 
   const [statsMedia, setStatsMedia] = useState<'movies' | 'tv'>('movies');
   const moviesHasStats = moviesTotal > 0;
@@ -863,6 +874,36 @@ export function HeroSection() {
                         <Loader2 className="w-6 h-6 text-black/50 animate-spin" strokeWidth={2} />
                         <p className="text-black/80 font-medium text-sm">Loading library history…</p>
                       </div>
+                    </motion.div>
+                  ) : growthQuery.isError ? (
+                    // A failed fetch is not an empty library. Without this branch
+                    // the empty state below claimed there was no history to show,
+                    // which reads as "your library has no data" when the real
+                    // answer is "we could not reach the server".
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
+                    >
+                      <AlertTriangle className="w-6 h-6 text-black/50" strokeWidth={2} />
+                      <div className="text-center">
+                        <p className="text-black font-medium text-sm">
+                          Couldn&apos;t load library history
+                        </p>
+                        <p className="text-black/60 text-xs mt-1 max-w-[260px]">
+                          The server didn&apos;t answer. Your library is fine — this is
+                          just the chart.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleGrowthRetry}
+                        disabled={growthQuery.isFetching}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-black/5 border border-black/10 text-black/70 hover:text-black hover:bg-black/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {growthQuery.isFetching ? 'Retrying…' : 'Try again'}
+                      </button>
                     </motion.div>
                   ) : (
                     // Finished empty state: no nested card/chip chrome — just the
