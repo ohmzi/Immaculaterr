@@ -1935,8 +1935,13 @@ export class JobsService implements OnModuleInit {
         },
       });
 
-      await tx.jobQueueState.update({
-        where: { id: GLOBAL_QUEUE_STATE_ID },
+      // Only release the lease if this run still holds it. A run that the
+      // watchdog already timed out can finish minutes later and reach here,
+      // by which point the queue has handed the lease to someone else —
+      // clearing it unconditionally would let a second run be claimed
+      // alongside the one that is still executing.
+      await tx.jobQueueState.updateMany({
+        where: { id: GLOBAL_QUEUE_STATE_ID, activeRunId: params.runId },
         data: {
           activeRunId: null,
           cooldownUntil,
