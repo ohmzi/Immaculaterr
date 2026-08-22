@@ -179,8 +179,10 @@ export function ToolbarSearch({ open, onOpenChange, variant }: ToolbarSearchProp
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
       if (variant !== 'mobile' || event.key !== 'Enter') return;
       event.preventDefault();
+      // React nulls event.currentTarget as soon as the handler returns, so it
+      // cannot be read from inside the deferred frame — blur the input by ref.
       window.requestAnimationFrame(() => {
-        event.currentTarget.blur();
+        inputRef.current?.blur();
       });
     },
     [variant],
