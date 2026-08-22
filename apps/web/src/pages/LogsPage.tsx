@@ -328,6 +328,11 @@ export const LogsPage = () => {
       await queryClient.invalidateQueries({ queryKey: ['serverLogs'] });
       setClearAllOpen(false);
     },
+    // The dialog surfaces this inline via its error prop; the toast is for the
+    // coarse-pointer path, which uses window.confirm and has nowhere to show it.
+    onError: (error: Error) => {
+      toast.error(error.message || 'Could not clear logs. Please try again.');
+    },
   });
   const closeClearAllDialog = useCallback(() => {
     setClearAllOpen(false);
@@ -851,6 +856,9 @@ export const LogsPage = () => {
         cancelText="Cancel"
         variant="danger"
         confirming={clearMutation.isPending}
+        error={
+          clearMutation.isError ? (clearMutation.error as Error).message : null
+        }
       />
     </div>
   );
