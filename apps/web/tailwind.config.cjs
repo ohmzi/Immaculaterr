@@ -10,6 +10,10 @@
  * dark variant) or by `@source` in `src/tailwind.css` (content), so nothing is
  * lost by it not being read. It is kept only as a reference for the v3 setup.
  *
+ * The `tailwindcss-animate` plugin that used to be listed here was dead for the
+ * same reason; `tw-animate-css` replaces it and is imported from
+ * `src/tailwind.css`.
+ *
  * @type {import('tailwindcss').Config}
  */
 module.exports = {
@@ -66,5 +70,4 @@ module.exports = {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
 };

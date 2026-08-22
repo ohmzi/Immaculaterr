@@ -1,3 +1,9 @@
 @import 'tailwindcss' source(none);
+
+/* Enter/exit animation utilities (animate-in, fade-*, zoom-*, slide-in-from-*)
+   used by the Radix-backed popover and select. Replaces the tailwindcss-animate
+   plugin, which was v3-only and reached Tailwind through the JS config — a file
+   v4 never reads, so those classes had been resolving to nothing. */
+@import 'tw-animate-css';
 @source './**/*.{js,ts,jsx,tsx}';
 @source '../index.html';
