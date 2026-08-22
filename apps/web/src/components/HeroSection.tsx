@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { ArrowRight, ChevronRight, LineChart as LineChartIcon, Loader2 } from 'lucide-react';
@@ -27,6 +28,13 @@ const TV_SERIES_COLOR = '#1e40af'; // deep blue (tailwind blue-800)
 const SKELETON_BAR_HEIGHTS = [
   18, 22, 20, 28, 26, 34, 30, 40, 38, 48, 44, 54, 50, 60, 58, 68, 64, 74, 70, 80, 78, 88, 84, 94,
 ];
+
+// Dashes the skeleton's grid rules to match the real chart's CartesianGrid
+// (strokeDasharray="3 3"), so the grid doesn't change weight when data lands.
+const SKELETON_GRID_LINE: CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(to right, rgba(0,0,0,0.12) 0 3px, transparent 3px 6px)',
+};
 
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
@@ -803,38 +811,57 @@ export function HeroSection() {
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : growthQuery.isLoading ? (
-                    // Skeleton state: an inert silhouette of the chart the user is
-                    // about to see, not a paywall/lock treatment. Grid lines echo
-                    // the real CartesianGrid so nothing jumps when data lands.
+                    // Skeleton state: a silhouette of the chart the user is about
+                    // to see, not a paywall/lock treatment. Grid lines and bars
+                    // echo the real CartesianGrid and area fill so nothing jumps
+                    // when data lands. Everything here is drawn in the card's own
+                    // black-tint language — the only white is the sweep.
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.3 }}
                       className="absolute inset-0 rounded-xl border border-black/10 bg-black/5 overflow-hidden"
                     >
-                      <div className="absolute inset-0 flex flex-col justify-between py-3">
+                      <div aria-hidden="true" className="absolute inset-0 flex flex-col justify-between py-3">
                         {[0, 1, 2, 3].map((i) => (
-                          <div key={i} className="h-px bg-black/10" />
+                          <div key={i} className="h-px" style={SKELETON_GRID_LINE} />
                         ))}
                       </div>
-                      <div className="absolute inset-x-4 bottom-3 top-8 flex items-end gap-[3px]">
+                      {/* Bars grow up from the baseline on a short stagger, so the
+                          skeleton builds left-to-right the way the growth curve it
+                          stands in for does. scaleY off a bottom origin keeps it on
+                          the compositor; the heights stay fixed so nothing jitters
+                          on re-render. */}
+                      <div aria-hidden="true" className="absolute inset-x-4 bottom-3 top-8 flex items-end gap-[3px]">
                         {SKELETON_BAR_HEIGHTS.map((h, i) => (
-                          <div
+                          <motion.div
                             key={i}
-                            className="flex-1 rounded-t-sm bg-black/10"
+                            className="flex-1 origin-bottom rounded-t-sm bg-gradient-to-t from-black/[0.14] to-black/[0.04]"
                             style={{ height: `${h}%` }}
+                            initial={{ scaleY: 0.35, opacity: 0 }}
+                            animate={{ scaleY: 1, opacity: 1 }}
+                            transition={{ duration: 0.45, delay: i * 0.018, ease: 'easeOut' }}
                           />
                         ))}
                       </div>
+                      {/* A narrow band that travels across, not a full-width wash:
+                          at half the track's width the highlight clears the surface
+                          instead of parking a sheet of white over it. Hidden under
+                          reduced motion — the status text below is the real signal,
+                          so nothing is lost by dropping the decoration. */}
                       <div
                         aria-hidden="true"
-                        className="absolute inset-0 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent motion-reduce:hidden"
                       />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 border border-black/10 shadow-sm">
-                          <Loader2 className="w-3.5 h-3.5 text-black/60 animate-spin" />
-                          <span className="text-black/70 text-xs font-medium">Loading library history…</span>
-                        </div>
+                      {/* Same shape as the empty state below — icon over a single
+                          line, sitting directly on the surface. A white chip here
+                          read as a sticker patched onto the card. */}
+                      <div
+                        role="status"
+                        className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
+                      >
+                        <Loader2 className="w-6 h-6 text-black/50 animate-spin" strokeWidth={2} />
+                        <p className="text-black/80 font-medium text-sm">Loading library history…</p>
                       </div>
                     </motion.div>
                   ) : (
