@@ -1761,7 +1761,7 @@ export interface components {
         AppMetaResponseDto: {
             /** @example immaculaterr */
             name: string;
-            /** @example 1.7.10-beta-2 */
+            /** @example 1.7.10-beta-3 */
             version: string;
             /** @example 41fb2cb */
             buildSha: Record<string, never> | null;
@@ -1795,9 +1795,9 @@ export interface components {
         UpdateProfileDto: Record<string, never>;
         ReorderProfilesDto: Record<string, never>;
         UpdatesResponseDto: {
-            /** @example 1.7.10-beta-2 */
+            /** @example 1.7.10-beta-3 */
             currentVersion: string;
-            /** @example 1.7.10-beta-2 */
+            /** @example 1.7.10-beta-3 */
             latestVersion: Record<string, never> | null;
             /** @example true */
             updateAvailable: boolean;
@@ -1805,7 +1805,7 @@ export interface components {
             source: string;
             /** @example ohmz/Immaculaterr */
             repo: Record<string, never> | null;
-            /** @example https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10-beta-2 */
+            /** @example https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10-beta-3 */
             latestUrl: Record<string, never> | null;
             /** @example 2026-01-09T16:05:00.000Z */
             checkedAt: string;
@@ -4068,6 +4068,7 @@ export interface operations {
                 mediaType: string;
                 restored: string;
                 search: string;
+                runId: string;
             };
             header?: never;
             path?: never;
