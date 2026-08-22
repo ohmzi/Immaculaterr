@@ -694,12 +694,6 @@ export const RewindPage = () => {
                 </p>
               </motion.div>
 
-              <Link
-                to="/"
-                className="text-sm text-white/70 hover:text-white/90 transition-colors underline-offset-4 hover:underline"
-              >
-                
-              </Link>
             </div>
 
             {historyQuery.isLoading || queueQuery.isLoading ? (
