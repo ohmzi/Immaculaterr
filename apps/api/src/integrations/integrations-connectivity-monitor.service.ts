@@ -29,13 +29,18 @@ function pickBool(obj: Record<string, unknown>, path: string): boolean | null {
   return typeof v === 'boolean' ? v : null;
 }
 
-function normalizeHttpUrl(raw: string): string {
+// Returns null instead of throwing: the value comes from stored settings, so a
+// malformed entry is bad data to report, not an exception to unwind the poll on.
+function normalizeHttpUrl(raw: string): string | null {
   const trimmed = raw.trim();
   const baseUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-  const parsed = new URL(baseUrl);
-  if (!/^https?:$/i.test(parsed.protocol)) {
-    throw new Error('baseUrl must be a valid http(s) URL');
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    return null;
   }
+  if (!/^https?:$/i.test(parsed.protocol)) return null;
   return baseUrl;
 }
 
@@ -157,7 +162,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     const s = settings;
     const sec = secrets;
 
-    await Promise.all([
+    // allSettled, not all: every integration here is optional, so one of them
+    // throwing must not abandon the other six with stale statuses. Rejections
+    // are logged rather than swallowed.
+    const settled = await Promise.allSettled([
       this.checkTmdb(s, sec),
       this.checkRadarr(s, sec),
       this.checkSonarr(s, sec),
@@ -166,6 +174,13 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       this.checkOpenAi(s, sec),
       this.checkGoogle(s, sec),
     ]);
+    for (const outcome of settled) {
+      if (outcome.status === 'rejected') {
+        this.logger.warn(
+          `Connectivity check failed: ${String(outcome.reason)}`,
+        );
+      }
+    }
   }
 
   constructor(
@@ -214,6 +229,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     }
 
     const baseUrl = normalizeHttpUrl(pickString(settings, 'radarr.baseUrl'));
+    if (!baseUrl) {
+      this.setStatus('radarr', 'offline', 'baseUrl is not a valid http(s) URL');
+      return;
+    }
     const apiKey = pickString(secrets, 'radarr.apiKey');
     const url = new URL(
       'api/v3/system/status',
@@ -243,6 +262,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     }
 
     const baseUrl = normalizeHttpUrl(pickString(settings, 'sonarr.baseUrl'));
+    if (!baseUrl) {
+      this.setStatus('sonarr', 'offline', 'baseUrl is not a valid http(s) URL');
+      return;
+    }
     const apiKey = pickString(secrets, 'sonarr.apiKey');
     const url = new URL(
       'api/v3/system/status',
@@ -272,6 +295,10 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     }
 
     const baseUrl = normalizeHttpUrl(pickString(settings, 'seerr.baseUrl'));
+    if (!baseUrl) {
+      this.setStatus('seerr', 'offline', 'baseUrl is not a valid http(s) URL');
+      return;
+    }
     const apiKey = pickString(secrets, 'seerr.apiKey');
     const root = new URL(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
     const rootPath = root.pathname.replace(/\/+$/, '');
@@ -303,6 +330,14 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     }
 
     const baseUrl = normalizeHttpUrl(pickString(settings, 'tautulli.baseUrl'));
+    if (!baseUrl) {
+      this.setStatus(
+        'tautulli',
+        'offline',
+        'baseUrl is not a valid http(s) URL',
+      );
+      return;
+    }
     const apiKey = pickString(secrets, 'tautulli.apiKey');
     const url = new URL(
       `api/v2?apikey=${encodeURIComponent(apiKey)}&cmd=status`,
