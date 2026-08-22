@@ -1,4 +1,17 @@
-/** @type {import('tailwindcss').Config} */
+/**
+ * NOTE: this file is INERT. The project runs Tailwind v4, which only reads a JS
+ * config when a stylesheet pulls it in with `@config` — nothing does. Adding a
+ * token here will silently never reach the output CSS; that is how the hero
+ * chart's shimmer, `font-plex`/`font-tesla` and the accordion keyframes all
+ * ended up as no-op class names. Put new theme tokens in `src/theme.css`
+ * (`@theme`) instead.
+ *
+ * What is left below is duplicated by `src/theme.css` (colors, borderRadius,
+ * dark variant) or by `@source` in `src/tailwind.css` (content), so nothing is
+ * lost by it not being read. It is kept only as a reference for the v3 setup.
+ *
+ * @type {import('tailwindcss').Config}
+ */
 module.exports = {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -11,12 +24,6 @@ module.exports = {
       },
     },
     extend: {
-      fontFamily: {
-        // Closest open/web-safe stand-ins for Plex/Tesla brand fonts.
-        // If you want *exact* brand fonts, you'll need to self-host them with proper licensing.
-        plex: ['Michroma', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        tesla: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -56,25 +63,6 @@ module.exports = {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
-      },
-      keyframes: {
-        'accordion-down': {
-          from: { height: '0' },
-          to: { height: 'var(--radix-accordion-content-height)' },
-        },
-        'accordion-up': {
-          from: { height: 'var(--radix-accordion-content-height)' },
-          to: { height: '0' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '200% 0' },
-          '100%': { backgroundPosition: '-200% 0' },
-        },
-      },
-      animation: {
-        'accordion-down': 'accordion-down 0.2s ease-out',
-        'accordion-up': 'accordion-up 0.2s ease-out',
-        shimmer: 'shimmer 1.8s ease-in-out infinite',
       },
     },
   },
