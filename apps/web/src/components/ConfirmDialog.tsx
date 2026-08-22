@@ -1,6 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { CircleAlert, Loader2, X } from 'lucide-react';
-import { useCallback, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useId,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 export type ConfirmDialogVariant = 'danger' | 'primary';
@@ -51,6 +56,8 @@ export function ConfirmDialog(props: {
     if (confirming) return;
     onClose();
   }, [confirming, onClose]);
+  // Names the dialog for assistive tech without duplicating the visible title.
+  const titleId = useId();
 
   // Portaled to the body on purpose. Most callers sit inside a card that uses
   // backdrop-filter, and a backdrop-filter ancestor becomes the containing block
@@ -76,6 +83,9 @@ export function ConfirmDialog(props: {
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 260, damping: 26 }}
             onClick={handleDialogClick}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             className="relative w-full sm:max-w-lg rounded-[32px] bg-[#1a1625]/80 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-purple-500/10 overflow-hidden"
           >
             <div className="p-6 sm:p-7">
@@ -84,7 +94,10 @@ export function ConfirmDialog(props: {
                   <div className="text-xs font-bold text-white/50 uppercase tracking-wider">
                     {label}
                   </div>
-                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+                  <h2
+                    id={titleId}
+                    className="mt-2 text-2xl font-black tracking-tight text-white"
+                  >
                     {title}
                   </h2>
                 </div>
