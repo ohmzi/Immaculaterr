@@ -602,11 +602,10 @@ describe('JobsService durable auto-run media dedupe', () => {
 
     expect(finalized).toBe(false);
     expect(tx.jobQueueState.update).not.toHaveBeenCalled();
-    expect(tx.jobQueueState.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ activeRunId: 'run-timed-out' }),
-      }),
-    );
+    const leaseCall = tx.jobQueueState.updateMany.mock.calls[0] as
+      | [{ where: { activeRunId: string } }]
+      | undefined;
+    expect(leaseCall?.[0].where.activeRunId).toBe('run-timed-out');
   });
 
   it('does not write a durable history record for failed or skipped auto runs', async () => {
