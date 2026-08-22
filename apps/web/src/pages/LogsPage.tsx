@@ -432,6 +432,7 @@ export const LogsPage = () => {
           <button
             type="button"
             onClick={clearSelectedFilters}
+            aria-pressed={selected.length === 0}
             className={[
               APP_PRESSABLE_CLASS,
               'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
@@ -448,6 +449,7 @@ export const LogsPage = () => {
               type="button"
               data-filter-id={f.id}
               onClick={handleServiceFilterClick}
+              aria-pressed={selected.includes(f.id)}
               className={[
                 APP_PRESSABLE_CLASS,
                 'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
