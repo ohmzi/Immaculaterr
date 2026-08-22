@@ -812,7 +812,7 @@ export function ObservatoryPage() {
 
                   <SwipeDeckView
                     api={immaculateDeck}
-                    isLoading={listPendingQuery.isPending || listReviewQuery.isPending}
+                    isLoading={listPendingQuery.isLoading || listReviewQuery.isLoading}
                     fallbackCard={
                       (listPendingQuery.data?.items?.length ?? 0) === 0 &&
                       (listReviewQuery.data?.items?.length ?? 0) === 0
@@ -907,8 +907,8 @@ export function ObservatoryPage() {
                   <SwipeDeckView
                     api={watchedDeck}
                     isLoading={
-                      listWatchedPendingQuery.isPending ||
-                      listWatchedReviewQuery.isPending
+                      listWatchedPendingQuery.isLoading ||
+                      listWatchedReviewQuery.isLoading
                     }
                     fallbackCard={makeWatchedNoDataCard()}
                     onFallbackAdvance={handleWatchedFallbackAdvance}
