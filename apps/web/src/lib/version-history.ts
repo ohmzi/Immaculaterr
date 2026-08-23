@@ -94,7 +94,20 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
         bullets: [
           'Tasks now fail honestly: a failed scrape or an unreachable Radarr/Sonarr marks the run failed instead of quietly reporting success.',
           'The app loads much faster — pages are fetched as you visit them instead of in one big bundle.',
-          'Security updates for multer, react-router-dom, and qs.',
+          'A job that finishes after being timed out can no longer take a newer job\u2019s turn in the queue, which could let two jobs run at once.',
+          'One unreachable or mistyped integration address no longer leaves every other service\u2019s connection status stale.',
+          'Security updates for multer, react-router-dom, qs, and deepmerge-ts.',
+        ],
+      },
+      {
+        title: 'Fixes and accessibility',
+        bullets: [
+          'This popup works again \u2014 the app reported an older version than the notes it shipped with, so it could never match and never opened.',
+          'Failed requests say so instead of showing an empty result: the dashboard chart offers a retry, and the Duplicates scan no longer claims a clean library after a scan that never finished.',
+          'Navigation dropdowns open with the keyboard, and the Netflix CSV picker can be reached without a mouse.',
+          'Plex login gives up after two minutes instead of retrying forever, and leaving Vault mid-login stops it too.',
+          'Clearing all logs reports a failure instead of leaving the dialog open.',
+          'Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.',
         ],
       },
     ],

@@ -27,7 +27,17 @@ This file tracks notable changes by version.
   - Tasks fail loudly and honestly: failed scrapes, unreachable Radarr/Sonarr, or all-items-failed runs mark the report task failed instead of hiding behind counters; the large-file replacer no longer reports space freed when nothing was deleted.
   - Every plex.tv request has a timeout, transient upstream blips (429/503, resets) are retried once on reads, and error text in logs and reports is bounded with API keys redacted.
   - Faster loading: pages are code-split and fetched on first visit instead of one 1.9 MB bundle, the Logs page polls only new lines, and Cutting Room listings answer from a short cache after the first scan.
-- Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), and refreshing qs.
+  - A job that finishes after the watchdog has already timed it out can no longer hand back a newer job's turn in the queue, which could let two jobs run against Radarr/Sonarr/Plex at the same time.
+  - A single unreachable or mistyped integration address no longer leaves every other service's connection status stale — each one is reported on its own.
+- Fixes and accessibility:
+  - The What's New popup appears again — the app reported an older version than the release notes it shipped with, so the popup could never match and never opened.
+  - Failed requests now say so instead of pretending there is nothing to show: the dashboard growth chart offers a retry, and the Duplicates scan no longer claims every movie has a single copy after a scan that never finished.
+  - Desktop navigation dropdowns open with the keyboard, and the Netflix CSV picker can be reached and opened without a mouse.
+  - Plex login gives up after two minutes instead of retrying forever, in both Vault and the setup wizard, and leaving Vault mid-login stops it too.
+  - Clearing all logs reports a failure instead of leaving the dialog open with nothing to show for it.
+  - Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.
+  - Picking an invalid file in the Netflix importer clears the previous selection, so the error and the pending upload always agree.
+- Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), refreshing qs, and pinning deepmerge-ts to 8.0.2 (stack exhaustion when merging recursive objects).
 
 ## 1.7.10-beta-2
 
