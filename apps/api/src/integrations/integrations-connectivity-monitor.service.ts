@@ -97,6 +97,16 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     return init;
   }
 
+  // Resolves one service's stored baseUrl, reporting it offline and returning
+  // null when the value cannot be used. Keeps the guard and its message in a
+  // single place rather than repeated per integration.
+  private resolveServiceBaseUrl(key: ServiceKey, raw: string): string | null {
+    const baseUrl = normalizeHttpUrl(raw);
+    if (baseUrl) return baseUrl;
+    this.setStatus(key, 'offline', 'baseUrl is not a valid http(s) URL');
+    return null;
+  }
+
   private setStatus(
     key: ServiceKey,
     next: ServiceStatus,
@@ -228,11 +238,11 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       return;
     }
 
-    const baseUrl = normalizeHttpUrl(pickString(settings, 'radarr.baseUrl'));
-    if (!baseUrl) {
-      this.setStatus('radarr', 'offline', 'baseUrl is not a valid http(s) URL');
-      return;
-    }
+    const baseUrl = this.resolveServiceBaseUrl(
+      'radarr',
+      pickString(settings, 'radarr.baseUrl'),
+    );
+    if (!baseUrl) return;
     const apiKey = pickString(secrets, 'radarr.apiKey');
     const url = new URL(
       'api/v3/system/status',
@@ -261,11 +271,11 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       return;
     }
 
-    const baseUrl = normalizeHttpUrl(pickString(settings, 'sonarr.baseUrl'));
-    if (!baseUrl) {
-      this.setStatus('sonarr', 'offline', 'baseUrl is not a valid http(s) URL');
-      return;
-    }
+    const baseUrl = this.resolveServiceBaseUrl(
+      'sonarr',
+      pickString(settings, 'sonarr.baseUrl'),
+    );
+    if (!baseUrl) return;
     const apiKey = pickString(secrets, 'sonarr.apiKey');
     const url = new URL(
       'api/v3/system/status',
@@ -294,11 +304,11 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       return;
     }
 
-    const baseUrl = normalizeHttpUrl(pickString(settings, 'seerr.baseUrl'));
-    if (!baseUrl) {
-      this.setStatus('seerr', 'offline', 'baseUrl is not a valid http(s) URL');
-      return;
-    }
+    const baseUrl = this.resolveServiceBaseUrl(
+      'seerr',
+      pickString(settings, 'seerr.baseUrl'),
+    );
+    if (!baseUrl) return;
     const apiKey = pickString(secrets, 'seerr.apiKey');
     const root = new URL(baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
     const rootPath = root.pathname.replace(/\/+$/, '');
@@ -329,15 +339,11 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
       return;
     }
 
-    const baseUrl = normalizeHttpUrl(pickString(settings, 'tautulli.baseUrl'));
-    if (!baseUrl) {
-      this.setStatus(
-        'tautulli',
-        'offline',
-        'baseUrl is not a valid http(s) URL',
-      );
-      return;
-    }
+    const baseUrl = this.resolveServiceBaseUrl(
+      'tautulli',
+      pickString(settings, 'tautulli.baseUrl'),
+    );
+    if (!baseUrl) return;
     const apiKey = pickString(secrets, 'tautulli.apiKey');
     const url = new URL(
       `api/v2?apikey=${encodeURIComponent(apiKey)}&cmd=status`,
