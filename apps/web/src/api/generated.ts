@@ -1044,6 +1044,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/observatory/immaculate-taste/apply/{applyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ObservatoryController_applyStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/observatory/immaculate-taste/rejected/reset": {
         parameters: {
             query?: never;
@@ -1150,6 +1166,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["WatchedObservatoryController_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/observatory/watched/apply/{applyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WatchedObservatoryController_applyStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3311,7 +3343,26 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ObservatoryController_applyStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3448,7 +3499,26 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WatchedObservatoryController_applyStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

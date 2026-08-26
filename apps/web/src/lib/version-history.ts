@@ -109,6 +109,8 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Clearing all logs reports a failure instead of leaving the dialog open.',
           'Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.',
           'Error messages stay readable when a reverse proxy or Cloudflare answers instead of the app \u2014 a gateway timeout now says the server took too long to respond, rather than pasting the proxy\u2019s whole error page into the notification.',
+          'Swipe decisions no longer time out on their way to Plex: the collection rebuild now runs in the background while the page follows along, so a big library finishes instead of failing at the proxy\u2019s 100-second limit.',
+          'A sync that really is failing retries a few times with growing gaps and then stops, updating one notification instead of stacking a new one every few seconds.',
         ],
       },
     ],

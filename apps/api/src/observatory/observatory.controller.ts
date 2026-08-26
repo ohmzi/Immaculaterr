@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Post,
   Delete,
   Param,
@@ -13,6 +15,10 @@ import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ObservatoryService } from './observatory.service';
 import {
+  ObservatoryApplyRunner,
+  serializeApplyRecord,
+} from './observatory-apply.runner';
+import {
   ObservatoryDecisionsDto,
   ObservatoryApplyDto,
 } from './dto/observatory.dto';
@@ -22,7 +28,10 @@ type ListMode = 'pendingApproval' | 'review';
 @Controller('observatory/immaculate-taste')
 @ApiTags('observatory')
 export class ObservatoryController {
-  constructor(private readonly observatory: ObservatoryService) {}
+  constructor(
+    private readonly observatory: ObservatoryService,
+    private readonly applyRunner: ObservatoryApplyRunner,
+  ) {}
 
   @Get('movies')
   async listMovies(
@@ -89,10 +98,9 @@ export class ObservatoryController {
   }
 
   @Post('apply')
-  async apply(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: ObservatoryApplyDto,
-  ) {
+  // 202: the work is accepted and started, not finished when this returns.
+  @HttpCode(HttpStatus.ACCEPTED)
+  apply(@Req() req: AuthenticatedRequest, @Body() body: ObservatoryApplyDto) {
     const librarySectionKey =
       typeof body.librarySectionKey === 'string'
         ? body.librarySectionKey.trim()
@@ -104,11 +112,38 @@ export class ObservatoryController {
     if (mediaType !== 'movie' && mediaType !== 'tv')
       throw new BadRequestException('mediaType must be movie|tv');
 
-    return await this.observatory.apply({
+    // Started in the background rather than awaited: a full Plex collection
+    // rebuild routinely outlives a reverse proxy's origin timeout, which
+    // surfaced to the user as a gateway error even though the sync itself
+    // was fine. The client polls `apply/:applyId` for the outcome.
+    const record = this.applyRunner.start({
       userId: req.user.id,
-      librarySectionKey,
-      mediaType,
+      key: this.applyRunner.buildKey({
+        userId: req.user.id,
+        scope: 'immaculate',
+        mediaType,
+        librarySectionKey,
+      }),
+      run: () =>
+        this.observatory.apply({
+          userId: req.user.id,
+          librarySectionKey,
+          mediaType,
+        }),
     });
+    return serializeApplyRecord(record);
+  }
+
+  @Get('apply/:applyId')
+  applyStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('applyId') applyIdRaw: string,
+  ) {
+    const applyId = String(applyIdRaw ?? '').trim();
+    if (!applyId) throw new BadRequestException('applyId is required');
+    return serializeApplyRecord(
+      this.applyRunner.get({ userId: req.user.id, id: applyId }),
+    );
   }
 
   @Delete('rejected/reset')

@@ -3,6 +3,9 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
+  Param,
   Post,
   Query,
   Req,
@@ -10,6 +13,10 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { ObservatoryService } from './observatory.service';
+import {
+  ObservatoryApplyRunner,
+  serializeApplyRecord,
+} from './observatory-apply.runner';
 import {
   ObservatoryWatchedDecisionsDto,
   ObservatoryApplyDto,
@@ -21,7 +28,10 @@ type CollectionKind = 'recentlyWatched' | 'changeOfTaste';
 @Controller('observatory/watched')
 @ApiTags('observatory')
 export class WatchedObservatoryController {
-  constructor(private readonly observatory: ObservatoryService) {}
+  constructor(
+    private readonly observatory: ObservatoryService,
+    private readonly applyRunner: ObservatoryApplyRunner,
+  ) {}
 
   @Get('movies')
   async listMovies(
@@ -122,10 +132,9 @@ export class WatchedObservatoryController {
   }
 
   @Post('apply')
-  async apply(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: ObservatoryApplyDto,
-  ) {
+  // 202: the work is accepted and started, not finished when this returns.
+  @HttpCode(HttpStatus.ACCEPTED)
+  apply(@Req() req: AuthenticatedRequest, @Body() body: ObservatoryApplyDto) {
     const librarySectionKey =
       typeof body.librarySectionKey === 'string'
         ? body.librarySectionKey.trim()
@@ -137,10 +146,36 @@ export class WatchedObservatoryController {
     if (mediaType !== 'movie' && mediaType !== 'tv')
       throw new BadRequestException('mediaType must be movie|tv');
 
-    return await this.observatory.applyWatched({
+    // Background-started for the same reason as the Immaculate Taste apply:
+    // the Plex collection rebuild is far too slow to hold an HTTP request
+    // open across a reverse proxy. The client polls `apply/:applyId`.
+    const record = this.applyRunner.start({
       userId: req.user.id,
-      librarySectionKey,
-      mediaType,
+      key: this.applyRunner.buildKey({
+        userId: req.user.id,
+        scope: 'watched',
+        mediaType,
+        librarySectionKey,
+      }),
+      run: () =>
+        this.observatory.applyWatched({
+          userId: req.user.id,
+          librarySectionKey,
+          mediaType,
+        }),
     });
+    return serializeApplyRecord(record);
+  }
+
+  @Get('apply/:applyId')
+  applyStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('applyId') applyIdRaw: string,
+  ) {
+    const applyId = String(applyIdRaw ?? '').trim();
+    if (!applyId) throw new BadRequestException('applyId is required');
+    return serializeApplyRecord(
+      this.applyRunner.get({ userId: req.user.id, id: applyId }),
+    );
   }
 }

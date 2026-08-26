@@ -38,6 +38,8 @@ This file tracks notable changes by version.
   - Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.
   - Picking an invalid file in the Netflix importer clears the previous selection, so the error and the pending upload always agree.
   - Error notifications no longer paste a whole HTML error page on screen: when Cloudflare or a reverse proxy answers instead of the app (a 502/503/504/524 gateway timeout), the toast now reads "The server took too long to respond." Non-JSON error bodies are collapsed to a single capped line, and markup is dropped outright.
+  - Observatory swipe decisions no longer time out on their way to Plex. Applying a batch rebuilds a whole Plex collection, which on a large library outlived the 100-second limit a reverse proxy allows a single request; the sync now starts in the background and the page follows its progress, so the request itself returns instantly and the rebuild finishes regardless of how long it takes.
+  - A sync that genuinely fails now retries a few times with growing gaps and then stops, replacing one notification instead of stacking a new one every five seconds. Swiping again starts a fresh attempt.
 - Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), refreshing qs, and pinning deepmerge-ts to 8.0.2 (stack exhaustion when merging recursive objects).
 
 ## 1.7.10-beta-2

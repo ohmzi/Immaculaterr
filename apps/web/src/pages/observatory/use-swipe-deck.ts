@@ -12,6 +12,17 @@ import { type ObservatoryItem } from '@/api/observatory';
 // differs (API calls, sentinel copy, phase chaining) via config.
 // ---------------------------------------------------------------------------
 
+// Failed applies retry on their own, but only so far: a sync that keeps
+// failing (Radarr/Sonarr down, or the request timing out at a proxy) is not
+// going to be fixed by asking again forever, and every attempt costs the
+// server a full Plex collection rebuild.
+const APPLY_MAX_RETRIES = 4;
+const APPLY_RETRY_BASE_MS = 5_000;
+const APPLY_RETRY_MAX_MS = 60_000;
+// A stable id so a failing streak keeps replacing one toast instead of
+// stacking a new one on every attempt.
+const APPLY_ERROR_TOAST_ID = 'observatory-apply-error';
+
 export type Phase = 'pendingApprovals' | 'review';
 export type SwipeDirection = 'left' | 'right';
 export type DecisionAction = 'approve' | 'reject' | 'keep' | 'remove';
@@ -177,9 +188,12 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   // follow-up apply covers everything, instead of one call per swipe.
   const applyInFlightRef = useRef(false);
   const applyQueuedRef = useRef(false);
-  // Backoff timer for a failed apply — retries once, shortly, rather than
-  // hammering a genuinely-down Radarr/Sonarr in a tight loop.
+  // Backoff timer for a failed apply, plus how many consecutive failures we
+  // have already retried through. Without the counter this re-armed itself on
+  // every failure, so a persistently-failing sync retried forever — and
+  // toasted the user every time.
   const retryTimerRef = useRef<number | null>(null);
+  const applyFailureCountRef = useRef(0);
   // Indirection so applyMutation's own onError/onSettled can re-fire it
   // without referencing `applyMutation` from inside its own option object —
   // that self-reference defeats the React Compiler's memoization of any
@@ -373,6 +387,11 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   const applyMutation = useMutation({
     mutationFn: async () => applyDecisions(),
     onSuccess: async () => {
+      // The streak is over: forget the failure count and clear any retry
+      // notice still on screen, so the next failure starts from a full
+      // budget and the user is not left reading a stale error.
+      applyFailureCountRef.current = 0;
+      toast.dismiss(APPLY_ERROR_TOAST_ID);
       setUndoState((prev) => {
         if (prev) setUndoClearedByApply(true);
         return null;
@@ -382,19 +401,37 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
     onError: (err) => {
       // Without this, a failed Plex sync was completely silent and never
       // retried while the page sat idle.
+      const detail = err instanceof Error ? ` ${err.message}` : '';
+      const attempt = applyFailureCountRef.current + 1;
+      applyFailureCountRef.current = attempt;
+
+      if (attempt > APPLY_MAX_RETRIES) {
+        // Out of retries. Say so plainly instead of promising another
+        // attempt that is never coming — a real swipe still re-triggers.
+        toast.error(
+          `Couldn't sync your last decisions to Plex.${detail} Swipe again to retry.`,
+          { id: APPLY_ERROR_TOAST_ID },
+        );
+        return;
+      }
+
+      // One toast id for the whole failing streak: a retry replaces the
+      // previous notice rather than stacking a new one every few seconds.
       toast.error(
-        err instanceof Error
-          ? `Couldn't sync your last decisions to Plex — retrying shortly. ${err.message}`
-          : "Couldn't sync your last decisions to Plex — retrying shortly.",
+        `Couldn't sync your last decisions to Plex — retrying shortly.${detail}`,
+        { id: APPLY_ERROR_TOAST_ID },
       );
-      // A single short backoff, not a hot loop: if Radarr/Sonarr is
-      // genuinely down, hammering it on every failed attempt doesn't help.
-      // A real swipe in the meantime re-triggers immediately anyway.
+      // Exponential backoff, capped: if Radarr/Sonarr/Plex is genuinely down
+      // or timing out, retrying on a fixed short timer just piles more
+      // doomed work on it. A real swipe in the meantime re-triggers anyway.
       if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = window.setTimeout(() => {
-        retryTimerRef.current = null;
-        applyMutateRef.current();
-      }, 5_000);
+      retryTimerRef.current = window.setTimeout(
+        () => {
+          retryTimerRef.current = null;
+          applyMutateRef.current();
+        },
+        Math.min(APPLY_RETRY_BASE_MS * 2 ** (attempt - 1), APPLY_RETRY_MAX_MS),
+      );
     },
     onSettled: () => {
       // Coalesce: if swipes landed while this call was in flight, run
@@ -418,6 +455,15 @@ export function useSwipeDeck(config: UseSwipeDeckConfig): SwipeDeckApi {
   // see the mutation's onSettled above — so rapid swiping never produces
   // one overlapping external call per card.
   const triggerApply = useCallback(() => {
+    // A real swipe is fresh user intent, so it gets a full retry budget even
+    // if the previous streak had exhausted one.
+    applyFailureCountRef.current = 0;
+    // This apply covers whatever the pending retry was going to cover, so
+    // drop the timer instead of letting it fire a second, redundant sync.
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     if (applyInFlightRef.current) {
       applyQueuedRef.current = true;
       return;

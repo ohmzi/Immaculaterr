@@ -1669,7 +1669,30 @@
           }
         },
         "responses": {
-          "201": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/immaculate-taste/apply/{applyId}": {
+      "get": {
+        "operationId": "ObservatoryController_applyStatus",
+        "parameters": [
+          {
+            "name": "applyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -1846,7 +1869,30 @@
           }
         },
         "responses": {
-          "201": {
+          "202": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "observatory"
+        ]
+      }
+    },
+    "/api/observatory/watched/apply/{applyId}": {
+      "get": {
+        "operationId": "WatchedObservatoryController_applyStatus",
+        "parameters": [
+          {
+            "name": "applyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
