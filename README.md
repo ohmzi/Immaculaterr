@@ -123,10 +123,6 @@
 - **Puts management in the app**
   - Use Vault for integrations, Task Manager for jobs, Rewind for reports, and Command Center for resets, posters, user monitoring, and request cleanup.
 
-- **Coming soon**
-  - Email reports on your media server's health
-  - Windows and macOS support
-
 ## How recommendations are built
 
 1. A watch event, manual run, or history import supplies a seed title, and the app builds a richer seed profile from it.
