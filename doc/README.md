@@ -21,11 +21,15 @@ Major Features Include
   - Includes Command Center reset control to clear all Seerr requests when needed.
 - **Plex-triggered automation**:
   - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
+  - Bingeing does not spam you: once a show has triggered an auto-run, later episodes of that same show are skipped rather than rebuilding the same collections, and the skip is recorded so the reason is visible.
 - **Scheduler automation**:
   - Off-peak schedules keep those rows fresh with background refresh, discovery, cleanup, and maintenance.
 - **Shared persisted job queue**:
   - Manual runs, schedules, Plex webhooks, and Plex polling all go through one persisted FIFO queue.
   - Rewind shows queued work, live progress, reports, logs, and run history.
+  - Pause the whole queue, cancel anything still waiting, and resume when ready.
+  - Runs fail loudly and honestly: a failed scrape, an unreachable Radarr/Sonarr, or an all-items-failed run is reported as a failure with readable diagnostics rather than a quiet zero.
+  - Logs have a pausable live tail, a settable refresh rate, per-line copy, and a download button.
 - **Managed Plex collections**:
   - `Based on your recently watched Movie` and `Based on your recently watched Show`
   - `Change of Movie Taste` and `Change of Show Taste`
@@ -43,12 +47,26 @@ Major Features Include
   - You can tune the mix between titles available now and future releases.
 - **Download routing**:
   - Send missing titles directly to Radarr and Sonarr, or route them through Seerr on a per-task basis.
-  - Observatory can hold items for swipe approval before they are sent.
+  - Turn on `Approval required from Observatory` and nothing is sent until you have approved it yourself.
+- **Observatory (swipe review deck)**:
+  - Judge recommendations one card at a time, with the poster, the rating, and its score in front of you before you decide.
+  - Two passes per library. Approvals first: swipe right to **approve** a missing title for Radarr/Sonarr, left to **reject** it. Then review: swipe right to **keep** a title in the collection, left to **remove** it.
+  - Swipe on a phone, drag on a desktop, or use the buttons — arrow keys work too, and `Z` undoes the last card.
+  - Decisions save as you make them rather than piling up behind a Save button, and the deck shows how many cards are left.
+  - Separate decks for `Immaculate Taste` and `Based on Latest Watched`, each split by library and by movies vs. shows.
+  - The sync to Plex runs in the background, so a large library finishes on its own time instead of stalling the page.
 - **Discovery and maintenance jobs**:
   - `Fresh Out Of The Oven` builds recent-release movie and TV rows for titles a user has not watched yet.
   - `TMDB Upcoming Movies` finds upcoming movies with filter sets and routes matches to Radarr or Seerr.
   - `Rotten Tomatoes Upcoming Movies + TV Shows` scrapes fixed Rotten Tomatoes movie and TV pages, uses saved Movies and TV toggles with separate Movie Top 20 and TV Top 10 counts, and lets Run Now use those saved settings directly.
   - Cleanup and ARR sync jobs help keep Plex, Radarr, and Sonarr tidy after imports and downloads, including season-aware Sonarr monitoring cleanup.
+  - `Confirm Monitored` only unmonitors a movie once Plex can actually play it *and* Radarr confirms the file is there, so a missing or half-finished download is never mistaken for a finished one.
+- **Cutting Room (prune what nobody will watch)**:
+  - Scans your selected Plex libraries plus Radarr/Sonarr (and Tautulli when connected) and scores every item on real watch history, time in library, ratings with vote confidence, and who requested it.
+  - A six-step wizard: pick factors and protections, choose libraries, scan once, tune how low the bar goes, set a space target with auto-select, review candidates with plain-language reason chips, then prune with a typed confirmation.
+  - Pruning deletes files through Radarr/Sonarr but keeps each entry unmonitored and tagged `deleted-by-immaculaterr`; Pruned History offers one-click Restore. A full dry-run mode rehearses everything without touching a file.
+  - Watchlists, continue-watching, recent requests, your own high-rated titles, and Immaculaterr's managed collections are always protected.
+  - Companion tabs: Wanted List cleaner (unmonitor never-downloaded entries), Duplicates cleaner (keep one version per movie), and Large Files replacer (swap oversized files for smaller copies via auto-created size-capped quality profiles).
 - **History imports**:
   - Netflix CSV import creates dedicated Netflix import collections and feeds the main recommendation system.
   - Plex watch-history import does the same without needing a CSV.
@@ -58,6 +76,16 @@ Major Features Include
 - **Built-in admin sign-in and recovery**:
   - Create the admin login during setup.
   - Password recovery uses security questions.
+- **Integrations**:
+  - Required: Plex. For fetching what is missing: Radarr, Sonarr, or Seerr.
+  - For metadata and discovery: TMDB, with Google and OpenAI as optional helpers.
+  - Optional: Tautulli, which gives Cutting Room richer watch history than Plex alone. It has its own setup-wizard step and a testable Vault card, and everything works without it.
+- **Day-to-day usability**:
+  - Search with `Ctrl/Cmd+K` (or `/`) to jump to any page, and it finds FAQ answers too.
+  - Filters and tabs are remembered between visits.
+  - Times read as "4 days ago", with the exact timestamp on hover.
+  - Full mobile support, including pull-to-refresh on Rewind and Logs; reduced-motion is respected throughout.
+  - Pages load as you visit them instead of as one large bundle.
 - **Management pages**:
   - Use Vault for integrations, Task Manager for jobs, Rewind for reports, and Command Center for resets, posters, user monitoring, and request cleanup.
 - **More features on the way:**
