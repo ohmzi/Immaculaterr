@@ -108,6 +108,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
           'Plex login gives up after two minutes instead of retrying forever, and leaving Vault mid-login stops it too.',
           'Clearing all logs reports a failure instead of leaving the dialog open.',
           'Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.',
+          'Error messages stay readable when a reverse proxy or Cloudflare answers instead of the app \u2014 a gateway timeout now says the server took too long to respond, rather than pasting the proxy\u2019s whole error page into the notification.',
         ],
       },
     ],

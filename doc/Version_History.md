@@ -37,6 +37,7 @@ This file tracks notable changes by version.
   - Clearing all logs reports a failure instead of leaving the dialog open with nothing to show for it.
   - Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.
   - Picking an invalid file in the Netflix importer clears the previous selection, so the error and the pending upload always agree.
+  - Error notifications no longer paste a whole HTML error page on screen: when Cloudflare or a reverse proxy answers instead of the app (a 502/503/504/524 gateway timeout), the toast now reads "The server took too long to respond." Non-JSON error bodies are collapsed to a single capped line, and markup is dropped outright.
 - Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), refreshing qs, and pinning deepmerge-ts to 8.0.2 (stack exhaustion when merging recursive objects).
 
 ## 1.7.10-beta-2
