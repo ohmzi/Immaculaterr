@@ -2,6 +2,13 @@
 
 This file tracks notable changes by version.
 
+## 1.7.10-beta-4
+
+- What's new since 1.7.10-beta-3:
+- Fixed repeated TMDB connectivity failures (some hosts, notably Unraid, advertise IPv6 addresses for external APIs with no working IPv6 route, so every request hung until timing out and silently fell back to IPv4). Outbound HTTP(S) requests are now forced to IPv4 by default, removing the wasted timeout on every TMDB/OpenAI/Google/Radarr/Sonarr/Seerr/Tautulli/Plex call; opt out with `DISABLE_FORCE_IPV4=true` if your network genuinely needs IPv6.
+- The integrations connectivity monitor now retries a single transient blip before flagging a service, matching the retry behavior every other integration already had — it no longer marks TMDB offline for one slow response.
+- Plex: stopped logging a warning when a library section doesn't support the `/language` endpoint (an expected 404 for some section/agent types that was already handled gracefully, just noisily).
+
 ## 1.7.10-beta-3
 
 - Cutting Room — a new page that finds and prunes the media nobody will ever watch:

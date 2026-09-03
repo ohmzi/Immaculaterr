@@ -4,6 +4,7 @@ import { PrismaService } from '../db/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { errToMessage, truncateForLog } from '../log.utils';
 import { LOG_BODY_MAX_LENGTH } from '../app.constants';
+import { fetchWithTransientRetry } from '../http.utils';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -422,11 +423,13 @@ export class IntegrationsConnectivityMonitorService implements OnModuleInit {
     const startedAt = Date.now();
 
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: params.headers,
-        signal: controller.signal,
-      });
+      const res = await fetchWithTransientRetry(() =>
+        fetch(url, {
+          method: 'GET',
+          headers: params.headers,
+          signal: controller.signal,
+        }),
+      );
       const ms = Date.now() - startedAt;
 
       if (res.ok) {
