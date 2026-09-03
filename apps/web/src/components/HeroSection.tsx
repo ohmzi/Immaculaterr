@@ -857,12 +857,15 @@ export function HeroSection() {
                       </div>
                       {/* A narrow band that travels across, not a full-width wash:
                           at half the track's width the highlight clears the surface
-                          instead of parking a sheet of white over it. Hidden under
-                          reduced motion — the status text below is the real signal,
-                          so nothing is lost by dropping the decoration. */}
+                          instead of parking a sheet of white over it. Tinted amber
+                          rather than plain white so the glint reads as warm light
+                          catching the card, not a cold streak cutting across the
+                          yellow-green backdrop it sits on. Hidden under reduced
+                          motion — the status text below is the real signal, so
+                          nothing is lost by dropping the decoration. */}
                       <div
                         aria-hidden="true"
-                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent motion-reduce:hidden"
+                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-amber-100/70 to-transparent motion-reduce:hidden"
                       />
                       {/* Same shape as the empty state below — icon over a single
                           line, sitting directly on the surface. A white chip here
