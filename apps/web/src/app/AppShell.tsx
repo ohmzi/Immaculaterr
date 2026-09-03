@@ -19,6 +19,7 @@ import { tintClassForPath } from '@/app/route-tints';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Navigation } from '@/components/Navigation';
 import {
@@ -445,6 +446,10 @@ export const AppShell = () => {
       <div className="lg:hidden">
         <MobileNavigation onLogout={handleLogout} />
       </div>
+
+      {/* Home-screen install suggestion (mobile only, self-gates on platform
+          and dismissal state) */}
+      <InstallAppBanner />
 
       {/* What's New Modal */}
       <WhatsNewModal
