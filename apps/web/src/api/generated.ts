@@ -1044,6 +1044,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/observatory/immaculate-taste/apply/{applyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ObservatoryController_applyStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/observatory/immaculate-taste/rejected/reset": {
         parameters: {
             query?: never;
@@ -1150,6 +1166,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["WatchedObservatoryController_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/observatory/watched/apply/{applyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["WatchedObservatoryController_applyStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1761,7 +1793,7 @@ export interface components {
         AppMetaResponseDto: {
             /** @example immaculaterr */
             name: string;
-            /** @example 1.7.10-beta-2 */
+            /** @example 1.7.10-beta-3 */
             version: string;
             /** @example 41fb2cb */
             buildSha: Record<string, never> | null;
@@ -1795,9 +1827,9 @@ export interface components {
         UpdateProfileDto: Record<string, never>;
         ReorderProfilesDto: Record<string, never>;
         UpdatesResponseDto: {
-            /** @example 1.7.10-beta-2 */
+            /** @example 1.7.10-beta-3 */
             currentVersion: string;
-            /** @example 1.7.10-beta-2 */
+            /** @example 1.7.10-beta-3 */
             latestVersion: Record<string, never> | null;
             /** @example true */
             updateAvailable: boolean;
@@ -1805,7 +1837,7 @@ export interface components {
             source: string;
             /** @example ohmz/Immaculaterr */
             repo: Record<string, never> | null;
-            /** @example https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10-beta-2 */
+            /** @example https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10-beta-3 */
             latestUrl: Record<string, never> | null;
             /** @example 2026-01-09T16:05:00.000Z */
             checkedAt: string;
@@ -3311,7 +3343,26 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ObservatoryController_applyStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3448,7 +3499,26 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WatchedObservatoryController_applyStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4068,6 +4138,7 @@ export interface operations {
                 mediaType: string;
                 restored: string;
                 search: string;
+                runId: string;
             };
             header?: never;
             path?: never;

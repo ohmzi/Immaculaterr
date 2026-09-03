@@ -127,6 +127,72 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Everything below lives here rather than in tailwind.config.cjs because this
+   project runs Tailwind v4, which only reads a JS config when a stylesheet pulls
+   it in with @config — nothing does, so anything defined there never reaches the
+   output CSS. The config's colors, borderRadius, darkMode and content are all
+   restated above (@theme inline / @custom-variant) and by @source in
+   tailwind.css, so they were never missed; these were. */
+@theme {
+  /* Closest open/web-safe stand-ins for Plex/Tesla brand fonts, both self-hosted
+     in fonts.css. Exact brand fonts would need their own licensing. */
+  --font-plex: Michroma, ui-sans-serif, system-ui, sans-serif;
+  --font-tesla: Montserrat, ui-sans-serif, system-ui, sans-serif;
+
+  /* Skeleton light sweep, used by the hero chart's loading state. Driven by
+     transform rather than background-position so it composites on the GPU, and
+     the band is a real half-width element — its own width sets how tight the
+     highlight is, instead of a gradient stop guessed against a 200% backdrop.
+     The skew lives in the keyframes so the animation can't clobber a utility
+     class. Linear, not ease-in-out: a sweep that decelerates at both ends reads
+     as a pulse sitting still, which is the opposite of a shimmer. */
+  --animate-shimmer: shimmer 2s linear infinite;
+
+  /* Radix accordion open/close. Nothing imports an accordion component today —
+     these are carried over so the shadcn convention still works the moment one
+     is added, rather than silently doing nothing the way they have been. */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  /* `ease-spring` is used on the yellow icon tile that unrotates on hover
+     (Profile, Cutting Room, Task Manager). Unlike the tokens above this one was
+     never a v4 casualty — Tailwind has no built-in ease-spring and the old v3
+     config never defined a transitionTimingFunction either, so the class has
+     always resolved to nothing and those tiles have been easing on the browser
+     default. This is the standard back-out curve: y2 > 1 carries the transform
+     past its target and lets it settle, which is the overshoot the name asks
+     for. Peak is ~11% of the travel, so on a 6° unrotate the tile passes level
+     by well under a degree — a settle, not a bounce. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-140%) skewX(-12deg);
+  }
+  to {
+    transform: translateX(340%) skewX(-12deg);
+  }
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

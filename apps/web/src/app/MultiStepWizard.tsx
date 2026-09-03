@@ -416,7 +416,29 @@ export function MultiStepWizard({ onFinish }: { onFinish?: () => void }) {
   useEffect(() => {
     if (!isPollingPlex || !plexOAuthPinId) return;
 
+    // The polling flag is restored from localStorage on mount, so without a cap
+    // an abandoned or expired PIN resumes polling on every page load and never
+    // stops — the bare catch below hides the repeated failures. 2 minutes
+    // matches the Plex login timeout in Vault.
+    let attempts = 0;
+    const maxAttempts = 60; // 60 attempts * 2 seconds = 2 minutes max
+
     const pollInterval = setInterval(async () => {
+      attempts += 1;
+      if (attempts > maxAttempts) {
+        clearInterval(pollInterval);
+        setIsPollingPlex(false);
+        setPlexOAuthPinId(null);
+        try {
+          localStorage.removeItem('wizard_plex_pin_id');
+          localStorage.removeItem('wizard_plex_polling');
+        } catch {
+          // Ignore localStorage errors
+        }
+        toast.error('Plex login timed out. Please try again.');
+        return;
+      }
+
       try {
         const result = await checkPlexPin(plexOAuthPinId);
         if (result.authToken) {

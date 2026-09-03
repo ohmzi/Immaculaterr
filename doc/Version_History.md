@@ -2,6 +2,13 @@
 
 This file tracks notable changes by version.
 
+## 1.7.10-beta-4
+
+- What's new since 1.7.10-beta-3:
+- Fixed repeated TMDB connectivity failures (some hosts, notably Unraid, advertise IPv6 addresses for external APIs with no working IPv6 route, so every request hung until timing out and silently fell back to IPv4). Outbound HTTP(S) requests are now forced to IPv4 by default, removing the wasted timeout on every TMDB/OpenAI/Google/Radarr/Sonarr/Seerr/Tautulli/Plex call; opt out with `DISABLE_FORCE_IPV4=true` if your network genuinely needs IPv6.
+- The integrations connectivity monitor now retries a single transient blip before flagging a service, matching the retry behavior every other integration already had — it no longer marks TMDB offline for one slow response.
+- Plex: stopped logging a warning when a library section doesn't support the `/language` endpoint (an expected 404 for some section/agent types that was already handled gracefully, just noisily).
+
 ## 1.7.10-beta-3
 
 - Cutting Room — a new page that finds and prunes the media nobody will ever watch:
@@ -27,7 +34,20 @@ This file tracks notable changes by version.
   - Tasks fail loudly and honestly: failed scrapes, unreachable Radarr/Sonarr, or all-items-failed runs mark the report task failed instead of hiding behind counters; the large-file replacer no longer reports space freed when nothing was deleted.
   - Every plex.tv request has a timeout, transient upstream blips (429/503, resets) are retried once on reads, and error text in logs and reports is bounded with API keys redacted.
   - Faster loading: pages are code-split and fetched on first visit instead of one 1.9 MB bundle, the Logs page polls only new lines, and Cutting Room listings answer from a short cache after the first scan.
-- Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), and refreshing qs.
+  - A job that finishes after the watchdog has already timed it out can no longer hand back a newer job's turn in the queue, which could let two jobs run against Radarr/Sonarr/Plex at the same time.
+  - A single unreachable or mistyped integration address no longer leaves every other service's connection status stale — each one is reported on its own.
+- Fixes and accessibility:
+  - The What's New popup appears again — the app reported an older version than the release notes it shipped with, so the popup could never match and never opened.
+  - Failed requests now say so instead of pretending there is nothing to show: the dashboard growth chart offers a retry, and the Duplicates scan no longer claims every movie has a single copy after a scan that never finished.
+  - Desktop navigation dropdowns open with the keyboard, and the Netflix CSV picker can be reached and opened without a mouse.
+  - Plex login gives up after two minutes instead of retrying forever, in both Vault and the setup wizard, and leaving Vault mid-login stops it too.
+  - Clearing all logs reports a failure instead of leaving the dialog open with nothing to show for it.
+  - Confirmation dialogs and the Logs source filters announce themselves properly to screen readers.
+  - Picking an invalid file in the Netflix importer clears the previous selection, so the error and the pending upload always agree.
+  - Error notifications no longer paste a whole HTML error page on screen: when Cloudflare or a reverse proxy answers instead of the app (a 502/503/504/524 gateway timeout), the toast now reads "The server took too long to respond." Non-JSON error bodies are collapsed to a single capped line, and markup is dropped outright.
+  - Observatory swipe decisions no longer time out on their way to Plex. Applying a batch rebuilds a whole Plex collection, which on a large library outlived the 100-second limit a reverse proxy allows a single request; the sync now starts in the background and the page follows its progress, so the request itself returns instantly and the rebuild finishes regardless of how long it takes.
+  - A sync that genuinely fails now retries a few times with growing gaps and then stops, replacing one notification instead of stacking a new one every five seconds. Swiping again starts a fresh attempt.
+- Security dependency updates: resolved high-severity advisories by bumping multer to 2.2.0 (upload DoS fixes), react-router-dom to 7.18.1 (redirect and deserialization fixes), refreshing qs, and pinning deepmerge-ts to 8.0.2 (stack exhaustion when merging recursive objects).
 
 ## 1.7.10-beta-2
 

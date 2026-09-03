@@ -182,35 +182,44 @@ export function CuttingRoomPage() {
           </motion.div>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-2">
-          {(
-            [
-              { key: 'wizard', label: 'Prune Wizard', icon: Sparkles },
-              { key: 'history', label: 'Pruned History', icon: History },
-              { key: 'wanted', label: 'Wanted List', icon: Database },
-              { key: 'duplicates', label: 'Duplicates', icon: Copy },
-              { key: 'large-files', label: 'Large Files', icon: HardDrive },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={[
-                APP_PRESSABLE_CLASS,
-                'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition',
-                tab === t.key
-                  ? 'bg-[#facc15]/20 text-[#fde68a] border-[#facc15]/30'
-                  : 'bg-white/10 text-white border-white/15 hover:bg-white/15',
-              ].join(' ')}
-            >
-              <t.icon className="h-4 w-4" />
-              {t.label}
-            </button>
-          ))}
-          <span className="self-center">
-            <FaqPill section="cutting-room-overview" label="Cutting Room" />
-          </span>
+        {/* Segmented control — the same frosted toggle the Observatory uses for Movie/TV. */}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <div className="relative inline-flex flex-wrap rounded-lg border border-white/10 bg-black/10 p-1 backdrop-blur-md">
+            {(
+              [
+                { key: 'wizard', label: 'Prune Wizard', icon: Sparkles },
+                { key: 'history', label: 'Pruned History', icon: History },
+                { key: 'wanted', label: 'Wanted List', icon: Database },
+                { key: 'duplicates', label: 'Duplicates', icon: Copy },
+                { key: 'large-files', label: 'Large Files', icon: HardDrive },
+              ] as const
+            ).map((t) => {
+              const isActive = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  className={[
+                    'relative z-10 flex items-center gap-2 rounded-md px-4 py-2 text-xs font-bold uppercase tracking-wider transition-colors',
+                    isActive ? 'text-[#facc15]' : 'text-white/80 hover:text-white',
+                  ].join(' ')}
+                >
+                  <t.icon className="h-4 w-4" />
+                  {t.label}
+                  {isActive ? (
+                    <motion.div
+                      layoutId="cuttingRoomActiveTab"
+                      className="absolute inset-0 rounded-md border border-[#facc15]/20 bg-[#facc15]/10 shadow-[0_0_15px_rgba(250,204,21,0.1)]"
+                      transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                      style={{ zIndex: -1 }}
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          <FaqPill section="cutting-room-overview" label="Cutting Room" />
         </div>
 
         {tab === 'wizard' ? <PruneWizard /> : null}

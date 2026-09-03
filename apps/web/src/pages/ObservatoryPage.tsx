@@ -5,23 +5,12 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
-import {
-  AnimatePresence,
-  motion,
-  useAnimation,
-  useMotionValue,
-  useTransform,
-} from 'motion/react';
-import { Telescope, Undo2 } from 'lucide-react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { AnimatePresence, motion, useAnimation } from 'motion/react';
+import { Telescope } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePersistentState } from '@/lib/usePersistentState';
 
-import {
-  APP_BG_IMAGE_URL,
-} from '@/lib/ui-classes';
 import { getImmaculateTasteCollections } from '@/api/immaculate';
 import {
   applyImmaculateTasteObservatory,
@@ -37,393 +26,19 @@ import {
 } from '@/api/observatory';
 import { cn } from '@/components/ui/utils';
 import { GlassSelect } from '@/components/ui/glass-select';
+import { SwipeDeckView } from './observatory/swipe-deck';
+import {
+  useSwipeDeck,
+  type CardModel,
+  type DecisionAction,
+  type Phase,
+  type SentinelKind,
+  type SwipeDeckSentinelHelpers,
+  type SwipeDirection,
+} from './observatory/use-swipe-deck';
 
 type Tab = 'movie' | 'tv';
-type Phase = 'pendingApprovals' | 'review';
 type CollectionTab = 'immaculate' | 'latestWatched';
-
-type CardModel =
-  | { kind: 'item'; item: ObservatoryItem }
-  | {
-      kind: 'sentinel';
-      sentinel: 'approvalsDone' | 'reviewDone' | 'noData';
-      title?: string;
-      subtitle?: string;
-      ctaBar?: string;
-      message?: string;
-    };
-
-type UndoState = {
-  tab: Tab;
-  librarySectionKey: string;
-  phase: Phase;
-  card: { kind: 'item'; item: ObservatoryItem };
-  action: 'approve' | 'reject' | 'keep' | 'remove';
-} | null;
-
-type WatchedUndoState = {
-  tab: Tab;
-  librarySectionKey: string;
-  collectionKind: WatchedCollectionKind;
-  phase: Phase;
-  card: { kind: 'item'; item: ObservatoryItem };
-  action: 'approve' | 'reject' | 'keep' | 'remove';
-} | null;
-
-const NOOP = () => undefined;
-
-const LOADING_PLACEHOLDER = (
-  <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
-    <div className="absolute inset-0 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <div className="h-10 w-10 rounded-full border-2 border-white/20 border-t-[#facc15] animate-spin" />
-        <div className="text-white/50 text-sm font-medium">Loading suggestions…</div>
-      </div>
-    </div>
-  </div>
-);
-
-function buildDeck(items: ObservatoryItem[]): CardModel[] {
-  return items.map((item) => ({ kind: 'item', item }));
-}
-
-function formatRating(v: unknown): string | null {
-  const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
-  if (n === null) return null;
-  // TMDB vote_average is /10; show 1 decimal.
-  const rounded = Math.round(n * 10) / 10;
-  if (!Number.isFinite(rounded) || rounded <= 0) return null;
-  return `${rounded.toFixed(1)}/10`;
-}
-
-function SwipeCard({
-  card,
-  disabled,
-  onSwipeLeft,
-  onSwipeRight,
-}: {
-  card: CardModel;
-  disabled?: boolean;
-  onSwipeLeft: () => void;
-  onSwipeRight: () => void;
-}) {
-  const x = useMotionValue(0);
-  const rotate = useTransform(x, [-200, 0, 200], [-10, 0, 10]);
-  const opacity = useTransform(x, [-240, -80, 0, 80, 240], [0, 1, 1, 1, 0]);
-  const likeOpacity = useTransform(x, [40, 140], [0, 1]);
-  const nopeOpacity = useTransform(x, [-140, -40], [1, 0]);
-  const greenTintOpacity = useTransform(x, [0, 70, 180], [0, 0.14, 0.28]);
-  const redTintOpacity = useTransform(x, [0, -70, -180], [0, 0.14, 0.28]);
-
-  const controls = useAnimation();
-  const leavingRef = useRef(false);
-  // Defensive pointer-capture handling:
-  // Some mobile browsers + heavy drag interactions can end up in a "stuck" state where taps stop
-  // dispatching correctly after a swipe interaction. Explicitly capturing/releasing the pointer
-  // (and releasing on unmount) prevents lingering capture from blocking future UI interaction.
-  const pointerCaptureRef = useRef<{ el: HTMLDivElement; pointerId: number } | null>(
-    null,
-  );
-
-  const releasePointerCapture = useCallback(() => {
-    const p = pointerCaptureRef.current;
-    if (!p) return;
-    try {
-      p.el.releasePointerCapture(p.pointerId);
-    } catch {
-      // ignore
-    }
-    pointerCaptureRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    return () => releasePointerCapture();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const threshold = 120;
-  const throwX = 520;
-  const throwRotate = 18;
-  const springBack = useMemo(
-    () => ({ type: 'spring' as const, stiffness: 420, damping: 28 }),
-    [],
-  );
-  // Faster "throw" so the next card becomes interactive sooner.
-  const springThrow = useMemo(
-    () => ({
-      type: 'spring' as const,
-      stiffness: 520,
-      damping: 34,
-      mass: 0.55,
-    }),
-    [],
-  );
-  const handlePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      // Ensure we always release capture on pointerup/cancel/unmount.
-      pointerCaptureRef.current = {
-        el: event.currentTarget,
-        pointerId: event.pointerId,
-      };
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
-        // ignore
-      }
-    },
-    [],
-  );
-  const handlePointerRelease = useCallback(() => {
-    releasePointerCapture();
-  }, [releasePointerCapture]);
-  const handleDragEnd = useCallback(
-    (_: unknown, info: { offset: { x: number } }) => {
-      // Some browsers may fire dragEnd without a clean pointerup; ensure capture is released.
-      releasePointerCapture();
-      if (disabled) return;
-      if (leavingRef.current) return;
-      if (info.offset.x > threshold) {
-        leavingRef.current = true;
-        void controls
-          .start({
-            x: throwX,
-            rotate: throwRotate,
-            opacity: 0,
-            transition: springThrow,
-          })
-          .then(() => onSwipeRight())
-          .finally(() => {
-            leavingRef.current = false;
-            x.set(0);
-            void controls.set({ x: 0, rotate: 0, opacity: 1 });
-          });
-        return;
-      }
-      if (info.offset.x < -threshold) {
-        leavingRef.current = true;
-        void controls
-          .start({
-            x: -throwX,
-            rotate: -throwRotate,
-            opacity: 0,
-            transition: springThrow,
-          })
-          .then(() => onSwipeLeft())
-          .finally(() => {
-            leavingRef.current = false;
-            x.set(0);
-            void controls.set({ x: 0, rotate: 0, opacity: 1 });
-          });
-        return;
-      }
-      void controls.start({ x: 0, rotate: 0, transition: springBack });
-    },
-    [
-      controls,
-      disabled,
-      onSwipeLeft,
-      onSwipeRight,
-      releasePointerCapture,
-      springBack,
-      springThrow,
-      threshold,
-      throwRotate,
-      throwX,
-      x,
-    ],
-  );
-
-  return (
-    <motion.div
-      animate={controls}
-      drag={disabled ? false : 'x'}
-      dragElastic={0.2}
-      dragMomentum={false}
-      // Lock swipe interactions to horizontal so the page doesn't scroll/bounce while swiping cards.
-      style={{ x, rotate, opacity, touchAction: 'pan-x' }}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerRelease}
-      onPointerCancel={handlePointerRelease}
-      onDragEnd={handleDragEnd}
-      className="relative w-full h-full"
-    >
-      <div className="relative h-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0c0f]/70 shadow-2xl backdrop-blur-2xl">
-        {/* Swipe tint feedback */}
-        <div className="pointer-events-none absolute inset-0 z-20">
-          <motion.div
-            style={{ opacity: greenTintOpacity }}
-            className="absolute inset-0 bg-emerald-400/40"
-          />
-          <motion.div
-            style={{ opacity: redTintOpacity }}
-            className="absolute inset-0 bg-rose-400/40"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/15 via-transparent to-black/10" />
-        </div>
-
-        <div className="absolute inset-0 pointer-events-none z-30">
-          <motion.div
-            style={{ opacity: likeOpacity }}
-            className="absolute top-6 left-6 rounded-xl border border-emerald-400/40 bg-emerald-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-emerald-100"
-          >
-            Keep
-          </motion.div>
-          <motion.div
-            style={{ opacity: nopeOpacity }}
-            className="absolute top-6 right-6 rounded-xl border border-rose-400/40 bg-rose-400/15 px-3 py-1 text-xs font-black uppercase tracking-wider text-rose-100"
-          >
-            Remove
-          </motion.div>
-        </div>
-
-        {card.kind === 'sentinel' ? (
-          // Sentinel cards are styled like movie cards so the deck never "ends".
-          <div className="relative h-full">
-            <img
-              src={APP_BG_IMAGE_URL}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover object-center opacity-90"
-              draggable={false}
-            />
-            <div className="absolute inset-0 bg-gradient-to-br from-black/35 via-black/40 to-black/65" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-black/25" />
-
-            <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-              <div className="max-w-md">
-                <div className="text-white text-2xl md:text-3xl font-black tracking-tight drop-shadow-2xl">
-                  {card.title ??
-                    (card.sentinel === 'approvalsDone'
-                      ? 'All download approvals have been reviewed'
-                      : card.sentinel === 'noData'
-                        ? 'No suggestions yet for this library'
-                        : 'All suggestions have been reviewed')}
-                </div>
-                {card.sentinel === 'noData' ? (
-                  <div className="mt-3 text-white/75 leading-relaxed">
-                    {card.message ??
-                      'Please continue using Plex for this media type and let the suggestion list build up, or run Immaculate Taste Collection manually to generate suggestions.'}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-white/75 leading-relaxed">
-                    {card.subtitle ??
-                      `Swipe right to ${
-                        card.sentinel === 'approvalsDone'
-                          ? 'review suggestions'
-                          : 'restart reviewing'
-                      }.`}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {(card.ctaBar ||
-              (card.sentinel === 'approvalsDone'
-                ? 'Swipe right to review suggestions'
-                : null)) && (
-              <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
-                <div className="text-white font-semibold text-sm leading-tight">
-                  {card.ctaBar ??
-                    (card.sentinel === 'approvalsDone'
-                      ? 'Swipe right to review suggestions'
-                      : '')}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Mobile: full-bleed poster + small caption bar (no extra metadata) */}
-            <div className="relative md:hidden h-full">
-              {card.item.posterUrl ? (
-                <img
-                  src={card.item.posterUrl}
-                  alt=""
-                  className="absolute inset-0 h-full w-full object-contain object-center bg-black/30"
-                  draggable={false}
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/5 text-white/65 px-6 text-center font-semibold">
-                  {card.item.title ||
-                    (card.item.mediaType === 'movie'
-                      ? `TMDB ${card.item.id}`
-                      : `TVDB ${card.item.id}`)}
-                </div>
-              )}
-
-              {/* Bottom caption (~10% height) */}
-              <div className="absolute inset-x-0 bottom-0 h-[10%] min-h-[56px] bg-[#0b0c0f]/80 backdrop-blur-2xl border-t border-white/10 flex items-center px-5">
-                <div className="w-full flex items-center justify-between gap-3">
-                  <div className="text-white font-semibold text-sm leading-tight line-clamp-1">
-                    {card.item.title ||
-                      (card.item.mediaType === 'movie'
-                        ? `TMDB ${card.item.id}`
-                        : `TVDB ${card.item.id}`)}
-                  </div>
-                  {formatRating(card.item.tmdbVoteAvg ?? null) && (
-                    <div className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-white/90">
-                      {formatRating(card.item.tmdbVoteAvg ?? null)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Desktop/tablet: poster + details */}
-            <div className="hidden md:grid grid-cols-2 h-full">
-              <div className="relative h-full bg-black/20">
-                {card.item.posterUrl ? (
-                  <img
-                    src={card.item.posterUrl}
-                    alt=""
-                    className="h-full w-full object-contain object-center"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center text-white/35 text-sm">
-                    No poster
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/25" />
-              </div>
-              <div className="p-10 flex flex-col justify-between h-full">
-                <div>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="text-white text-3xl font-black tracking-tight leading-tight">
-                      {card.item.title ||
-                        (card.item.mediaType === 'movie'
-                          ? `TMDB ${card.item.id}`
-                          : `TVDB ${card.item.id}`)}
-                    </div>
-                    {formatRating(card.item.tmdbVoteAvg ?? null) && (
-                      <div className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-black text-white/90">
-                        {formatRating(card.item.tmdbVoteAvg ?? null)}
-                      </div>
-                    )}
-                  </div>
-                <div className="mt-2 text-sm text-white/70">
-                  Status:{' '}
-                  <span className="text-white/90 font-semibold">
-                    {card.item.status}
-                  </span>
-                </div>
-                <div className="mt-1 text-sm text-white/70">
-                  Approval:{' '}
-                  <span className="text-white/90 font-semibold">
-                    {card.item.downloadApproval}
-                  </span>
-                </div>
-                <div className="mt-6 text-xs text-white/55 leading-relaxed">
-                  Swipe right to keep. Swipe left to remove.
-                </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </motion.div>
-  );
-}
 
 export function ObservatoryPage() {
   const titleIconControls = useAnimation();
@@ -439,28 +54,15 @@ export function ObservatoryPage() {
   const [movieLibrary, setMovieLibrary] = useState<string>('');
   const [tvLibrary, setTvLibrary] = useState<string>('');
 
-  const [phase, setPhase] = useState<Phase>('pendingApprovals');
-  const [deck, setDeck] = useState<CardModel[]>([]);
-  const [approvalRequired, setApprovalRequired] = useState(false);
-  const [undoState, setUndoState] = useState<UndoState>(null);
+  // Announced via an aria-live region — the only feedback a screen-reader
+  // user gets that a decision was recorded and a new card is on top.
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
 
   const [watchedCollectionKind, setWatchedCollectionKind] =
     useState<WatchedCollectionKind>('recentlyWatched');
-  const [watchedPhase, setWatchedPhase] = useState<Phase>('pendingApprovals');
-  const [watchedDeck, setWatchedDeck] = useState<CardModel[]>([]);
-  const [watchedApprovalRequired, setWatchedApprovalRequired] = useState(false);
-  const [watchedUndoState, setWatchedUndoState] = useState<WatchedUndoState>(null);
 
-  const pendingApplyRef = useRef(false);
-  const [hasPendingApply, setHasPendingApply] = useState(false);
-  const [hasPendingWatchedApply, setHasPendingWatchedApply] = useState(false);
-  const applyTimerRef = useRef<number | null>(null);
-  const deckKeyRef = useRef<string | null>(null);
-  const swipeTopCardRef = useRef<((dir: 'left' | 'right') => void) | null>(null);
-
-  const watchedPendingApplyRef = useRef(false);
-  const watchedApplyTimerRef = useRef<number | null>(null);
-  const watchedDeckKeyRef = useRef<string | null>(null);
+  const swipeTopCardRef = useRef<((dir: SwipeDirection) => boolean) | null>(null);
+  const undoLastRef = useRef<(() => void) | null>(null);
 
   // IMPORTANT:
   // We intentionally do not enable global scroll-snap on html/body here.
@@ -488,16 +90,12 @@ export function ObservatoryPage() {
       .sort((a, b) => a.title.localeCompare(b.title));
   }, [collectionsQuery.data?.collections]);
 
-  useEffect(() => {
-    const firstMovieLibrary = movieLibraries[0];
-    if (!movieLibrary && firstMovieLibrary) setMovieLibrary(firstMovieLibrary.key);
-  }, [movieLibraries, movieLibrary]);
-  useEffect(() => {
-    const firstTvLibrary = tvLibraries[0];
-    if (!tvLibrary && firstTvLibrary) setTvLibrary(firstTvLibrary.key);
-  }, [tvLibraries, tvLibrary]);
-
-  const activeLibraryKey = mediaTab === 'movie' ? movieLibrary : tvLibrary;
+  // Derive the default (first) library instead of pushing it into state from
+  // an effect — state only holds an explicit user choice.
+  const activeLibraryKey =
+    mediaTab === 'movie'
+      ? movieLibrary || movieLibraries[0]?.key || ''
+      : tvLibrary || tvLibraries[0]?.key || '';
   const activeLibraryTitle = useMemo(() => {
     const libs = mediaTab === 'movie' ? movieLibraries : tvLibraries;
     return libs.find((l) => l.key === activeLibraryKey)?.title ?? null;
@@ -599,6 +197,10 @@ export function ObservatoryPage() {
     refetchOnWindowFocus: false,
   });
 
+  // -------------------------------------------------------------------------
+  // Sentinel cards (the copy is the page's concern; the machine is the hook's)
+  // -------------------------------------------------------------------------
+
   const approvalsDoneCard = useMemo<CardModel>(
     () => ({ kind: 'sentinel', sentinel: 'approvalsDone' }),
     [],
@@ -624,7 +226,6 @@ export function ObservatoryPage() {
     () => ({
       kind: 'sentinel',
       sentinel: 'approvalsDone',
-      ctaBar: 'Swipe right to review suggestions',
     }),
     [],
   );
@@ -634,6 +235,7 @@ export function ObservatoryPage() {
       sentinel: 'reviewDone',
       title: 'Recently watched suggestions have been reviewed',
       subtitle: 'Swipe right to review Change of Taste.',
+      ctaLabel: 'Review Change of Taste',
     }),
     [],
   );
@@ -643,6 +245,7 @@ export function ObservatoryPage() {
       sentinel: 'reviewDone',
       title: 'All suggestions have been reviewed',
       subtitle: 'Swipe right to restart reviewing.',
+      ctaLabel: 'Restart reviewing',
     }),
     [],
   );
@@ -663,698 +266,305 @@ export function ObservatoryPage() {
       sentinel: 'noData',
       title: `${deckLabel}: No suggestions yet`,
       message: `Please continue using Plex for ${mediaTypeLabel}${libraryLabel} and let the suggestion list build up, or run Based on Latest Watched Collection manually for ${mediaTypeLabel} to generate suggestions.`,
+      // Right-advance on this card moves the flow along rather than refetching.
+      ctaLabel:
+        watchedCollectionKind === 'recentlyWatched'
+          ? 'Review Change of Taste'
+          : 'Restart reviewing',
     };
   }, [activeLibraryTitle, mediaTab, watchedCollectionKind]);
 
-  const setWatchedDeckForApprovals = useCallback(() => {
-    const pending = listWatchedPendingQuery.data?.items ?? [];
-    const review = listWatchedReviewQuery.data?.items ?? [];
-    setWatchedPhase('pendingApprovals');
-    setWatchedDeck(
-      pending.length
-        ? buildDeck(pending)
-        : review.length
-          ? [watchedApprovalsDoneCard]
-          : [makeWatchedNoDataCard()],
-    );
-  }, [
-    listWatchedPendingQuery.data?.items,
-    listWatchedReviewQuery.data?.items,
-    makeWatchedNoDataCard,
-    watchedApprovalsDoneCard,
-  ]);
+  // -------------------------------------------------------------------------
+  // Immaculate Taste deck
+  // -------------------------------------------------------------------------
 
-  const setWatchedDeckForReview = useCallback(() => {
-    const items = listWatchedReviewQuery.data?.items ?? [];
-    const pending = listWatchedPendingQuery.data?.items ?? [];
-    setWatchedPhase('review');
-    setWatchedDeck(
-      items.length
-        ? buildDeck(items)
-        : pending.length
-          ? [
-              watchedCollectionKind === 'recentlyWatched'
-                ? watchedNextDeckCard
-                : watchedRestartCard,
-            ]
-          : [makeWatchedNoDataCard()],
-    );
-  }, [
-    listWatchedPendingQuery.data?.items,
-    listWatchedReviewQuery.data?.items,
-    makeWatchedNoDataCard,
-    watchedCollectionKind,
-    watchedNextDeckCard,
-    watchedRestartCard,
-  ]);
-
-  const advanceWatchedOneOrSentinel = (sentinel: CardModel) => {
-    setWatchedDeck((prev) => {
-      const next = prev.slice(1);
-      return next.length ? next : [sentinel];
-    });
-  };
-
-  const restartWatchedCycle = useCallback(() => {
-    void Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'recentlyWatched'],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'changeOfTaste'],
-      }),
-    ]).finally(() => {
-      setWatchedCollectionKind('recentlyWatched');
-      watchedDeckKeyRef.current = null;
-    });
-  }, [activeLibraryKey, mediaTab, queryClient]);
-
-  const setDeckForApprovals = useCallback(() => {
-    const pending = listPendingQuery.data?.items ?? [];
-    const review = listReviewQuery.data?.items ?? [];
-    setPhase('pendingApprovals');
-    setDeck(
-      pending.length
-        ? buildDeck(pending)
-        : review.length
-          ? [approvalsDoneCard]
-          : [makeNoDataCard()],
-    );
-  }, [
-    approvalsDoneCard,
-    listPendingQuery.data?.items,
-    listReviewQuery.data?.items,
-    makeNoDataCard,
-  ]);
-
-  const setDeckForReview = useCallback(() => {
-    const items = listReviewQuery.data?.items ?? [];
-    const pending = listPendingQuery.data?.items ?? [];
-    setPhase('review');
-    setDeck(
-      items.length ? buildDeck(items) : pending.length ? [reviewDoneCard] : [makeNoDataCard()],
-    );
-  }, [
-    listPendingQuery.data?.items,
-    listReviewQuery.data?.items,
-    makeNoDataCard,
-    reviewDoneCard,
-  ]);
-
-  const advanceOneOrSentinel = (sentinel: CardModel) => {
-    setDeck((prev) => {
-      const next = prev.slice(1);
-      return next.length ? next : [sentinel];
-    });
-  };
-
-  const restartCycle = useCallback(() => {
-    void Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: [
-          'observatory',
-          'immaculateTaste',
-          mediaTab,
-          activeLibraryKey,
-          'pendingApproval',
-        ],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: [
-          'observatory',
-          'immaculateTaste',
-          mediaTab,
-          activeLibraryKey,
-          'review',
-        ],
-      }),
-    ]).finally(() => {
-      if (approvalRequired) setDeckForApprovals();
-      else setDeckForReview();
-    });
-  }, [
-    activeLibraryKey,
-    approvalRequired,
-    mediaTab,
-    queryClient,
-    setDeckForApprovals,
-    setDeckForReview,
-  ]);
-
-  // Initialize deck only when tab/library changes (avoid re-mounting the whole deck after each swipe/refetch).
-  useEffect(() => {
-    const key = `${activeCollectionTab}:${mediaTab}:${activeLibraryKey || 'none'}`;
-    if (!activeLibraryKey) return;
-
-    if (activeCollectionTab !== 'immaculate') {
-      setApprovalRequired(false);
-      setDeck([]);
-      setUndoState(null);
-      deckKeyRef.current = null;
-      return;
-    }
-
-    // Wait until at least one query has data so we don't lock-in an empty deck.
-    const hasData = Boolean(listPendingQuery.data) || Boolean(listReviewQuery.data);
-    if (!hasData) return;
-
-    const approval =
-      listPendingQuery.data?.approvalRequiredFromObservatory ??
-      listReviewQuery.data?.approvalRequiredFromObservatory ??
-      false;
-
-    const pendingLen = listPendingQuery.data?.items?.length ?? 0;
-    const reviewLen = listReviewQuery.data?.items?.length ?? 0;
-    const isNoDataDeck =
-      deck.length === 1 &&
-      deck[0]?.kind === 'sentinel' &&
-      deck[0]?.sentinel === 'noData';
-
-    // If we previously locked into the "no suggestions" sentinel due to cached/empty data,
-    // allow the deck to self-heal once the queries fetch real items (without forcing a swipe).
-    if (deckKeyRef.current === key) {
-      if (isNoDataDeck && (pendingLen > 0 || reviewLen > 0)) {
-        setApprovalRequired(approval);
-        if (approval) setDeckForApprovals();
-        else setDeckForReview();
-      }
-      return;
-    }
-
-    deckKeyRef.current = key;
-    setUndoState(null);
-    setApprovalRequired(approval);
-
-    if (!approval) {
-      setDeckForReview();
-      return;
-    }
-
-    setDeckForApprovals();
-  }, [
-    activeCollectionTab,
-    mediaTab,
-    activeLibraryKey,
-    deck,
-    listPendingQuery.data,
-    listReviewQuery.data,
-    setDeckForApprovals,
-    setDeckForReview,
-  ]);
-
-  // Watched: whenever library/media changes, start from the "recently watched" deck.
-  useEffect(() => {
-    if (activeCollectionTab !== 'latestWatched') return;
-    setWatchedCollectionKind('recentlyWatched');
-    watchedDeckKeyRef.current = null;
-  }, [activeCollectionTab, mediaTab, activeLibraryKey]);
-
-  // Watched: initialize deck when tab/library/kind changes (avoid re-mounting after each swipe/refetch).
-  useEffect(() => {
-    const key = `${activeCollectionTab}:${mediaTab}:${activeLibraryKey || 'none'}:${watchedCollectionKind}`;
-    if (!activeLibraryKey) return;
-
-    if (activeCollectionTab !== 'latestWatched') {
-      setWatchedApprovalRequired(false);
-      setWatchedDeck([]);
-      setWatchedUndoState(null);
-      watchedDeckKeyRef.current = null;
-      return;
-    }
-
-    // Wait until at least one query has data so we don't lock-in an empty deck.
-    const hasData =
-      Boolean(listWatchedPendingQuery.data) || Boolean(listWatchedReviewQuery.data);
-    if (!hasData) return;
-
-    const approval =
-      listWatchedPendingQuery.data?.approvalRequiredFromObservatory ??
-      listWatchedReviewQuery.data?.approvalRequiredFromObservatory ??
-      false;
-
-    const pendingLen = listWatchedPendingQuery.data?.items?.length ?? 0;
-    const reviewLen = listWatchedReviewQuery.data?.items?.length ?? 0;
-    const isNoDataDeck =
-      watchedDeck.length === 1 &&
-      watchedDeck[0]?.kind === 'sentinel' &&
-      watchedDeck[0]?.sentinel === 'noData';
-
-    if (watchedDeckKeyRef.current === key) {
-      if (isNoDataDeck && (pendingLen > 0 || reviewLen > 0)) {
-        setWatchedApprovalRequired(approval);
-        if (approval) setWatchedDeckForApprovals();
-        else setWatchedDeckForReview();
-      }
-      return;
-    }
-
-    watchedDeckKeyRef.current = key;
-    setWatchedUndoState(null);
-    setWatchedApprovalRequired(approval);
-
-    if (!approval) {
-      setWatchedDeckForReview();
-      return;
-    }
-
-    setWatchedDeckForApprovals();
-  }, [
-    activeCollectionTab,
-    mediaTab,
-    activeLibraryKey,
-    watchedCollectionKind,
-    watchedDeck,
-    listWatchedPendingQuery.data,
-    listWatchedReviewQuery.data,
-    setWatchedDeckForApprovals,
-    setWatchedDeckForReview,
-  ]);
-
-  const recordDecisionMutation = useMutation({
-    mutationFn: async (params: {
-      mediaType: 'movie' | 'tv';
-      librarySectionKey: string;
-      id: number;
-      action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
-    }) => {
-      return await recordImmaculateTasteDecisions({
-        librarySectionKey: params.librarySectionKey,
-        mediaType: params.mediaType,
+  const immaculateSentinelForPhase = useCallback(
+    (p: Phase) => (p === 'pendingApprovals' ? approvalsDoneCard : reviewDoneCard),
+    [approvalsDoneCard, reviewDoneCard],
+  );
+  const immaculateOnSentinelRight = useCallback(
+    (sentinel: SentinelKind, helpers: SwipeDeckSentinelHelpers) => {
+      if (sentinel === 'approvalsDone') helpers.setDeckForReview();
+      else helpers.restartCycle();
+    },
+    [],
+  );
+  const immaculateRecordDecision = useCallback(
+    (params: { id: number; action: DecisionAction | 'undo' }) =>
+      recordImmaculateTasteDecisions({
+        librarySectionKey: activeLibraryKey,
+        mediaType: mediaTab,
         decisions: [{ id: params.id, action: params.action }],
-      });
-    },
-    onSuccess: async () => {
-      pendingApplyRef.current = true;
-      setHasPendingApply(true);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: [
-            'observatory',
-            'immaculateTaste',
-            mediaTab,
-            activeLibraryKey,
-            'pendingApproval',
-          ],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [
-            'observatory',
-            'immaculateTaste',
-            mediaTab,
-            activeLibraryKey,
-            'review',
-          ],
-        }),
-      ]);
-    },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to save swipe decision',
+      }),
+    [activeLibraryKey, mediaTab],
+  );
+  const immaculateApplyDecisions = useCallback(
+    () =>
+      applyImmaculateTasteObservatory({
+        librarySectionKey: activeLibraryKey,
+        mediaType: mediaTab,
+      }),
+    [activeLibraryKey, mediaTab],
+  );
+  const immaculateRemoveItemFromLists = useCallback(
+    (id: number) => {
+      const strip = (old: { items: ObservatoryItem[] } | undefined) =>
+        old ? { ...old, items: old.items.filter((i) => i.id !== id) } : old;
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        ['observatory', 'immaculateTaste', mediaTab, activeLibraryKey, 'pendingApproval'],
+        strip,
       );
-      // Best-effort: reload server truth.
-      void Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: [
-            'observatory',
-            'immaculateTaste',
-            mediaTab,
-            activeLibraryKey,
-            'pendingApproval',
-          ],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [
-            'observatory',
-            'immaculateTaste',
-            mediaTab,
-            activeLibraryKey,
-            'review',
-          ],
-        }),
-      ]);
-    },
-  });
-
-  const recordWatchedDecisionMutation = useMutation({
-    mutationFn: async (params: {
-      mediaType: 'movie' | 'tv';
-      librarySectionKey: string;
-      collectionKind: WatchedCollectionKind;
-      id: number;
-      action: 'approve' | 'reject' | 'keep' | 'remove' | 'undo';
-    }) => {
-      return await recordWatchedDecisions({
-        librarySectionKey: params.librarySectionKey,
-        mediaType: params.mediaType,
-        collectionKind: params.collectionKind,
-        decisions: [{ id: params.id, action: params.action }],
-      });
-    },
-    onSuccess: async () => {
-      watchedPendingApplyRef.current = true;
-      setHasPendingWatchedApply(true);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: [
-            'observatory',
-            'watched',
-            mediaTab,
-            activeLibraryKey,
-            watchedCollectionKind,
-            'pendingApproval',
-          ],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [
-            'observatory',
-            'watched',
-            mediaTab,
-            activeLibraryKey,
-            watchedCollectionKind,
-            'review',
-          ],
-        }),
-      ]);
-    },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to save swipe decision',
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        ['observatory', 'immaculateTaste', mediaTab, activeLibraryKey, 'review'],
+        strip,
       );
-      void Promise.all([
+    },
+    [activeLibraryKey, mediaTab, queryClient],
+  );
+  const immaculateInvalidateLists = useCallback(
+    () =>
+      Promise.all([
         queryClient.invalidateQueries({
           queryKey: [
             'observatory',
-            'watched',
+            'immaculateTaste',
             mediaTab,
             activeLibraryKey,
-            watchedCollectionKind,
             'pendingApproval',
           ],
         }),
         queryClient.invalidateQueries({
           queryKey: [
             'observatory',
-            'watched',
+            'immaculateTaste',
             mediaTab,
             activeLibraryKey,
-            watchedCollectionKind,
             'review',
           ],
         }),
-      ]);
-    },
-  });
-
-  const applyMutation = useMutation({
-    mutationFn: async (params: { mediaType: 'movie' | 'tv'; librarySectionKey: string }) => {
-      return await applyImmaculateTasteObservatory({
-        librarySectionKey: params.librarySectionKey,
-        mediaType: params.mediaType,
-      });
-    },
-    onSuccess: async () => {
-      pendingApplyRef.current = false;
-      setHasPendingApply(false);
-      setUndoState(null);
-      await Promise.all([
+      ]),
+    [activeLibraryKey, mediaTab, queryClient],
+  );
+  const immaculateInvalidateAfterApply = useCallback(
+    () =>
+      Promise.all([
         queryClient.invalidateQueries({ queryKey: ['observatory', 'immaculateTaste'] }),
         queryClient.invalidateQueries({ queryKey: ['immaculateTasteCollections'] }),
-      ]);
-    },
+      ]),
+    [queryClient],
+  );
+
+  const immaculateDeck = useSwipeDeck({
+    deckKey: `immaculate:${mediaTab}:${activeLibraryKey || 'none'}`,
+    active: activeCollectionTab === 'immaculate',
+    librarySectionKey: activeLibraryKey,
+    pendingData: listPendingQuery.data,
+    reviewData: listReviewQuery.data,
+    sentinelForPhase: immaculateSentinelForPhase,
+    makeNoDataCard,
+    onSentinelRight: immaculateOnSentinelRight,
+    recordDecision: immaculateRecordDecision,
+    applyDecisions: immaculateApplyDecisions,
+    removeItemFromLists: immaculateRemoveItemFromLists,
+    invalidateLists: immaculateInvalidateLists,
+    invalidateAfterApply: immaculateInvalidateAfterApply,
+    announce: setLiveAnnouncement,
   });
 
-  const applyWatchedMutation = useMutation({
-    mutationFn: async (params: { mediaType: 'movie' | 'tv'; librarySectionKey: string }) => {
-      return await applyWatchedObservatory({
-        librarySectionKey: params.librarySectionKey,
-        mediaType: params.mediaType,
-      });
-    },
-    onSuccess: async () => {
-      watchedPendingApplyRef.current = false;
-      setHasPendingWatchedApply(false);
-      setWatchedUndoState(null);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey],
-        }),
-      ]);
-    },
-  });
+  // -------------------------------------------------------------------------
+  // Based on Latest Watched deck
+  // -------------------------------------------------------------------------
 
-  const scheduleApply = useCallback(() => {
-    if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
-    applyTimerRef.current = window.setTimeout(() => {
-      if (!pendingApplyRef.current) return;
-      if (activeCollectionTab !== 'immaculate') return;
-      applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
-    }, 120_000);
-  }, [activeCollectionTab, activeLibraryKey, applyMutation, mediaTab]);
-
-  const scheduleWatchedApply = useCallback(() => {
-    if (watchedApplyTimerRef.current)
-      window.clearTimeout(watchedApplyTimerRef.current);
-    watchedApplyTimerRef.current = window.setTimeout(() => {
-      if (!watchedPendingApplyRef.current) return;
-      if (activeCollectionTab !== 'latestWatched') return;
-      applyWatchedMutation.mutate({
-        mediaType: mediaTab,
-        librarySectionKey: activeLibraryKey,
-      });
-    }, 120_000);
-  }, [activeCollectionTab, activeLibraryKey, applyWatchedMutation, mediaTab]);
-
-  const canUndo =
-    Boolean(undoState) &&
-    undoState?.tab === mediaTab &&
-    undoState?.librarySectionKey === activeLibraryKey &&
-    !recordDecisionMutation.isPending &&
-    !applyMutation.isPending;
-
-  const canWatchedUndo =
-    Boolean(watchedUndoState) &&
-    watchedUndoState?.tab === mediaTab &&
-    watchedUndoState?.librarySectionKey === activeLibraryKey &&
-    watchedUndoState?.collectionKind === watchedCollectionKind &&
-    !recordWatchedDecisionMutation.isPending &&
-    !applyWatchedMutation.isPending;
-
-  const undoLast = useCallback(() => {
-    if (!undoState) return;
-    if (undoState.tab !== mediaTab) return;
-    if (undoState.librarySectionKey !== activeLibraryKey) return;
-
-    const { card, phase: prevPhase } = undoState;
-    setUndoState(null);
-    setPhase(prevPhase);
-    setDeck((prev) => {
-      // If we currently show a sentinel because the deck ran out, replace it with the restored card.
-      const rest = prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
-      return [card, ...rest];
-    });
-
-    recordDecisionMutation.mutate({
-      mediaType: mediaTab,
-      librarySectionKey: activeLibraryKey,
-      id: card.item.id,
-      action: 'undo',
-    });
-    scheduleApply();
-  }, [
-    activeLibraryKey,
-    mediaTab,
-    recordDecisionMutation,
-    scheduleApply,
-    undoState,
-  ]);
-
-  const undoWatchedLast = useCallback(() => {
-    if (!watchedUndoState) return;
-    if (watchedUndoState.tab !== mediaTab) return;
-    if (watchedUndoState.librarySectionKey !== activeLibraryKey) return;
-    if (watchedUndoState.collectionKind !== watchedCollectionKind) return;
-
-    const { card, phase: prevPhase, collectionKind } = watchedUndoState;
-    setWatchedUndoState(null);
-    setWatchedPhase(prevPhase);
-    setWatchedDeck((prev) => {
-      const rest = prev.length === 1 && prev[0]?.kind === 'sentinel' ? [] : prev;
-      return [card, ...rest];
-    });
-
-    recordWatchedDecisionMutation.mutate({
-      mediaType: mediaTab,
-      librarySectionKey: activeLibraryKey,
-      collectionKind,
-      id: card.item.id,
-      action: 'undo',
-    });
-    scheduleWatchedApply();
-  }, [
-    activeLibraryKey,
-    mediaTab,
-    recordWatchedDecisionMutation,
-    scheduleWatchedApply,
-    watchedCollectionKind,
-    watchedUndoState,
-  ]);
-
-  const swipeTopCardImmaculate = useCallback((dir: 'left' | 'right') => {
-    if (activeCollectionTab !== 'immaculate') return;
-    if (!activeLibraryKey) return;
-    if (!deck.length) return;
-    if (recordDecisionMutation.isPending || applyMutation.isPending) return;
-
-    const top = deck[0];
-    if (!top) return;
-
-    // Sentinel: only Right is meaningful.
-    if (top.kind === 'sentinel') {
-      if (dir === 'left') return;
-      setUndoState(null);
-      if (top.sentinel === 'approvalsDone') {
-        setDeckForReview();
-      } else {
-        restartCycle();
-      }
-      return;
-    }
-
-    const action =
-      phase === 'pendingApprovals'
-        ? dir === 'right'
-          ? 'approve'
-          : 'reject'
-        : dir === 'right'
-          ? 'keep'
-          : 'remove';
-
-    setUndoState({
-      tab: mediaTab,
-      librarySectionKey: activeLibraryKey,
-      phase,
-      card: { kind: 'item', item: top.item },
-      action,
-    });
-
-    recordDecisionMutation.mutate({
-      mediaType: mediaTab,
-      librarySectionKey: activeLibraryKey,
-      id: top.item.id,
-      action,
-    });
-
-    advanceOneOrSentinel(
-      phase === 'pendingApprovals' ? approvalsDoneCard : reviewDoneCard,
-    );
-    scheduleApply();
-  }, [
-    activeCollectionTab,
-    activeLibraryKey,
-    approvalsDoneCard,
-    applyMutation.isPending,
-    deck,
-    mediaTab,
-    phase,
-    recordDecisionMutation,
-    restartCycle,
-    reviewDoneCard,
-    scheduleApply,
-    setDeckForReview,
-  ]);
-
-  const swipeTopCardWatched = useCallback((dir: 'left' | 'right') => {
-    if (activeCollectionTab !== 'latestWatched') return;
-    if (!activeLibraryKey) return;
-    if (!watchedDeck.length) return;
-    if (recordWatchedDecisionMutation.isPending || applyWatchedMutation.isPending) return;
-
-    const top = watchedDeck[0];
-    if (!top) return;
-
-    if (top.kind === 'sentinel') {
-      if (dir === 'left') return;
-      setWatchedUndoState(null);
-
-      if (top.sentinel === 'approvalsDone') {
-        setWatchedDeckForReview();
-        return;
-      }
-
-      // noData or reviewDone: advance the overall flow (recently watched -> change of taste -> restart).
-      if (watchedCollectionKind === 'recentlyWatched') {
-        setWatchedCollectionKind('changeOfTaste');
-        watchedDeckKeyRef.current = null;
-      } else {
-        restartWatchedCycle();
-      }
-      return;
-    }
-
-    const action =
-      watchedPhase === 'pendingApprovals'
-        ? dir === 'right'
-          ? 'approve'
-          : 'reject'
-        : dir === 'right'
-          ? 'keep'
-          : 'remove';
-
-    setWatchedUndoState({
-      tab: mediaTab,
-      librarySectionKey: activeLibraryKey,
-      collectionKind: watchedCollectionKind,
-      phase: watchedPhase,
-      card: { kind: 'item', item: top.item },
-      action,
-    });
-
-    recordWatchedDecisionMutation.mutate({
-      mediaType: mediaTab,
-      librarySectionKey: activeLibraryKey,
-      collectionKind: watchedCollectionKind,
-      id: top.item.id,
-      action,
-    });
-
-    advanceWatchedOneOrSentinel(
-      watchedPhase === 'pendingApprovals'
+  const watchedSentinelForPhase = useCallback(
+    (p: Phase) =>
+      p === 'pendingApprovals'
         ? watchedApprovalsDoneCard
         : watchedCollectionKind === 'recentlyWatched'
           ? watchedNextDeckCard
           : watchedRestartCard,
-    );
-    scheduleWatchedApply();
-  }, [
-    activeCollectionTab,
-    activeLibraryKey,
-    applyWatchedMutation.isPending,
-    mediaTab,
-    recordWatchedDecisionMutation,
-    restartWatchedCycle,
-    scheduleWatchedApply,
-    setWatchedDeckForReview,
-    watchedApprovalsDoneCard,
-    watchedCollectionKind,
-    watchedDeck,
-    watchedNextDeckCard,
-    watchedPhase,
-    watchedRestartCard,
-  ]);
+    [
+      watchedApprovalsDoneCard,
+      watchedCollectionKind,
+      watchedNextDeckCard,
+      watchedRestartCard,
+    ],
+  );
+  const invalidateWatchedBothKinds = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'recentlyWatched'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey, 'changeOfTaste'],
+        }),
+      ]),
+    [activeLibraryKey, mediaTab, queryClient],
+  );
+  const watchedOnSentinelRight = useCallback(
+    (sentinel: SentinelKind, helpers: SwipeDeckSentinelHelpers) => {
+      if (sentinel === 'approvalsDone') {
+        helpers.setDeckForReview();
+        return;
+      }
+      // noData or reviewDone: advance the overall flow
+      // (recently watched -> change of taste -> restart).
+      if (watchedCollectionKind === 'recentlyWatched') {
+        setWatchedCollectionKind('changeOfTaste');
+        helpers.resetDeckKey();
+      } else {
+        void invalidateWatchedBothKinds().finally(() => {
+          setWatchedCollectionKind('recentlyWatched');
+          helpers.resetDeckKey();
+        });
+      }
+    },
+    [invalidateWatchedBothKinds, watchedCollectionKind],
+  );
+  const watchedRecordDecision = useCallback(
+    (params: { id: number; action: DecisionAction | 'undo' }) =>
+      recordWatchedDecisions({
+        librarySectionKey: activeLibraryKey,
+        mediaType: mediaTab,
+        collectionKind: watchedCollectionKind,
+        decisions: [{ id: params.id, action: params.action }],
+      }),
+    [activeLibraryKey, mediaTab, watchedCollectionKind],
+  );
+  const watchedApplyDecisions = useCallback(
+    () =>
+      applyWatchedObservatory({
+        librarySectionKey: activeLibraryKey,
+        mediaType: mediaTab,
+      }),
+    [activeLibraryKey, mediaTab],
+  );
+  const watchedRemoveItemFromLists = useCallback(
+    (id: number) => {
+      const strip = (old: { items: ObservatoryItem[] } | undefined) =>
+        old ? { ...old, items: old.items.filter((i) => i.id !== id) } : old;
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        [
+          'observatory',
+          'watched',
+          mediaTab,
+          activeLibraryKey,
+          watchedCollectionKind,
+          'pendingApproval',
+        ],
+        strip,
+      );
+      queryClient.setQueryData<{ items: ObservatoryItem[] } | undefined>(
+        [
+          'observatory',
+          'watched',
+          mediaTab,
+          activeLibraryKey,
+          watchedCollectionKind,
+          'review',
+        ],
+        strip,
+      );
+    },
+    [activeLibraryKey, mediaTab, queryClient, watchedCollectionKind],
+  );
+  const watchedInvalidateLists = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'watched',
+            mediaTab,
+            activeLibraryKey,
+            watchedCollectionKind,
+            'pendingApproval',
+          ],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'observatory',
+            'watched',
+            mediaTab,
+            activeLibraryKey,
+            watchedCollectionKind,
+            'review',
+          ],
+        }),
+      ]),
+    [activeLibraryKey, mediaTab, queryClient, watchedCollectionKind],
+  );
+  const watchedInvalidateAfterApply = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['observatory', 'watched', mediaTab, activeLibraryKey],
+        }),
+      ]),
+    [activeLibraryKey, mediaTab, queryClient],
+  );
 
-  // Keep the latest swipe handler available to the keyboard listener (without re-binding listeners).
-  useEffect(() => {
-    swipeTopCardRef.current =
-      activeCollectionTab === 'immaculate' ? swipeTopCardImmaculate : swipeTopCardWatched;
+  const watchedDeck = useSwipeDeck({
+    deckKey: `watched:${mediaTab}:${activeLibraryKey || 'none'}:${watchedCollectionKind}`,
+    active: activeCollectionTab === 'latestWatched',
+    librarySectionKey: activeLibraryKey,
+    pendingData: listWatchedPendingQuery.data,
+    reviewData: listWatchedReviewQuery.data,
+    sentinelForPhase: watchedSentinelForPhase,
+    makeNoDataCard: makeWatchedNoDataCard,
+    onSentinelRight: watchedOnSentinelRight,
+    recordDecision: watchedRecordDecision,
+    applyDecisions: watchedApplyDecisions,
+    removeItemFromLists: watchedRemoveItemFromLists,
+    invalidateLists: watchedInvalidateLists,
+    invalidateAfterApply: watchedInvalidateAfterApply,
+    announce: setLiveAnnouncement,
   });
 
-  // Keyboard shortcuts: ArrowLeft/ArrowRight behave like swipes on the top card.
+  const resetWatchedDeckKey = watchedDeck.resetDeckKey;
+
+  // Whenever the watched context changes (entering the tab, or switching
+  // media/library while on it), restart from the "recently watched" deck.
+  // Done in the event handlers below rather than an effect so the reset is
+  // tied to the user action that caused it.
+  const restartWatchedFromBeginning = useCallback(() => {
+    setWatchedCollectionKind('recentlyWatched');
+    resetWatchedDeckKey();
+  }, [resetWatchedDeckKey]);
+
+  // The empty-deck fallback cards can't advance via the swipe handlers (those
+  // early-return when the deck is empty), so their CTA buttons act directly.
+  const handleWatchedFallbackAdvance = useCallback(() => {
+    if (watchedCollectionKind === 'recentlyWatched') {
+      setWatchedCollectionKind('changeOfTaste');
+      resetWatchedDeckKey();
+    } else {
+      void invalidateWatchedBothKinds().finally(() => {
+        setWatchedCollectionKind('recentlyWatched');
+        resetWatchedDeckKey();
+      });
+    }
+  }, [invalidateWatchedBothKinds, resetWatchedDeckKey, watchedCollectionKind]);
+
+  // Keep the latest swipe handler available to the keyboard listener (without re-binding listeners).
+  const immaculateSwipeTopCard = immaculateDeck.swipeTopCard;
+  const watchedSwipeTopCard = watchedDeck.swipeTopCard;
+  const immaculateUndoLast = immaculateDeck.undoLast;
+  const watchedUndoLast = watchedDeck.undoLast;
+  useEffect(() => {
+    const isImmaculate = activeCollectionTab === 'immaculate';
+    swipeTopCardRef.current = isImmaculate ? immaculateSwipeTopCard : watchedSwipeTopCard;
+    undoLastRef.current = isImmaculate ? immaculateUndoLast : watchedUndoLast;
+  });
+
+  // Keyboard shortcuts: ArrowLeft/ArrowRight swipe the top card, Z undoes.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.repeat) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const isUndoKey = e.key === 'z' || e.key === 'Z';
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && !isUndoKey) return;
 
       const t = e.target as HTMLElement | null;
       if (t) {
@@ -1367,9 +577,23 @@ export function ObservatoryPage() {
         ) {
           return;
         }
+        // Arrow keys inside any interactive control (GlassSelect's listbox of
+        // buttons, the Undo button, tabs, links) are navigation, not swipe
+        // intent — without this, arrowing through the library dropdown records
+        // irreversible approve/reject decisions.
+        if (
+          typeof t.closest === 'function' &&
+          t.closest('button, a, [role="listbox"], [role="option"], [tabindex]')
+        ) {
+          return;
+        }
       }
 
       e.preventDefault();
+      if (isUndoKey) {
+        undoLastRef.current?.();
+        return;
+      }
       swipeTopCardRef.current?.(e.key === 'ArrowLeft' ? 'left' : 'right');
     };
 
@@ -1377,25 +601,6 @@ export function ObservatoryPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeCollectionTab]);
 
-  // Apply on page leave/unmount (best-effort).
-  useEffect(() => {
-    return () => {
-      if (applyTimerRef.current) window.clearTimeout(applyTimerRef.current);
-      if (watchedApplyTimerRef.current)
-        window.clearTimeout(watchedApplyTimerRef.current);
-
-      if (pendingApplyRef.current) {
-        applyMutation.mutate({ mediaType: mediaTab, librarySectionKey: activeLibraryKey });
-      }
-      if (watchedPendingApplyRef.current) {
-        applyWatchedMutation.mutate({
-          mediaType: mediaTab,
-          librarySectionKey: activeLibraryKey,
-        });
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCollectionTab, mediaTab, activeLibraryKey]);
   const handleAnimateTitleIcon = useCallback(() => {
     titleIconControls.stop();
     titleIconGlowControls.stop();
@@ -1413,39 +618,33 @@ export function ObservatoryPage() {
       const tab = event.currentTarget.dataset.collectionTab as CollectionTab | undefined;
       if (!tab) return;
       setActiveCollectionTab(tab);
+      if (tab === 'latestWatched') restartWatchedFromBeginning();
     },
-    [setActiveCollectionTab],
+    [restartWatchedFromBeginning, setActiveCollectionTab],
   );
   const handleMediaTabClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       const tab = event.currentTarget.dataset.mediaTab as Tab | undefined;
       if (!tab) return;
       setMediaTab(tab);
+      if (activeCollectionTab === 'latestWatched') restartWatchedFromBeginning();
     },
-    [setMediaTab],
+    [activeCollectionTab, restartWatchedFromBeginning, setMediaTab],
   );
   const handleLibraryValueChange = useCallback(
     (value: string) => {
       if (mediaTab === 'movie') setMovieLibrary(value);
       else setTvLibrary(value);
+      if (activeCollectionTab === 'latestWatched') restartWatchedFromBeginning();
     },
-    [mediaTab],
+    [activeCollectionTab, mediaTab, restartWatchedFromBeginning],
   );
-  const handleImmaculateSwipeLeft = useCallback(() => {
-    swipeTopCardImmaculate('left');
-  }, [swipeTopCardImmaculate]);
-  const handleImmaculateSwipeRight = useCallback(() => {
-    swipeTopCardImmaculate('right');
-  }, [swipeTopCardImmaculate]);
-  const handleWatchedSwipeLeft = useCallback(() => {
-    swipeTopCardWatched('left');
-  }, [swipeTopCardWatched]);
-  const handleWatchedSwipeRight = useCallback(() => {
-    swipeTopCardWatched('right');
-  }, [swipeTopCardWatched]);
-
   return (
     <div className="relative min-h-screen overflow-x-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
+      {/* Decision feedback for screen readers; visually the cards animate. */}
+      <div aria-live="polite" role="status" className="sr-only">
+        {liveAnnouncement}
+      </div>
       <section className="relative z-10 min-h-screen overflow-x-hidden pt-10 lg:pt-16">
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
           <div className="mb-12">
@@ -1525,42 +724,6 @@ export function ObservatoryPage() {
             ))}
           </div>
 
-          {(activeCollectionTab === 'immaculate' && hasPendingApply) ||
-          (activeCollectionTab === 'latestWatched' && hasPendingWatchedApply) ? (
-            <div className="mb-6 flex items-center justify-center">
-              <div className="flex items-center gap-3 rounded-full border border-[#facc15]/25 bg-[#facc15]/10 px-4 py-2 text-xs font-semibold text-[#fde68a]">
-                <span>
-                  Decisions recorded — they sync to Plex automatically in the
-                  background.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeCollectionTab === 'immaculate') {
-                      applyMutation.mutate({
-                        mediaType: mediaTab,
-                        librarySectionKey: activeLibraryKey,
-                      });
-                    } else {
-                      applyWatchedMutation.mutate({
-                        mediaType: mediaTab,
-                        librarySectionKey: activeLibraryKey,
-                      });
-                    }
-                  }}
-                  disabled={
-                    applyMutation.isPending || applyWatchedMutation.isPending
-                  }
-                  className="rounded-full border border-[#facc15]/35 bg-[#facc15]/20 px-3 py-1 font-bold text-[#facc15] transition hover:bg-[#facc15]/30 disabled:opacity-50"
-                >
-                  {applyMutation.isPending || applyWatchedMutation.isPending
-                    ? 'Applying…'
-                    : 'Apply now'}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
           <div className="min-h-[300px]">
             <AnimatePresence mode="wait">
               {activeCollectionTab === 'immaculate' ? (
@@ -1627,105 +790,37 @@ export function ObservatoryPage() {
                     </div>
                   </div>
 
-                  <div className="mb-6 text-xs text-white/55">
-                    {approvalRequired
-                      ? 'Approval is ON. Pending download requests show first.'
-                      : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
-                  </div>
-
-                  <div className="mt-6">
-                    {/* Fixed frame prevents layout jitter while cards animate/throw off-screen */}
-                    <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
-                      {deck.length ? (
-                        <div className="relative h-full">
-                          {/* Render a small stack: top 3 */}
-                          {deck
-                            .slice(0, 3)
-                            .reverse()
-                            .map((card, idx, arr) => {
-                              const isTop = idx === arr.length - 1;
-                              const depth = arr.length - 1 - idx;
-                              // Make the waiting-deck feel obvious (without being distracting).
-                              const scale = 1 - depth * 0.045;
-                              const y = depth * 18;
-                              const opacity = 1 - depth * 0.14;
-                              const rotate =
-                                depth === 0
-                                  ? 0
-                                  : depth % 2 === 0
-                                    ? 0.35
-                                    : -0.35;
-                              return (
-                                <motion.div
-                                  key={
-                                    card.kind === 'sentinel'
-                                      ? `sentinel:${card.sentinel}`
-                                      : `${card.item.mediaType}:${card.item.id}`
-                                  }
-                                  initial={false}
-                                  animate={{ scale, y, opacity, rotate }}
-                                  transition={{
-                                    type: 'spring',
-                                    stiffness: 420,
-                                    damping: 34,
-                                  }}
-                                  style={{ zIndex: 50 - depth }}
-                                  className={cn(
-                                    'absolute inset-0',
-                                    !isTop && 'pointer-events-none',
-                                  )}
-                                >
-                                  <SwipeCard
-                                    card={card}
-                                    disabled={
-                                      !isTop ||
-                                      recordDecisionMutation.isPending ||
-                                      applyMutation.isPending
-                                    }
-                                    onSwipeLeft={handleImmaculateSwipeLeft}
-                                    onSwipeRight={handleImmaculateSwipeRight}
-                                  />
-                                </motion.div>
-                              );
-                            })}
-                        </div>
-                      ) : listPendingQuery.isPending || listReviewQuery.isPending ? (
-                        <div className="absolute inset-0">{LOADING_PLACEHOLDER}</div>
-                      ) : (
-                        <div className="absolute inset-0">
-                          <SwipeCard
-                            card={
-                              (listPendingQuery.data?.items?.length ?? 0) === 0 &&
-                              (listReviewQuery.data?.items?.length ?? 0) === 0
-                                ? makeNoDataCard()
-                                : reviewDoneCard
-                            }
-                            onSwipeLeft={NOOP}
-                            onSwipeRight={handleImmaculateSwipeRight}
-                          />
-                        </div>
+                  <div className="mb-6 flex flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider',
+                        immaculateDeck.phase === 'pendingApprovals'
+                          ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                          : 'border-white/15 bg-white/5 text-white/70',
                       )}
-                    </div>
-
-                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
-                      <button
-                        type="button"
-                        onClick={undoLast}
-                        disabled={!canUndo}
-                        className={cn(
-                          'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
-                          canUndo
-                            ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
-                            : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
-                        )}
-                        aria-label="Undo last swipe"
-                        title={canUndo ? 'Undo last swipe' : 'Nothing to undo'}
-                      >
-                        <Undo2 className="h-4 w-4" />
-                        Undo
-                      </button>
-                    </div>
+                    >
+                      {immaculateDeck.phase === 'pendingApprovals'
+                        ? 'Download requests'
+                        : 'Cleanup'}
+                    </span>
+                    <span className="text-xs text-white/55">
+                      {immaculateDeck.phase === 'pendingApprovals'
+                        ? 'Swipe right to approve the download · swipe left to reject.'
+                        : 'Swipe right to keep · swipe left to remove.'}
+                    </span>
                   </div>
+
+                  <SwipeDeckView
+                    api={immaculateDeck}
+                    isLoading={listPendingQuery.isLoading || listReviewQuery.isLoading}
+                    fallbackCard={
+                      (listPendingQuery.data?.items?.length ?? 0) === 0 &&
+                      (listReviewQuery.data?.items?.length ?? 0) === 0
+                        ? makeNoDataCard()
+                        : reviewDoneCard
+                    }
+                    onFallbackAdvance={immaculateDeck.restartCycle}
+                  />
                 </motion.div>
               ) : (
                 <motion.div
@@ -1789,89 +884,35 @@ export function ObservatoryPage() {
                     </div>
                   </div>
 
-                  <div className="mb-6 text-xs text-white/55">
-                    {watchedApprovalRequired
-                      ? 'Approval is ON. Pending download requests show first.'
-                      : 'Approval is OFF. You’re reviewing suggestions (cleanup mode).'}
-                  </div>
-
-                  <div className="mt-6">
-                    <div className="relative mx-auto max-w-3xl h-[540px] md:h-[720px] overflow-visible">
-                      {watchedDeck.length ? (
-                        <div className="relative h-full">
-                          {watchedDeck
-                            .slice(0, 3)
-                            .reverse()
-                            .map((card, idx, arr) => {
-                              const isTop = idx === arr.length - 1;
-                              const depth = arr.length - 1 - idx;
-                              const scale = 1 - depth * 0.045;
-                              const y = depth * 18;
-                              const opacity = 1 - depth * 0.14;
-                              const rotate =
-                                depth === 0 ? 0 : depth % 2 === 0 ? 0.35 : -0.35;
-                              return (
-                                <motion.div
-                                  key={
-                                    card.kind === 'sentinel'
-                                      ? `watched:${watchedCollectionKind}:sentinel:${card.sentinel}`
-                                      : `watched:${watchedCollectionKind}:${card.item.mediaType}:${card.item.id}`
-                                  }
-                                  initial={false}
-                                  animate={{ scale, y, opacity, rotate }}
-                                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                                  style={{ zIndex: 50 - depth }}
-                                  className={cn(
-                                    'absolute inset-0',
-                                    !isTop && 'pointer-events-none',
-                                  )}
-                                >
-                                  <SwipeCard
-                                    card={card}
-                                    disabled={
-                                      !isTop ||
-                                      recordWatchedDecisionMutation.isPending ||
-                                      applyWatchedMutation.isPending
-                                    }
-                                    onSwipeLeft={handleWatchedSwipeLeft}
-                                    onSwipeRight={handleWatchedSwipeRight}
-                                  />
-                                </motion.div>
-                              );
-                            })}
-                        </div>
-                      ) : listWatchedPendingQuery.isPending || listWatchedReviewQuery.isPending ? (
-                        <div className="absolute inset-0">{LOADING_PLACEHOLDER}</div>
-                      ) : (
-                        <div className="absolute inset-0">
-                          <SwipeCard
-                            card={makeWatchedNoDataCard()}
-                            onSwipeLeft={NOOP}
-                            onSwipeRight={handleWatchedSwipeRight}
-                          />
-                        </div>
+                  <div className="mb-6 flex flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider',
+                        watchedDeck.phase === 'pendingApprovals'
+                          ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                          : 'border-white/15 bg-white/5 text-white/70',
                       )}
-                    </div>
-
-                    <div className="mx-auto max-w-3xl mt-4 flex items-center justify-center">
-                      <button
-                        type="button"
-                        onClick={undoWatchedLast}
-                        disabled={!canWatchedUndo}
-                        className={cn(
-                          'h-11 rounded-2xl px-4 border text-sm font-bold transition active:scale-[0.98] flex items-center gap-2',
-                          canWatchedUndo
-                            ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
-                            : 'border-white/10 bg-white/5 text-white/35 cursor-not-allowed',
-                        )}
-                        aria-label="Undo last swipe"
-                        title={canWatchedUndo ? 'Undo last swipe' : 'Nothing to undo'}
-                      >
-                        <Undo2 className="h-4 w-4" />
-                        Undo
-                      </button>
-                    </div>
+                    >
+                      {watchedDeck.phase === 'pendingApprovals'
+                        ? 'Download requests'
+                        : 'Cleanup'}
+                    </span>
+                    <span className="text-xs text-white/55">
+                      {watchedDeck.phase === 'pendingApprovals'
+                        ? 'Swipe right to approve the download · swipe left to reject.'
+                        : 'Swipe right to keep · swipe left to remove.'}
+                    </span>
                   </div>
+
+                  <SwipeDeckView
+                    api={watchedDeck}
+                    isLoading={
+                      listWatchedPendingQuery.isLoading ||
+                      listWatchedReviewQuery.isLoading
+                    }
+                    fallbackCard={makeWatchedNoDataCard()}
+                    onFallbackAdvance={handleWatchedFallbackAdvance}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

@@ -112,7 +112,12 @@ export class CollectionsService {
   }
 
   async deleteCollection(collectionId: string) {
-    await this.prisma.curatedCollection.delete({ where: { id: collectionId } });
+    const deleted = await this.prisma.curatedCollection.deleteMany({
+      where: { id: collectionId },
+    });
+    if (deleted.count === 0) {
+      throw new BadRequestException('collection not found');
+    }
   }
 
   async listItems(collectionId: string) {

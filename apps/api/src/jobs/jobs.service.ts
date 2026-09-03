@@ -743,67 +743,6 @@ export class JobsService implements OnModuleInit {
     return this.serializeRun(run);
   }
 
-  async startQueuedJob(params: { runId: string }) {
-    const run = await this.prisma.jobRun.findUnique({
-      where: { id: params.runId },
-      select: RUN_QUEUE_SELECT,
-    });
-    if (!run) throw new NotFoundException('Run not found');
-
-    void this.scheduleQueuePump('legacy_start');
-
-    const refreshed = await this.prisma.jobRun.findUnique({
-      where: { id: params.runId },
-      select: RUN_QUEUE_SELECT,
-    });
-    if (!refreshed) throw new NotFoundException('Run not found');
-    if (refreshed.status !== 'RUNNING') {
-      throw new ConflictException(
-        `Queued run is not at the front of the persisted queue: runId=${params.runId}`,
-      );
-    }
-    return this.serializeRun(refreshed);
-  }
-
-  async failQueuedJob(params: { runId: string; errorMessage: string }) {
-    const runId = params.runId.trim();
-    const errorMessage = params.errorMessage.trim();
-    if (!runId || !errorMessage) return { updated: false };
-
-    const now = new Date();
-    const updated = await this.prisma.jobRun.updateMany({
-      where: { id: runId, status: 'PENDING' },
-      data: {
-        status: 'FAILED',
-        finishedAt: now,
-        errorMessage,
-      },
-    });
-    if (!updated.count) return { updated: false };
-
-    await this.prisma.jobLogLine
-      .create({
-        data: {
-          runId,
-          level: 'error',
-          message: 'run: failed before start',
-          context: {
-            error: errorMessage,
-            reason: 'invalid_before_start',
-          },
-        },
-      })
-      .catch(() => undefined);
-
-    this.logQueueDecision('invalid_before_start', {
-      runId,
-      errorMessage,
-    });
-    void this.scheduleQueuePump('fail_queued');
-
-    return { updated: true };
-  }
-
   async timeoutRunningJob(params: {
     runId: string;
     jobId: string;
@@ -1935,8 +1874,13 @@ export class JobsService implements OnModuleInit {
         },
       });
 
-      await tx.jobQueueState.update({
-        where: { id: GLOBAL_QUEUE_STATE_ID },
+      // Only release the lease if this run still holds it. A run that the
+      // watchdog already timed out can finish minutes later and reach here,
+      // by which point the queue has handed the lease to someone else —
+      // clearing it unconditionally would let a second run be claimed
+      // alongside the one that is still executing.
+      await tx.jobQueueState.updateMany({
+        where: { id: GLOBAL_QUEUE_STATE_ID, activeRunId: params.runId },
         data: {
           activeRunId: null,
           cooldownUntil,

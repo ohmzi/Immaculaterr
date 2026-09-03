@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { ensureBootstrapEnv } from './bootstrap-env';
+import { configureIpv4OnlyDispatcher } from './network-dispatcher';
 import { BufferedLogger } from './logs/buffered-logger';
 import { createOriginCheckMiddleware } from './security/origin-check.middleware';
 import {
@@ -92,6 +93,7 @@ function escapeRegex(value: string): string {
 }
 
 async function bootstrap() {
+  configureIpv4OnlyDispatcher();
   await ensureBootstrapEnv();
   ensureLegacyGlobals();
   const bootstrapLogger = new Logger('Bootstrap');

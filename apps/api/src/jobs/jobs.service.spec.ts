@@ -353,6 +353,7 @@ function makeService() {
     },
     jobQueueState: {
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     jobLogLine: {
       create: jest.fn(),
@@ -390,6 +391,7 @@ function makeService() {
   tx.jobRun.findFirst.mockResolvedValue(null);
   tx.jobRun.update.mockResolvedValue({});
   tx.jobQueueState.update.mockResolvedValue(makeQueueState());
+  tx.jobQueueState.updateMany.mockResolvedValue({ count: 1 });
   tx.jobLogLine.create.mockResolvedValue({});
   tx.autoRunMediaHistory.findUnique.mockResolvedValue(null);
   tx.autoRunMediaHistory.findFirst.mockResolvedValue(null);
@@ -582,6 +584,28 @@ describe('JobsService durable auto-run media dedupe', () => {
     expect(upsertArg?.create['seedYear']).toBe(2010);
     expect(upsertArg?.create['source']).toBe('plexPolling');
     expect(upsertArg?.create['firstRunId']).toBe('run-1');
+  });
+
+  it('only releases the queue lease when the finishing run still holds it', async () => {
+    const { service, tx } = makeService();
+    // count: 0 is the stale case — the watchdog already marked this run FAILED
+    // and the queue has moved on, but the handler is only now returning.
+    tx.jobRun.updateMany.mockResolvedValue({ count: 0 });
+
+    const finalized = await callFinalizeRunningRun(service, {
+      runId: 'run-timed-out',
+      status: 'SUCCESS',
+      finishedAt: new Date('2026-04-11T00:05:00.000Z'),
+      summary: null,
+      errorMessage: null,
+    });
+
+    expect(finalized).toBe(false);
+    expect(tx.jobQueueState.update).not.toHaveBeenCalled();
+    const leaseCall = tx.jobQueueState.updateMany.mock.calls[0] as
+      | [{ where: { activeRunId: string } }]
+      | undefined;
+    expect(leaseCall?.[0].where.activeRunId).toBe('run-timed-out');
   });
 
   it('does not write a durable history record for failed or skipped auto runs', async () => {

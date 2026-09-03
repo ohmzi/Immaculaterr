@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.types';
@@ -69,6 +77,9 @@ export class CollectionsController {
     @Param('itemId') itemIdRaw: string,
   ) {
     const itemId = Number.parseInt(itemIdRaw, 10);
+    if (!Number.isInteger(itemId)) {
+      throw new BadRequestException('itemId must be an integer');
+    }
     await this.collections.deleteItem({ collectionId, itemId });
     return { ok: true };
   }

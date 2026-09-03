@@ -493,21 +493,6 @@ export function scoreCuttingRoomItem(
 }
 
 /** Human labels for protection codes (UI chips + snapshot aggregates). */
-export const PROTECTION_LABELS: Record<string, string> = {
-  protected_library: 'Protected library',
-  watched_recently: 'Watched recently',
-  too_new: 'Recently added',
-  protected_tag: 'Protected tag',
-  monitored_airing: 'Monitored & airing',
-  on_watchlist: 'On a watchlist',
-  on_deck: 'In continue watching',
-  recently_requested: 'Recently requested',
-  in_managed_collection: 'In a managed collection',
-  watched_by_protected_user: 'Watched by protected user',
-  personal_high_rating: 'You rated it highly',
-  watched: 'Watched (keep)',
-};
-
 export function normalizeCuttingRoomRules(value: unknown): CuttingRoomRules {
   const raw =
     value && typeof value === 'object' && !Array.isArray(value)

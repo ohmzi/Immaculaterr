@@ -48,6 +48,7 @@
     "multer": "2.2.0",
     "terser-webpack-plugin": "5.3.17",
     "shell-quote": "1.10.0",
+    "deepmerge-ts": "^8.0.2",
     "@nestjs/swagger": {
       "js-yaml": "4.3.1"
     }

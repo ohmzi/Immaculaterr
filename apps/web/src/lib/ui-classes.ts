@@ -20,6 +20,15 @@ export const APP_PRESSABLE_CLASS =
 export const APP_CARD_INTERACTIVE_CLASS =
   "group relative overflow-hidden rounded-3xl border border-white/10 bg-[rgba(var(--tcp-surface-rgb),0.60)] backdrop-blur-2xl shadow-2xl transition-all duration-300 hover:bg-[rgba(var(--tcp-surface-rgb),0.75)] hover:border-white/15 hover:shadow-2xl hover:shadow-purple-500/10 focus-within:border-white/15 focus-within:shadow-purple-500/10 active:bg-[rgba(var(--tcp-surface-rgb),0.75)] active:border-white/15 active:shadow-2xl active:shadow-purple-500/15 before:content-[''] before:absolute before:top-0 before:right-0 before:w-[26rem] before:h-[26rem] before:bg-gradient-to-br before:from-white/5 before:to-transparent before:opacity-0 hover:before:opacity-100 focus-within:before:opacity-100 active:before:opacity-100 before:transition-opacity before:duration-500 before:blur-3xl before:rounded-full before:pointer-events-none before:-z-10";
 
+// Desktop "Filters" card on Rewind and Logs. Both lay their fields out as one
+// five-column row, but the Logs source pills wrap to a second line, so the two
+// still settle a little apart. The pages are never on screen together, so
+// matching them has to be an absolute value rather than something the layout
+// can derive — this floor clears the tallest of the two at every breakpoint
+// from md up, which pins both cards to the same height. Adjust here, not per
+// page, so they cannot drift apart again.
+export const APP_FILTERS_CARD_MIN_H_CLASS = 'md:min-h-[17rem]';
+
 // Smaller list-item card (used for “row cards” like Rewind history on mobile).
 export const APP_CARD_ROW_CLASS =
   'group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition-all duration-200 hover:bg-white/10 active:bg-white/10 active:scale-[0.99]';

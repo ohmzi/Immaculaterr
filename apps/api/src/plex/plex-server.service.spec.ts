@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { PlexServerService } from './plex-server.service';
 
 describe('PlexServerService playable media verification', () => {
@@ -103,5 +104,52 @@ describe('PlexServerService playable media verification', () => {
     expect(Array.from(result.metadataEpisodes)).toEqual(['1:1', '1:2']);
     expect(Array.from(result.verifiedEpisodes)).toEqual(['1:1']);
     expect(result.probeFailureCount).toBe(2);
+  });
+});
+
+describe('PlexServerService section languages logging', () => {
+  let service: PlexServerService;
+  let fetchMock: jest.SpiedFunction<typeof fetch>;
+  let warnSpy: jest.SpiedFunction<typeof Logger.prototype.warn>;
+
+  beforeEach(() => {
+    service = new PlexServerService();
+    fetchMock = jest.spyOn(globalThis, 'fetch');
+    warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined as never);
+  });
+
+  afterEach(() => {
+    fetchMock.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('does not log a warning when a section does not support the /language endpoint (404)', async () => {
+    fetchMock.mockResolvedValue(new Response('not found', { status: 404 }));
+
+    await expect(
+      service.listLibraryAudioLanguages({
+        baseUrl: 'http://plex.local:32400',
+        token: 'plex-token',
+        librarySectionKey: '1',
+      }),
+    ).rejects.toThrow('Plex request failed: HTTP 404');
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('still logs a warning for unexpected failures on the /language endpoint', async () => {
+    fetchMock.mockResolvedValue(new Response('boom', { status: 500 }));
+
+    await expect(
+      service.listLibraryAudioLanguages({
+        baseUrl: 'http://plex.local:32400',
+        token: 'plex-token',
+        librarySectionKey: '1',
+      }),
+    ).rejects.toThrow('Plex request failed: HTTP 500');
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('-> 500'));
   });
 });

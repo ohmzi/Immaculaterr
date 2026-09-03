@@ -157,7 +157,6 @@ export function stripUserCollectionSuffix(collectionName: string): string {
 }
 
 // Backwards-compat alias.
-export const stripUserCollectionPrefix = stripUserCollectionSuffix;
 
 function normalizeCuratedBaseName(params: {
   collectionName: string;

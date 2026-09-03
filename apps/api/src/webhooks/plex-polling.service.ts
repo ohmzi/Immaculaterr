@@ -366,8 +366,6 @@ export class PlexPollingService implements OnModuleInit {
       return;
     }
 
-    const currentKeys = new Set(sessions.map((s) => s.sessionKey));
-
     // Handle ended sessions (or sessions that changed media within the same sessionKey).
     for (const [key, prev] of this.lastBySessionKey) {
       const current = sessions.find((s) => s.sessionKey === key) ?? null;
@@ -431,9 +429,6 @@ export class PlexPollingService implements OnModuleInit {
 
     // Best-effort cleanup of stale session automation state.
     this.pruneSessionAutomationState(now);
-
-    // Defensive: if Plex returns no sessions, currentKeys is empty; that's fine.
-    void currentKeys;
   }
 
   private async pollRecentlyAdded(params: {

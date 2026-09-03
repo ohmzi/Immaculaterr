@@ -10,6 +10,7 @@ import { WatchedMovieRecommendationsModule } from '../watched-movie-recommendati
 import { ObservatoryController } from './observatory.controller';
 import { WatchedObservatoryController } from './observatory.watched.controller';
 import { ObservatoryService } from './observatory.service';
+import { ObservatoryApplyRunner } from './observatory-apply.runner';
 
 @Module({
   imports: [
@@ -23,6 +24,6 @@ import { ObservatoryService } from './observatory.service';
     WatchedMovieRecommendationsModule,
   ],
   controllers: [ObservatoryController, WatchedObservatoryController],
-  providers: [ObservatoryService],
+  providers: [ObservatoryService, ObservatoryApplyRunner],
 })
 export class ObservatoryModule {}

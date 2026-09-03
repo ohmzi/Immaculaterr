@@ -1587,7 +1587,9 @@ export class PlexServerService {
       `library/sections/${encodeURIComponent(key)}/language`,
       normalizeBaseUrl(baseUrl),
     ).toString();
-    const xml = asPlexXml(await this.fetchXml(url, token, 20000));
+    const xml = asPlexXml(
+      await this.fetchXml(url, token, 20000, { quietStatuses: [404] }),
+    );
     const container = xml.MediaContainer;
     const nodes = asUnknownArray(
       container?.Directory ?? container?.Language ?? container?.Metadata ?? [],
@@ -3593,6 +3595,7 @@ export class PlexServerService {
     url: string,
     token: string,
     timeoutMs: number,
+    options?: { quietStatuses?: number[] },
   ): Promise<unknown> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -3615,9 +3618,15 @@ export class PlexServerService {
       const ms = Date.now() - startedAt;
 
       if (!res.ok) {
-        this.logger.warn(
-          `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(text, LOG_BODY_MAX_LENGTH)}`.trim(),
-        );
+        // Some section/agent types don't support every endpoint (e.g. not all
+        // sections expose /language) and callers already treat that as a
+        // best-effort miss, so skip the noisy WARN for statuses they opted
+        // to tolerate.
+        if (!options?.quietStatuses?.includes(res.status)) {
+          this.logger.warn(
+            `Plex HTTP GET ${safeUrl} -> ${res.status} (${ms}ms) ${truncateForLog(text, LOG_BODY_MAX_LENGTH)}`.trim(),
+          );
+        }
         throw new BadGatewayException(
           `Plex request failed: HTTP ${res.status}`.trim(),
         );

@@ -2,7 +2,18 @@ import { type ChangeEvent, type MouseEvent as ReactMouseEvent, useCallback, useM
 import { motion, useAnimation } from 'motion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CircleAlert, Loader2, ScrollText, Trash2, Pause, Play, RefreshCw, Download, Copy as CopyIcon } from 'lucide-react';
+import {
+  ChevronDown,
+  CircleAlert,
+  Loader2,
+  ScrollText,
+  Trash2,
+  Pause,
+  Play,
+  RefreshCw,
+  Download,
+  Copy as CopyIcon,
+} from 'lucide-react';
 import { copyToClipboard } from '@/lib/clipboard';
 import { usePersistentState } from '@/lib/usePersistentState';
 
@@ -10,8 +21,16 @@ import { clearServerLogs, listServerLogs, type ServerLogEntry } from '@/api/logs
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PullToRefresh } from '@/components/PullToRefresh';
 import {
+  APP_FILTERS_CARD_MIN_H_CLASS,
   APP_PRESSABLE_CLASS,
 } from '@/lib/ui-classes';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type ServiceFilter =
   | 'immaculaterr'
@@ -223,6 +242,7 @@ export const LogsPage = () => {
     [],
   );
   const [query, setQuery] = useState('');
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const [pollMs, setPollMs] = usePersistentState('tcp_logs_poll_ms', 5_000);
@@ -308,6 +328,11 @@ export const LogsPage = () => {
       await queryClient.invalidateQueries({ queryKey: ['serverLogs'] });
       setClearAllOpen(false);
     },
+    // The dialog surfaces this inline via its error prop; the toast is for the
+    // coarse-pointer path, which uses window.confirm and has nowhere to show it.
+    onError: (error: Error) => {
+      toast.error(error.message || 'Could not clear logs. Please try again.');
+    },
   });
   const closeClearAllDialog = useCallback(() => {
     setClearAllOpen(false);
@@ -328,8 +353,16 @@ export const LogsPage = () => {
     });
   }, [titleIconControls, titleIconGlowControls]);
 
+  // Same card/field vocabulary as Rewind so the two pages read as one surface.
   const cardClass =
-    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-3 shadow-2xl';
+    'rounded-3xl border border-white/10 bg-[#0b0c0f]/60 backdrop-blur-2xl p-6 lg:p-8 shadow-2xl';
+  const labelClass = 'block text-sm font-medium text-white/70 mb-2';
+  const inputBaseClass =
+    'px-4 py-3 rounded-xl border border-white/15 bg-white/10 text-white placeholder-white/40 focus:ring-2 focus:ring-yellow-400/70 focus:border-transparent outline-none transition';
+  const inputClass = `w-full ${inputBaseClass}`;
+  const selectTriggerClass = `w-full ${inputBaseClass}`;
+  const actionButtonClass =
+    'inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation w-full sm:w-auto border';
 
   const toggle = useCallback((id: ServiceFilter) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -356,6 +389,21 @@ export const LogsPage = () => {
   const handleQueryChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setQuery(event.target.value);
   }, []);
+  const handlePollChange = useCallback(
+    (value: string) => {
+      setPollMs(Number(value));
+    },
+    [setPollMs],
+  );
+  const togglePaused = useCallback(() => {
+    setPaused((v) => !v);
+  }, []);
+  const handleRefresh = useCallback(() => {
+    void logsQuery.refetch();
+  }, [logsQuery]);
+  const toggleMobileFilters = useCallback(() => {
+    setMobileFiltersOpen((prev) => !prev);
+  }, []);
   const handleClearAllRequest = useCallback(() => {
     const total = logs.length;
     if (!total) return;
@@ -374,6 +422,92 @@ export const LogsPage = () => {
     setClearAllOpen(true);
   }, [clearMutation, logs.length]);
 
+  // Same single-row shape as Rewind's filters (grid of five), so both cards
+  // resolve to the same height instead of Logs stacking an extra block.
+  const filtersForm = (
+    <div className="grid gap-4 md:grid-cols-5">
+      <div className="md:col-span-3">
+        <div className={labelClass}>Source</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={clearSelectedFilters}
+            aria-pressed={selected.length === 0}
+            className={[
+              APP_PRESSABLE_CLASS,
+              'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+              selected.length === 0
+                ? 'bg-white/15 text-white border-white/20'
+                : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+            ].join(' ')}
+          >
+            All
+          </button>
+          {SERVICE_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              data-filter-id={f.id}
+              onClick={handleServiceFilterClick}
+              aria-pressed={selected.includes(f.id)}
+              className={[
+                APP_PRESSABLE_CLASS,
+                'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+                selected.includes(f.id)
+                  ? f.activeClass
+                  : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+              ].join(' ')}
+            >
+              {f.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={toggleErrorsFilter}
+            className={[
+              APP_PRESSABLE_CLASS,
+              'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+              selected.includes('errors')
+                ? 'bg-red-500/15 text-red-100 border-red-500/25'
+                : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+            ].join(' ')}
+          >
+            Errors
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div className={labelClass}>Search</div>
+        <input
+          value={query}
+          onChange={handleQueryChange}
+          placeholder="scrobble, library.new, OFFLINE…"
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <div className={labelClass}>Refresh rate</div>
+        <Select
+          value={String(pollMs)}
+          onValueChange={handlePollChange}
+          disabled={paused}
+        >
+          <SelectTrigger className={selectTriggerClass} aria-label="Refresh rate">
+            <SelectValue placeholder="5s" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="2000">Every 2s</SelectItem>
+            <SelectItem value="5000">Every 5s</SelectItem>
+            <SelectItem value="15000">Every 15s</SelectItem>
+            <SelectItem value="60000">Every 60s</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
   return (
     <div className="relative min-h-screen overflow-hidden select-none [-webkit-touch-callout:none] [&_input]:select-text [&_textarea]:select-text [&_select]:select-text">
 
@@ -381,14 +515,14 @@ export const LogsPage = () => {
         <PullToRefresh onRefresh={() => logsQuery.refetch()}>
         <div className="container mx-auto px-4 pb-20 max-w-5xl">
           {/* Page Header */}
-          <div className="mb-12">
+          <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="space-y-6"
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="flex flex-col gap-4"
             >
-              <div className="flex items-center gap-5">
+              <div className="flex items-center gap-4">
                 <motion.button
                   type="button"
                   onClick={animateTitleIcon}
@@ -403,159 +537,167 @@ export const LogsPage = () => {
                     className="pointer-events-none absolute inset-0 bg-[#facc15] blur-xl opacity-0"
                   />
                   <div className="absolute inset-0 bg-[#facc15] blur-xl opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
-                  <div className="relative p-3 md:p-4 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_30px_rgba(250,204,21,0.3)] border border-white/20 group-hover:rotate-0 transition-transform duration-300 ease-spring">
-                    <ScrollText className="w-8 h-8 md:w-10 md:h-10 text-black" strokeWidth={2.5} />
+                  <div className="relative p-3 bg-[#facc15] rounded-2xl -rotate-6 shadow-[0_0_20px_rgba(250,204,21,0.4)] border-2 border-white/10 group-hover:rotate-0 transition-transform duration-300">
+                    <ScrollText className="w-8 h-8 text-black" strokeWidth={2.5} />
                   </div>
                 </motion.button>
-                <h1 className="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-2xl">
+                <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-xl">
                   Logs
                 </h1>
               </div>
-
               <p className="text-purple-200/70 text-lg font-medium max-w-lg leading-relaxed ml-1">
-                Real-time server <span className="text-[#facc15] font-bold">monitoring</span>. <br />
-                <span className="text-sm opacity-60 font-normal">
-                  Watch your system breathe, one log line at a time.
-                </span>
+                Real-time server monitoring. Watch your system breathe, one log
+                line at a time.
               </p>
             </motion.div>
           </div>
 
-          <div className={cardClass}>
-            {logsQuery.isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-white/70 p-4">
+          {logsQuery.isLoading ? (
+            <div className={cardClass}>
+              <div className="flex items-center gap-2 text-white">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading…
+                <div className="text-lg font-semibold">Loading logs…</div>
               </div>
-            ) : logsQuery.error ? (
-              <div className="flex items-start gap-2 text-sm text-red-200 p-4">
-                <CircleAlert className="mt-0.5 h-4 w-4" />
-                <div>{(logsQuery.error as Error).message}</div>
+            </div>
+          ) : logsQuery.error ? (
+            <div className={`${cardClass} border-red-500/25 bg-[#0b0c0f]/70`}>
+              <div className="flex items-start gap-3">
+                <CircleAlert className="mt-0.5 h-5 w-5 text-red-300" />
+                <div className="min-w-0">
+                  <div className="text-white font-semibold">Failed to load logs</div>
+                  <div className="text-sm text-white/70">
+                    {(logsQuery.error as Error).message}
+                  </div>
+                </div>
               </div>
-            ) : (
-              <>
-                <div className="p-3 md:p-4 border-b border-white/10 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={clearSelectedFilters}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Filters (desktop: always expanded) */}
+              <div className={`${cardClass} ${APP_FILTERS_CARD_MIN_H_CLASS} hidden md:block`}>
+                <div className="mb-6">
+                  <div className="text-2xl font-semibold text-white">Filters</div>
+                  <div className="mt-2 text-sm text-white/70">
+                    Filter by source, errors, refresh rate, or a quick text search.
+                  </div>
+                </div>
+                {filtersForm}
+              </div>
+
+              {/* Filters (mobile: collapsed by default) */}
+              <div className={`${cardClass} md:hidden`}>
+                <button
+                  type="button"
+                  onClick={toggleMobileFilters}
+                  className="w-full text-left focus:outline-none touch-manipulation"
+                  aria-expanded={mobileFiltersOpen}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-2xl font-semibold text-white">Filters</div>
+                      <div className="mt-2 text-sm text-white/70">
+                        Filter by source, errors, refresh rate, or a quick text search.
+                      </div>
+                    </div>
+                    <ChevronDown
                       className={[
-                        APP_PRESSABLE_CLASS,
-                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        selected.length === 0
-                          ? 'bg-white/15 text-white border-white/20'
-                          : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
+                        'mt-1 h-5 w-5 text-white/60 transition-transform',
+                        mobileFiltersOpen ? 'rotate-180' : '',
                       ].join(' ')}
-                    >
-                      All
-                    </button>
-                    {SERVICE_FILTERS.map((f) => (
+                    />
+                  </div>
+                </button>
+
+                {mobileFiltersOpen ? <div className="mt-6">{filtersForm}</div> : null}
+              </div>
+
+              {paused ? (
+                <div className={`${cardClass} border-sky-400/20 bg-sky-500/10`}>
+                  <div className="flex items-start gap-3">
+                    <CircleAlert className="mt-0.5 h-5 w-5 text-sky-200" />
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-sky-100/90">
+                      <span>Live updates are paused. New lines are not being fetched.</span>
                       <button
-                        key={f.id}
                         type="button"
-                        data-filter-id={f.id}
-                        onClick={handleServiceFilterClick}
-                        className={[
-                          APP_PRESSABLE_CLASS,
-                          'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                          selected.includes(f.id)
-                            ? f.activeClass
-                            : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
-                        ].join(' ')}
+                        onClick={togglePaused}
+                        className="rounded-full border border-sky-300/30 bg-sky-400/15 px-3 py-1 text-xs font-bold text-sky-50 transition hover:bg-sky-400/25"
                       >
-                        {f.label}
+                        Resume
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={toggleErrorsFilter}
-                      className={[
-                        APP_PRESSABLE_CLASS,
-                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        selected.includes('errors')
-                          ? 'bg-red-500/15 text-red-100 border-red-500/25'
-                          : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10',
-                      ].join(' ')}
-                    >
-                      Errors
-                    </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className={cardClass}>
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="text-2xl font-semibold text-white">Live stream</div>
+                    <div className="mt-2 text-sm text-white/70">
+                      {`${filtered.length.toLocaleString()} shown`}
+                    </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto min-w-0">
-                    <input
-                      value={query}
-                      onChange={handleQueryChange}
-                      placeholder="Filter… (e.g. scrobble, library.new, OFFLINE)"
-                      className="w-full sm:flex-1 sm:min-w-0 md:w-[360px] px-4 py-2 rounded-full border border-white/15 bg-white/5 text-white placeholder-white/40 outline-none focus:ring-2 focus:ring-white/15"
-                    />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                     <button
                       type="button"
-                      onClick={() => setPaused((v) => !v)}
+                      onClick={togglePaused}
                       className={[
-                        APP_PRESSABLE_CLASS,
-                        'inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border transition whitespace-nowrap w-full sm:w-auto',
+                        actionButtonClass,
                         paused
-                          ? 'bg-emerald-500/10 text-emerald-100 border-emerald-500/25 hover:bg-emerald-500/15'
-                          : 'bg-white/5 text-white/70 border-white/15 hover:bg-white/10',
+                          ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15'
+                          : 'border-white/15 bg-white/5 text-white/75 hover:bg-white/10',
                       ].join(' ')}
                       title={paused ? 'Resume live updates' : 'Pause live updates'}
                     >
                       {paused ? (
                         <>
-                          <Play className="h-4 w-4" /> Resume
+                          <Play className="h-4 w-4" />
+                          Resume
                         </>
                       ) : (
                         <>
-                          <Pause className="h-4 w-4" /> Pause
+                          <Pause className="h-4 w-4" />
+                          Pause
                         </>
                       )}
                     </button>
-                    <select
-                      value={pollMs}
-                      onChange={(e) => setPollMs(Number(e.target.value))}
-                      disabled={paused}
-                      className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold text-white/70 outline-none focus:ring-2 focus:ring-white/15 disabled:opacity-50 [&>option]:bg-[#141018]"
-                      aria-label="Refresh rate"
-                      title="How often the log refreshes"
-                    >
-                      <option value={2000}>2s</option>
-                      <option value={5000}>5s</option>
-                      <option value={15000}>15s</option>
-                      <option value={60000}>60s</option>
-                    </select>
+
                     <button
                       type="button"
-                      onClick={() => void logsQuery.refetch()}
+                      onClick={handleRefresh}
                       disabled={logsQuery.isFetching}
-                      className={`${APP_PRESSABLE_CLASS} inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10 whitespace-nowrap w-full sm:w-auto disabled:opacity-50`}
+                      className={`${actionButtonClass} border-white/15 bg-white/5 text-white/75 hover:bg-white/10 disabled:opacity-50`}
                       title="Refresh now"
                     >
                       <RefreshCw
                         className={`h-4 w-4 ${logsQuery.isFetching ? 'animate-spin' : ''}`}
                       />
+                      Refresh
                     </button>
+
                     <button
                       type="button"
                       onClick={handleDownload}
                       disabled={filtered.length === 0}
-                      className={`${APP_PRESSABLE_CLASS} inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border border-white/15 bg-white/5 text-white/70 transition hover:bg-white/10 whitespace-nowrap w-full sm:w-auto disabled:opacity-50`}
+                      className={`${actionButtonClass} border-white/15 bg-white/5 text-white/75 hover:bg-white/10 disabled:opacity-50`}
                       title="Download the filtered log lines as a text file"
                     >
                       <Download className="h-4 w-4" />
+                      Download
                     </button>
+
                     <button
                       type="button"
                       onClick={handleClearAllRequest}
                       disabled={clearMutation.isPending || logs.length === 0}
                       className={[
-                        APP_PRESSABLE_CLASS,
-                        'inline-flex items-center justify-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border transition whitespace-nowrap',
-                        'w-full sm:w-auto',
+                        actionButtonClass,
                         clearMutation.isPending
-                          ? 'bg-red-500/10 text-red-100/70 border-red-500/15 cursor-not-allowed'
+                          ? 'border-red-500/15 bg-red-500/10 text-red-100/70 cursor-not-allowed'
                           : logs.length > 0
-                            ? 'bg-red-500/10 text-red-100 border-red-500/25 hover:bg-red-500/15'
-                            : 'bg-white/5 text-white/40 border-white/10 cursor-not-allowed',
+                            ? 'border-red-500/25 bg-red-500/10 text-red-100 hover:bg-red-500/15'
+                            : 'border-white/10 bg-white/5 text-white/40 cursor-not-allowed',
                       ].join(' ')}
                       title="Clear all logs"
                     >
@@ -576,19 +718,19 @@ export const LogsPage = () => {
 
                 {filtered.length ? (
                   <div
-                    className="overflow-auto select-text [-webkit-touch-callout:default]"
+                    className="overflow-auto rounded-2xl border border-white/10 bg-white/5 backdrop-blur select-text [-webkit-touch-callout:default]"
                     style={{ maxHeight: 'calc(100vh - 280px)' }}
                   >
                     <table className="w-full text-sm">
-                      <thead className="text-left text-xs text-white/60 sticky top-0 z-20 bg-[#0b0c0f]/95 backdrop-blur-sm">
+                      <thead className="sticky top-0 z-20 bg-[#0b0c0f]/95 text-left text-xs text-white/60 backdrop-blur-sm">
                         <tr>
-                          <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
+                          <th className="border-b border-white/10 px-3 py-3 whitespace-nowrap">
                             Timestamp
                           </th>
-                          <th className="border-b border-white/10 px-4 py-3 whitespace-nowrap">
+                          <th className="border-b border-white/10 px-3 py-3 whitespace-nowrap">
                             Type
                           </th>
-                          <th className="border-b border-white/10 px-4 py-3">Message</th>
+                          <th className="border-b border-white/10 px-3 py-3">Message</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -598,7 +740,7 @@ export const LogsPage = () => {
                             className="group/logrow border-t border-white/10 hover:bg-white/5"
                           >
                             <td
-                              className="px-4 py-3 whitespace-nowrap font-mono text-xs text-white/60"
+                              className="px-3 py-3 whitespace-nowrap font-mono text-xs text-white/60"
                               title={new Date(line.time).toLocaleString()}
                             >
                               <div className="flex items-center gap-1.5">
@@ -630,7 +772,7 @@ export const LogsPage = () => {
                                 </span>
                               </div>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
+                            <td className="px-3 py-3 whitespace-nowrap">
                               {(() => {
                                 const tags = serviceTagsForLine(line);
                                 const orderedTypes = TYPE_TAG_ORDER.filter((tag) =>
@@ -653,15 +795,17 @@ export const LogsPage = () => {
                                 );
                               })()}
                             </td>
-                            <td className="px-4 py-3 font-mono text-xs text-white/85">{line.message}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-white/85">
+                              {line.message}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <div className="p-4">
-                    <div className="text-sm text-white/80 font-semibold">
+                  <div>
+                    <div className="text-sm text-white/70">
                       {logs.length === 0
                         ? 'No logs yet.'
                         : selected.length === 1 &&
@@ -670,7 +814,7 @@ export const LogsPage = () => {
                           ? 'No error logs yet.'
                           : 'No logs match your current filters.'}
                     </div>
-                    {(selected.length > 0 || query.trim().length > 0) && (
+                    {selected.length > 0 || query.trim().length > 0 ? (
                       <div className="mt-3">
                         <button
                           type="button"
@@ -684,12 +828,12 @@ export const LogsPage = () => {
                           Clear filters
                         </button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
         </PullToRefresh>
       </section>
@@ -714,6 +858,9 @@ export const LogsPage = () => {
         cancelText="Cancel"
         variant="danger"
         confirming={clearMutation.isPending}
+        error={
+          clearMutation.isError ? (clearMutation.error as Error).message : null
+        }
       />
     </div>
   );

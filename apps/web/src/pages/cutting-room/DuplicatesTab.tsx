@@ -143,6 +143,17 @@ export function DuplicatesTab() {
         <div className="flex items-center gap-2 text-sm text-white/60 p-4">
           <Loader2 className="h-4 w-4 animate-spin" /> Scanning for duplicates…
         </div>
+      ) : duplicatesQuery.isError ? (
+        // A failed scan is not a clean library. Falling through to the empty
+        // state below told the user every movie has a single copy when the
+        // scan never actually completed.
+        <div className="p-8 text-center text-sm">
+          <p className="text-white/70">Couldn&apos;t scan for duplicates.</p>
+          <p className="mt-1 text-white/50 text-xs">
+            {(duplicatesQuery.error as Error)?.message ||
+              'The request did not complete.'}
+          </p>
+        </div>
       ) : groups.length === 0 ? (
         <div className="p-8 text-center text-white/50 text-sm">
           No duplicate versions found — every movie has a single copy.

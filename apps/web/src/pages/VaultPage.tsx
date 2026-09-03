@@ -655,6 +655,9 @@ export const SettingsPage = ({
     Record<string, boolean | null>
   >({});
 
+  // Holds the Plex OAuth poll so leaving the page stops it — the interval is
+  // started from a click handler, so there is no effect cleanup to rely on.
+  const plexOAuthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const plexTestRunId = useRef(0);
   const tmdbTestRunId = useRef(0);
   const radarrTestRunId = useRef(0);
@@ -734,6 +737,7 @@ export const SettingsPage = ({
         options?: { closePopup?: boolean; success?: boolean },
       ) => {
         clearInterval(pollIntervalId);
+        plexOAuthPollRef.current = null;
         if (options?.closePopup) {
           closePopupSafely();
         }
@@ -788,6 +792,7 @@ export const SettingsPage = ({
       const pollInterval = setInterval(() => {
         runAsyncTask(pollForAuthToken(pollInterval));
       }, 2000); // Poll every 2 seconds
+      plexOAuthPollRef.current = pollInterval;
 
     } catch {
       try {
@@ -798,6 +803,17 @@ export const SettingsPage = ({
       setIsPlexOAuthLoading(false);
       toast.error('Couldn’t start Plex login. Please try again.', { id: toastId });
     }
+  }, []);
+
+  // Leaving Vault mid-login otherwise leaves the 2s poll running for the rest
+  // of its attempt budget, still hitting the API and still toasting about a
+  // page the user is no longer on.
+  useEffect(() => {
+    return () => {
+      if (plexOAuthPollRef.current === null) return;
+      clearInterval(plexOAuthPollRef.current);
+      plexOAuthPollRef.current = null;
+    };
   }, []);
 
   // skipcq: JS-R1005 - Save mutation performs diffing and conditional secret envelope writes.

@@ -5,12 +5,42 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { ArrowRight, ChevronRight, Lock } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  ChevronRight,
+  LineChart as LineChartIcon,
+  Loader2,
+} from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { getPlexLibraryGrowth, getPlexLibraryGrowthVersion, type PlexLibraryGrowthResponse } from '@/api/plex';
+
+// Series colours for the hero chart. The card is a light yellow-green frost, so
+// the old pair was unreadable against it — measured 1.2:1 for the #facc15
+// movies line and 1.4:1 for the #60a5fa TV line. These two clear ~4.5:1 on the
+// same surface while sitting ~90° apart in hue from each other, and both are
+// far from the yellow-green backdrop. Keep the line, the area fill, the axis
+// label and the footer figures on the same value so the mapping stays obvious.
+const MOVIES_SERIES_COLOR = '#86198f'; // deep magenta (tailwind fuchsia-800)
+const TV_SERIES_COLOR = '#1e40af'; // deep blue (tailwind blue-800)
+
+// Static up-and-to-the-right silhouette for the chart's loading skeleton —
+// echoes the shape of a real growth curve without claiming to be real data.
+// Fixed values (not random) so the skeleton doesn't jitter on re-render.
+const SKELETON_BAR_HEIGHTS = [
+  18, 22, 20, 28, 26, 34, 30, 40, 38, 48, 44, 54, 50, 60, 58, 68, 64, 74, 70, 80, 78, 88, 84, 94,
+];
+
+// Dashes the skeleton's grid rules to match the real chart's CartesianGrid
+// (strokeDasharray="3 3"), so the grid doesn't change weight when data lands.
+const SKELETON_GRID_LINE: CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(to right, rgba(0,0,0,0.12) 0 3px, transparent 3px 6px)',
+};
 
 type TimeRangeKey = '1M' | '3M' | '6M' | '1Y' | '5Y' | 'ALL';
 
@@ -220,7 +250,7 @@ function CombinedYAxisTick(props: {
         textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
-        fill="#facc15"
+        fill={MOVIES_SERIES_COLOR}
       >
         {movieText}
       </text>
@@ -230,7 +260,7 @@ function CombinedYAxisTick(props: {
         textAnchor="start"
         dominantBaseline="middle"
         style={{ fontSize: '12px' }}
-        fill="#60a5fa"
+        fill={TV_SERIES_COLOR}
       >
         {tvText}
       </text>
@@ -258,7 +288,7 @@ function MonthXAxisTick(props: {
         y={0}
         dy={16}
         textAnchor={anchor}
-        fill="#9ca3af"
+        fill="rgba(0,0,0,0.6)"
         style={{ fontSize: '12px' }}
       >
         {label}
@@ -490,7 +520,12 @@ export function HeroSection() {
   const tvRangeDelta = hasRangeDelta ? tvTotal - tvRangeStart : 0;
 
   const hasData = series.length > 0 && (moviesTotal > 0 || tvTotal > 0);
-  const showBlur = !hasData;
+  const isEmptyState = !hasData && !growthQuery.isLoading && !growthQuery.isError;
+
+  const { refetch: refetchGrowth } = growthQuery;
+  const handleGrowthRetry = useCallback(() => {
+    void refetchGrowth();
+  }, [refetchGrowth]);
 
   const [statsMedia, setStatsMedia] = useState<'movies' | 'tv'>('movies');
   const moviesHasStats = moviesTotal > 0;
@@ -630,154 +665,263 @@ export function HeroSection() {
           </motion.div>
 
           {/* Graph */}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.35 }}
-            className="mt-10 flex justify-center w-full"
-          >
+          <div className="mt-10 flex justify-center w-full">
             <div className="relative w-full max-w-[560px]">
-              {/* Analytics Card */}
-              <div className="w-full bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-800 dark:to-gray-900 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-xl border border-white/10 dark:border-white/5">
-                {/* Card Header */}
-                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              {/* Analytics Card — frosted like the Cutting Room toggle, so the hero
+                  art reads through it. The surface deliberately sits OUTSIDE the
+                  entrance animation: an ancestor mid-transition (opacity < 1, or a
+                  transform) becomes a backdrop root, so backdrop-blur has nothing
+                  to sample and the card renders unfrosted until the animation
+                  settles. Only the contents animate in. */}
+              <div className="w-full bg-black/10 rounded-3xl p-6 lg:p-8 shadow-2xl backdrop-blur-md border border-white/10">
+                <motion.div
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.35 }}
+                >
+                {/* Card Header — centered, and the (all-disabled) range pills
+                    drop out entirely, when there's genuinely no data. A
+                    right-pinned control row fights a centered title, and
+                    disabled pills over an empty chart don't do anything for
+                    the reader anyway. */}
+                <div
+                  className={
+                    isEmptyState
+                      ? 'mb-6 flex flex-col items-center text-center'
+                      : 'mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'
+                  }
+                >
                   <div className="min-w-0">
-                    <h3 className="text-white text-lg font-semibold mb-1">Media Analytics</h3>
-                    <p className="text-gray-400 dark:text-gray-500 text-sm">
+                    <h3 className="text-black text-lg font-semibold mb-1">Media Analytics</h3>
+                    <p className="text-black/70 text-sm">
                       Collection growth over time
                     </p>
                   </div>
 
-                  <div className="w-full sm:w-auto">
-                    <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      <div
-                        className="inline-flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1 backdrop-blur-md whitespace-nowrap"
-                        role="group"
-                        aria-label="Select chart time range"
-                      >
-                        {TIME_RANGE_OPTIONS.map((opt) => {
-                          const selected = timeRange === opt.key;
-                          return (
-                            <button
-                              key={opt.key}
-                              type="button"
-                              data-range-key={opt.key}
-                              onClick={handleTimeRangeChange}
-                              disabled={!hasData}
-                              aria-pressed={selected}
-                              title={opt.title}
-                              className={[
-                                'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20',
-                                'disabled:opacity-40 disabled:cursor-not-allowed',
-                                selected
-                                  ? 'bg-white/15 text-white'
-                                  : 'text-white/70 hover:text-white hover:bg-white/10',
-                              ].join(' ')}
-                            >
-                              {opt.label}
-                            </button>
-                          );
-                        })}
+                  {!isEmptyState && (
+                    <div className="w-full sm:w-auto">
+                      <div className="max-w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div
+                          // No backdrop-blur here: the card underneath is already
+                          // frosted, so a second pass buys nothing — and because
+                          // this sits inside the entrance animation, its filter
+                          // would sit dormant until the animation settled and then
+                          // pop in. See the card comment above.
+                          className="inline-flex items-center gap-1 rounded-xl bg-black/5 border border-black/10 p-1 whitespace-nowrap"
+                          role="group"
+                          aria-label="Select chart time range"
+                        >
+                          {TIME_RANGE_OPTIONS.map((opt) => {
+                            const selected = timeRange === opt.key;
+                            return (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                data-range-key={opt.key}
+                                onClick={handleTimeRangeChange}
+                                disabled={!hasData}
+                                aria-pressed={selected}
+                                title={opt.title}
+                                className={[
+                                  'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors',
+                                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20',
+                                  'disabled:opacity-40 disabled:cursor-not-allowed',
+                                  selected
+                                    ? 'bg-black/15 text-black'
+                                    : 'text-black/70 hover:text-black hover:bg-black/10',
+                                ].join(' ')}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Chart */}
                 <div className="w-full h-[240px] relative min-w-0 overflow-hidden">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <AreaChart
-                      data={dailySeries}
-                      margin={{ top: 8, right: 0, bottom: 8, left: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#facc15" stopOpacity={0.25}/>
-                          <stop offset="95%" stopColor="#facc15" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorTv" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.22}/>
-                          <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                      <XAxis 
-                        dataKey="x"
-                        type="number"
-                        scale="time"
-                        domain={[rangeBounds.startMs, rangeBounds.endMs]}
-                        ticks={xAxisTicks}
-                        stroke="#9ca3af" 
-                        style={{ fontSize: '12px' }}
-                        tick={handleXAxisTick}
-                        interval={0}
-                        minTickGap={0}
-                        tickMargin={10}
-                        padding={{ left: 0, right: 0 }}
-                      />
-                      <YAxis
-                        yAxisId="tv"
-                        hide
-                        domain={tvScale.domain}
-                        ticks={tvScale.ticks}
-                      />
-                      <YAxis
-                        yAxisId="movies"
-                        orientation="left"
-                        stroke="#9ca3af"
-                        axisLine={{ stroke: '#9ca3af' }}
-                        tickLine={{ stroke: '#9ca3af' }}
-                        style={{ fontSize: '12px' }}
-                        width={yAxisWidth}
-                        tickMargin={0}
-                        tick={handleYAxisTick}
-                        domain={moviesScale.domain}
-                        ticks={moviesScale.ticks}
-                      />
-                      <Tooltip 
-                        labelFormatter={handleTooltipLabel}
-                        formatter={handleTooltipValue}
-                        contentStyle={{ 
-                          backgroundColor: '#1f2937', 
-                          border: '1px solid #374151',
-                          borderRadius: '12px',
-                          color: '#fff'
-                        }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="movies"
-                        yAxisId="movies"
-                        stroke="#facc15" 
-                        strokeWidth={2.5}
-                        fill="url(#colorMovies)" 
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="tv"
-                        yAxisId="tv"
-                        stroke="#60a5fa"
-                        strokeWidth={2.5}
-                        fill="url(#colorTv)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                  
-                  {/* Blur Overlay */}
-                  {showBlur && (
-                    <motion.div 
+                  {hasData ? (
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                      <AreaChart
+                        data={dailySeries}
+                        margin={{ top: 8, right: 0, bottom: 8, left: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorMovies" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor={MOVIES_SERIES_COLOR} stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorTv" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={TV_SERIES_COLOR} stopOpacity={0.18}/>
+                            <stop offset="95%" stopColor={TV_SERIES_COLOR} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                        <XAxis
+                          dataKey="x"
+                          type="number"
+                          scale="time"
+                          domain={[rangeBounds.startMs, rangeBounds.endMs]}
+                          ticks={xAxisTicks}
+                          stroke="rgba(0,0,0,0.35)"
+                          style={{ fontSize: '12px' }}
+                          tick={handleXAxisTick}
+                          interval={0}
+                          minTickGap={0}
+                          tickMargin={10}
+                          padding={{ left: 0, right: 0 }}
+                        />
+                        <YAxis
+                          yAxisId="tv"
+                          hide
+                          domain={tvScale.domain}
+                          ticks={tvScale.ticks}
+                        />
+                        <YAxis
+                          yAxisId="movies"
+                          orientation="left"
+                          stroke="rgba(0,0,0,0.35)"
+                          axisLine={{ stroke: 'rgba(0,0,0,0.35)' }}
+                          tickLine={{ stroke: 'rgba(0,0,0,0.35)' }}
+                          style={{ fontSize: '12px' }}
+                          width={yAxisWidth}
+                          tickMargin={0}
+                          tick={handleYAxisTick}
+                          domain={moviesScale.domain}
+                          ticks={moviesScale.ticks}
+                        />
+                        <Tooltip
+                          labelFormatter={handleTooltipLabel}
+                          formatter={handleTooltipValue}
+                          contentStyle={{
+                            backgroundColor: '#1f2937',
+                            border: '1px solid #374151',
+                            borderRadius: '12px',
+                            color: '#fff'
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="movies"
+                          yAxisId="movies"
+                          stroke={MOVIES_SERIES_COLOR}
+                          strokeWidth={2.5}
+                          fill="url(#colorMovies)"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="tv"
+                          yAxisId="tv"
+                          stroke={TV_SERIES_COLOR}
+                          strokeWidth={2.5}
+                          fill="url(#colorTv)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : growthQuery.isLoading ? (
+                    // Skeleton state: a silhouette of the chart the user is about
+                    // to see, not a paywall/lock treatment. Grid lines and bars
+                    // echo the real CartesianGrid and area fill so nothing jumps
+                    // when data lands. Everything here is drawn in the card's own
+                    // black-tint language — the only white is the sweep.
+                    <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.3 }}
-                      className="pointer-events-none absolute inset-0 backdrop-blur-xl bg-gradient-to-br from-gray-900/60 via-gray-800/50 to-gray-900/60 rounded-xl flex flex-col items-center justify-center border border-white/5"
+                      className="absolute inset-0 rounded-xl border border-black/10 bg-black/5 overflow-hidden"
                     >
-                      <div className="bg-yellow-400/10 p-4 rounded-2xl backdrop-blur-sm border border-yellow-400/20 mb-3">
-                        <Lock className="w-6 h-6 text-yellow-400" />
+                      <div aria-hidden="true" className="absolute inset-0 flex flex-col justify-between py-3">
+                        {[0, 1, 2, 3].map((i) => (
+                          <div key={i} className="h-px" style={SKELETON_GRID_LINE} />
+                        ))}
                       </div>
-                      <div className="text-center px-4">
-                        <p className="text-white font-medium">
-                          {growthQuery.isLoading ? 'Loading…' : 'No Data Available'}
+                      {/* Bars grow up from the baseline on a short stagger, so the
+                          skeleton builds left-to-right the way the growth curve it
+                          stands in for does. scaleY off a bottom origin keeps it on
+                          the compositor; the heights stay fixed so nothing jitters
+                          on re-render. */}
+                      <div aria-hidden="true" className="absolute inset-x-4 bottom-3 top-8 flex items-end gap-[3px]">
+                        {SKELETON_BAR_HEIGHTS.map((h, i) => (
+                          <motion.div
+                            key={i}
+                            className="flex-1 origin-bottom rounded-t-sm bg-gradient-to-t from-black/[0.14] to-black/[0.04]"
+                            style={{ height: `${h}%` }}
+                            initial={{ scaleY: 0.35, opacity: 0 }}
+                            animate={{ scaleY: 1, opacity: 1 }}
+                            transition={{ duration: 0.45, delay: i * 0.018, ease: 'easeOut' }}
+                          />
+                        ))}
+                      </div>
+                      {/* A narrow band that travels across, not a full-width wash:
+                          at half the track's width the highlight clears the surface
+                          instead of parking a sheet of white over it. Hidden under
+                          reduced motion — the status text below is the real signal,
+                          so nothing is lost by dropping the decoration. */}
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent motion-reduce:hidden"
+                      />
+                      {/* Same shape as the empty state below — icon over a single
+                          line, sitting directly on the surface. A white chip here
+                          read as a sticker patched onto the card. */}
+                      <div
+                        role="status"
+                        className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
+                      >
+                        <Loader2 className="w-6 h-6 text-black/50 animate-spin" strokeWidth={2} />
+                        <p className="text-black/80 font-medium text-sm">Loading library history…</p>
+                      </div>
+                    </motion.div>
+                  ) : growthQuery.isError ? (
+                    // A failed fetch is not an empty library. Without this branch
+                    // the empty state below claimed there was no history to show,
+                    // which reads as "your library has no data" when the real
+                    // answer is "we could not reach the server".
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
+                    >
+                      <AlertTriangle className="w-6 h-6 text-black/50" strokeWidth={2} />
+                      <div className="text-center">
+                        <p className="text-black font-medium text-sm">
+                          Couldn&apos;t load library history
+                        </p>
+                        <p className="text-black/60 text-xs mt-1 max-w-[260px]">
+                          The server didn&apos;t answer. Your library is fine — this is
+                          just the chart.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleGrowthRetry}
+                        disabled={growthQuery.isFetching}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-black/5 border border-black/10 text-black/70 hover:text-black hover:bg-black/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {growthQuery.isFetching ? 'Retrying…' : 'Try again'}
+                      </button>
+                    </motion.div>
+                  ) : (
+                    // Finished empty state: no nested card/chip chrome — just the
+                    // icon and message sitting directly on the Media Analytics
+                    // card itself. Boxed panels here (bordered frame, white chip)
+                    // only added visual clutter without the card losing its own
+                    // legibility, so they're gone.
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6"
+                    >
+                      <LineChartIcon className="w-6 h-6 text-black/50" strokeWidth={2} />
+                      <div className="text-center">
+                        <p className="text-black font-medium text-sm">No data available yet</p>
+                        <p className="text-black/60 text-xs mt-1 max-w-[260px]">
+                          Growth trends will show up here once your library has history to track.
                         </p>
                       </div>
                     </motion.div>
@@ -789,50 +933,55 @@ export function HeroSection() {
                   type="button"
                   onClick={toggleStatsMedia}
                   aria-label={`Toggle stats between Movies and TV Shows. Currently showing ${statsLabel}.`}
-                  className="mt-6 pt-6 border-t border-gray-700 dark:border-gray-600 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="mt-3 relative w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20"
                 >
-                  <div className="absolute -top-3 right-0">
+                  {/* Divider and legend share one flex row, so the rule simply
+                      fills whatever the pill leaves and always stops short of
+                      it — no overlap at any width, and no measuring needed. */}
+                  <div className="flex items-center gap-3">
+                    <div aria-hidden="true" className="h-px flex-1 bg-black/10" />
                     <div
                       className={[
-                        'px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm',
+                        // No backdrop-blur — same reason as the range pills.
+                        'shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border',
                         statsMedia === 'movies'
-                          ? 'bg-yellow-400/10 text-yellow-200 border-yellow-400/20'
-                          : 'bg-blue-400/10 text-blue-200 border-blue-400/20',
+                          ? 'bg-fuchsia-800/10 text-fuchsia-800 border-fuchsia-800/30'
+                          : 'bg-blue-800/10 text-blue-800 border-blue-800/30',
                       ].join(' ')}
                     >
                       {statsLabel}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="mt-3 grid grid-cols-3 gap-4">
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">Total Items</p>
-                      <p className="text-white font-semibold">
+                      <p className="text-black/70 text-xs mb-1">Total Items</p>
+                      <p className="text-black font-semibold">
                         {hasData ? statsTotal.toLocaleString() : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">
+                      <p className="text-black/70 text-xs mb-1">
                         Change ({rangeLabel})
                       </p>
-                      <p className="text-white font-semibold">
+                      <p className="text-black font-semibold">
                         {hasData
                           ? `${statsRangeDelta >= 0 ? '+' : ''}${statsRangeDelta.toLocaleString()}`
                           : '—'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400 dark:text-gray-500 text-xs mb-1">
+                      <p className="text-black/70 text-xs mb-1">
                         Growth ({rangeLabel})
                       </p>
                       <p
                         className={[
                           'font-semibold',
                           typeof statsGrowthPct === 'number' && statsGrowthPct < 0
-                            ? 'text-rose-400 dark:text-rose-300'
+                            ? 'text-rose-700'
                             : statsMedia === 'movies'
-                              ? 'text-yellow-400 dark:text-yellow-300'
-                              : 'text-blue-300 dark:text-blue-300',
+                              ? 'text-fuchsia-800'
+                              : 'text-blue-800',
                         ].join(' ')}
                       >
                         {hasData && typeof statsGrowthPct === 'number'
@@ -841,20 +990,11 @@ export function HeroSection() {
                       </p>
                     </div>
                   </div>
-                  
-                  {/* Blur Overlay for Stats */}
-                  {showBlur && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.3, delay: 0.1 }}
-                      className="pointer-events-none absolute inset-0 backdrop-blur-lg bg-gradient-to-r from-gray-900/50 via-gray-800/40 to-gray-900/50 rounded-lg border border-white/5"
-                    />
-                  )}
                 </button>
+                </motion.div>
               </div>
             </div>
-          </motion.div>
+          </div>
         </div>
 
         {/* Bottom Badges */}
