@@ -2,6 +2,12 @@
 
 This file tracks notable changes by version.
 
+## 1.7.10-beta-5
+
+- What's new since 1.7.10-beta-4:
+- On mobile, Immaculaterr now suggests adding it to your home screen: a small dismissible banner on Android offers a one-tap install, and on iOS Safari it shows the Share -> Add to Home Screen steps (only Safari can create a true standalone app from the manifest; other iOS browsers can't). It never interrupts — it waits a few seconds before appearing, never shows if you're already using the installed app, and stays away for about three weeks after you dismiss it once.
+- Retinted the dashboard chart's loading skeleton from a white shimmer to a warm amber one so it doesn't clash with the yellow-green backdrop.
+
 ## 1.7.10-beta-4
 
 - What's new since 1.7.10-beta-3:

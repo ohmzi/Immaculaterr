@@ -6,6 +6,10 @@ import './index.css';
 import App from './App.tsx';
 import { applyTheme } from '@/app/theme';
 import { Toaster } from '@/components/ui/sonner';
+// Side-effect import: attaches the beforeinstallprompt listener immediately,
+// before React mounts. A listener added later can miss an event that fires
+// during initial load. See InstallAppBanner for the consumer.
+import '@/lib/install-prompt';
 
 const queryClient = new QueryClient({
   defaultOptions: {
