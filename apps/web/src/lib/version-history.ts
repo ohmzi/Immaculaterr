@@ -37,12 +37,14 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
-    version: '1.7.10-beta-3',
+    version: '1.7.10',
     popupHighlights: [
       'Cutting Room: a new page that finds and prunes the media nobody will ever watch, with dry runs and one-click restore.',
       'Large Files: swap oversized movies and episodes for smaller copies automatically.',
       'Tautulli: an optional integration with its own setup step and Vault card.',
       'Safer automation: Confirm Monitored waits for a verified file, and repeat Plex watches stop rebuilding the same collections.',
+      'Fixed repeated TMDB connectivity failures on networks with broken IPv6 routing (notably Unraid).',
+      'On mobile, Immaculaterr now suggests adding itself to your home screen.',
     ],
     sections: [
       {

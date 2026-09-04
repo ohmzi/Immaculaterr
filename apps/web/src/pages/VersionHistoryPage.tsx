@@ -17,7 +17,7 @@ export function VersionHistoryPage() {
   const titleIconGlowControls = useAnimation();
   const location = useLocation();
 
-  // Deep-link support: /version-history#v-1.7.10-beta-3 scrolls to that release.
+  // Deep-link support: /version-history#v-1.7.10 scrolls to that release.
   useEffect(() => {
     const hash = location.hash.replace(/^#/, '');
     if (!hash) return;

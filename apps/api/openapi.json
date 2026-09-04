@@ -3038,7 +3038,7 @@
           },
           "version": {
             "type": "string",
-            "example": "1.7.10-beta-3"
+            "example": "1.7.10"
           },
           "buildSha": {
             "type": "object",
@@ -3164,11 +3164,11 @@
         "properties": {
           "currentVersion": {
             "type": "string",
-            "example": "1.7.10-beta-3"
+            "example": "1.7.10"
           },
           "latestVersion": {
             "type": "object",
-            "example": "1.7.10-beta-3",
+            "example": "1.7.10",
             "nullable": true
           },
           "updateAvailable": {
@@ -3186,7 +3186,7 @@
           },
           "latestUrl": {
             "type": "object",
-            "example": "https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10-beta-3",
+            "example": "https://github.com/ohmz/Immaculaterr/releases/tag/v1.7.10",
             "nullable": true
           },
           "checkedAt": {
