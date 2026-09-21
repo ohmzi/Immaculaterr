@@ -2,6 +2,11 @@
 
 This file tracks notable changes by version.
 
+## 1.7.11-beta-1
+
+- What's new since 1.7.10:
+- Documentation: the project README was reorganized for easier scanning — a table of contents, a one-command quick start, a tech stack overview, an integrations table showing what is required versus optional, and a project structure tree. No application behavior changed.
+
 ## 1.7.10
 
 - What's new in 1.7.10:

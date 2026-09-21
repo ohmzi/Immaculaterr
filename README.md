@@ -4,7 +4,7 @@
 
 <div align="center">
   <p>
-    A Plex “autopilot” that watches what you’re watching, builds curated collections, and keeps your library tidy — without the babysitting.
+    <b>A Plex “autopilot” that watches what you’re watching, builds curated collections, and keeps your library tidy — without the babysitting.</b>
   </p>
 
   <p>
@@ -30,10 +30,73 @@
       />
     </a>
   </p>
+
+  <p>
+    <a href="#-quick-start">Quick start</a> ·
+    <a href="#-what-it-does">Features</a> ·
+    <a href="doc/setupguide.md">Setup guide</a> ·
+    <a href="doc/FAQ.md">FAQ</a> ·
+    <a href="https://github.com/ohmzi/Immaculaterr/issues">Issues</a>
+  </p>
 </div>
 
+---
 
-## What it does
+## 📖 Table of contents
+
+- [Why Immaculaterr](#-why-immaculaterr)
+- [Quick start](#-quick-start)
+- [What it does](#-what-it-does)
+- [How recommendations are built](#-how-recommendations-are-built)
+- [Screenshots](#-screenshots)
+- [Tech stack](#-tech-stack)
+- [Installation](#-installation)
+  - [HTTPS installation (includes sidecar)](#https-installation-which-includes-sidecar)
+  - [HTTP only installation](#http-only-installation)
+- [Access after installation](#-access-after-installation)
+- [Hosting under a subpath](#-hosting-under-a-subpath-such-as-recommendations)
+- [Integrations](#-integrations)
+- [Project structure](#-project-structure)
+- [Documentation](#-documentation)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## 🎯 Why Immaculaterr
+
+| | |
+| --- | --- |
+| 🍿 **Reacts to what you watch** | Finish a movie or episode and fresh, personal collections appear on your Plex home screen. |
+| 👥 **Personal per viewer** | Every monitored Plex user gets their own rows and their own watch history. |
+| 🎛️ **You stay in control** | Observatory lets you swipe through suggestions before anything reaches Plex or your ARRs. |
+| 🧹 **Keeps the library tidy** | Cutting Room finds and prunes media nobody will ever watch — with a dry run and one-click restore. |
+| 📦 **One container** | Docker image, persisted queue, run history, and an optional HTTPS sidecar. |
+
+---
+
+## ⚡ Quick start
+
+```bash
+docker run -d \
+  --name Immaculaterr \
+  -p 5454:5454 \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e TZ=America/New_York \
+  -e TRUST_PROXY=1 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  ghcr.io/ohmzi/immaculaterr:latest
+```
+
+Then open `http://<server-ip>:5454/` and follow the setup wizard. For HTTPS, updates, and platform-specific guides, see [Installation](#-installation).
+
+---
+
+## ✨ What it does
 
 - **Watches Plex activity and reacts automatically**
   - Finish a movie or episode, and Immaculaterr can turn that watch into fresh collections and great new recommendations right away.
@@ -123,7 +186,9 @@
 - **Puts management in the app**
   - Use Vault for integrations, Task Manager for jobs, Rewind for reports, and Command Center for resets, posters, user monitoring, and request cleanup.
 
-## How recommendations are built
+---
+
+## 🧠 How recommendations are built
 
 1. A watch event, manual run, or history import supplies a seed title, and the app builds a richer seed profile from it.
 2. TMDB pulls fuller metadata and candidate pools, including standard picks plus wildcard lanes for global-language films and hidden gems.
@@ -131,6 +196,9 @@
 4. Ranking weights change by intent, so latest-watched and change-of-taste runs do not rank titles the same way, and released vs. upcoming mixes can be tuned separately.
 5. Final picks are interleaved so core recommendations stay strong while wildcard discoveries add variety.
 
+---
+
+## 📸 Screenshots
 
 <div align="center">
   <p><b>Desktop UI</b></p>
@@ -144,18 +212,52 @@
   <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/plex_mobile_app_screenshot2.png" alt="Plex mobile screenshot showing Immaculaterr recommendations" width="320" />
   <br/>
   <img src="https://github.com/ohmzi/Immaculaterr/blob/master/doc/assets/screenshots/plex_pc_screenshot.png" alt="Plex desktop screenshot showing Immaculaterr recommendations" width="900" />
-  <br/>
-  <br/>
 </div>
 
-## Getting started (Docker)
+---
+
+## 🧰 Tech stack
+
+<div align="center">
+
+**Backend**
+
+<img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+<img alt="Node.js" src="https://img.shields.io/badge/Node.js%2020+-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+<img alt="NestJS" src="https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white" />
+<img alt="Prisma" src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
+<img alt="SQLite" src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" />
+<img alt="Swagger" src="https://img.shields.io/badge/OpenAPI-6BA539?style=for-the-badge&logo=swagger&logoColor=white" />
+
+**Frontend**
+
+<img alt="React" src="https://img.shields.io/badge/React%2019-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
+<img alt="Vite" src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" />
+<img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" />
+<img alt="Radix UI" src="https://img.shields.io/badge/Radix%20UI-161618?style=for-the-badge&logo=radixui&logoColor=white" />
+<img alt="TanStack Query" src="https://img.shields.io/badge/TanStack%20Query-FF4154?style=for-the-badge&logo=reactquery&logoColor=white" />
+<img alt="React Router" src="https://img.shields.io/badge/React%20Router-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white" />
+
+**Delivery & quality**
+
+<img alt="Docker" src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+<img alt="Caddy" src="https://img.shields.io/badge/Caddy-1F88C0?style=for-the-badge&logo=caddy&logoColor=white" />
+<img alt="GitHub Actions" src="https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" />
+<img alt="Jest" src="https://img.shields.io/badge/Jest-C21325?style=for-the-badge&logo=jest&logoColor=white" />
+<img alt="Cypress" src="https://img.shields.io/badge/Cypress-69D3A7?style=for-the-badge&logo=cypress&logoColor=black" />
+
+</div>
+
+---
+
+## 🚀 Installation
 
 Official Docker images and release artifacts are the supported public distribution channel for end users.
 
-### Installation 
+### HTTPS installation which includes sidecar
 
-#### HTTPS installation which includes sidecar
 (restart your browser after installation)
+
 ```bash
 IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
 
@@ -197,7 +299,7 @@ docker run -d \
   "$IMM_IMAGE"
 ```
 
-#### HTTP only installation
+### HTTP only installation
 
 ```bash
 IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
@@ -219,28 +321,28 @@ docker run -d \
   --restart unless-stopped \
   "$IMM_IMAGE"
 ```
-## 
 
-## Access after installation
-- HTTPS port (available only if you ran the HTTPS installation guide):
-  - `https://localhost:5464/`
-  - `https://<server-ip>:5464/`
-  
-- HTTP port:
-  - `http://localhost:5454/`
-  - `http://<server-ip>:5454/`
+> [!NOTE]
+> The examples above set the app container timezone to `America/New_York`. Change the `TZ` value if you prefer a different IANA timezone.
+>
+> For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/setupguide.md).
+>
+> For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
 
-- Available ports:
-  - `5454/tcp`: Immaculaterr HTTP
-  - `5464/tcp`: Immaculaterr HTTPS sidecar (optional)
-##
+---
 
-For install and update commands, use the setup guide: [`doc/setupguide.md`](doc/setupguide.md).
-The examples above set the app container timezone to `America/New_York`. Change the `TZ` value if you prefer a different IANA timezone.
-For local HTTPS, run [`docker/immaculaterr/install-local-ca.sh`](docker/immaculaterr/install-local-ca.sh) on the Docker host (recommended), or accept your browser's risk warning when prompted (you may need to re-accept in later browser sessions).
-##
+## 🌐 Access after installation
 
-## Optional: host under a subpath such as `/recommendations`
+| Port | Purpose | URLs |
+| --- | --- | --- |
+| `5454/tcp` | Immaculaterr HTTP | `http://localhost:5454/` · `http://<server-ip>:5454/` |
+| `5464/tcp` | Immaculaterr HTTPS sidecar (optional) | `https://localhost:5464/` · `https://<server-ip>:5464/` |
+
+The HTTPS port is available only if you ran the HTTPS installation guide.
+
+---
+
+## 🧭 Hosting under a subpath such as `/recommendations`
 
 `APP_BASE_PATH` is only the public path prefix for Immaculaterr. Do not put a full URL, domain, protocol, or port in this value.
 
@@ -278,29 +380,80 @@ location /recommendations/ {
 }
 ```
 
-## Documentation
-- Setup guide: [`doc/setupguide.md`](doc/setupguide.md)
-- FAQ: [`doc/FAQ.md`](doc/FAQ.md)
-- Security policy: [`doc/security.md`](doc/security.md)
-- Version history: [`doc/Version_History.md`](doc/Version_History.md)
+---
 
-Full project README: [`doc/README.md`](doc/README.md)
-##
+## 🔌 Integrations
 
-## Contributing
+| Service | Required | What it is used for |
+| --- | :---: | --- |
+| **Plex** | ✅ | The library Immaculaterr reads, builds collections in, and pins rows on. |
+| **TMDB** | ✅ | Primary metadata and candidate source for recommendations. |
+| **Radarr** | ➖ | Fetching missing movies. |
+| **Sonarr** | ➖ | Fetching missing shows. |
+| **Seerr** | ➖ | Alternative, centralized request route instead of direct ARR sends. |
+| **Tautulli** | ⬜ | Richer watch history for Cutting Room than Plex alone. Everything still works without it. |
+| **OpenAI** | ⬜ | Optional helper for widening or refining recommendation results. |
+| **Google** | ⬜ | Optional helper for widening or refining recommendation results. |
+
+✅ required · ➖ at least one needed to fetch missing titles · ⬜ fully optional
+
+---
+
+## 📁 Project structure
+
+```text
+Immaculaterr/
+├── apps/
+│   ├── api/          # NestJS API — jobs, integrations, Prisma schema, OpenAPI
+│   └── web/          # React + Vite single-page app
+├── cypress/          # End-to-end tests
+├── doc/              # Setup guides, FAQ, security policy, screenshots
+├── docker/           # Dockerfile, compose files, Caddy HTTPS sidecar
+├── scripts/          # Development and release tooling
+├── security/         # Security scanners, audits, scorecard
+└── .github/          # CI quality gates and container publishing workflows
+```
+
+---
+
+## 📚 Documentation
+
+| Guide | Description |
+| --- | --- |
+| [`doc/setupguide.md`](doc/setupguide.md) | Install, configure, and update Immaculaterr. |
+| [`doc/setup-unraid.md`](doc/setup-unraid.md) | Unraid-specific installation. |
+| [`doc/setup-truenas.md`](doc/setup-truenas.md) | TrueNAS-specific installation. |
+| [`doc/setup-updating.md`](doc/setup-updating.md) | Updating an existing installation. |
+| [`doc/FAQ.md`](doc/FAQ.md) | Frequently asked questions. |
+| [`doc/security.md`](doc/security.md) | Security policy and how to report issues. |
+| [`doc/Version_History.md`](doc/Version_History.md) | Notable changes by version. |
+| [`doc/README.md`](doc/README.md) | Full project README. |
+
+---
+
+## 🤝 Contributing
+
 Thanks for wanting to help improve Immaculaterr.
 
 The public repository is available so people can inspect and validate the source code. Immaculaterr is not open source, so code contributions, pull requests, and external patches are not accepted or encouraged.
 
 If you want to help:
-- Report bugs: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
-- Suggest features or improvements: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
-- Report security issues: see [`doc/security.md`](doc/security.md), or use GitHub Issues if needed
-##
 
-## License
+- 🐞 Report bugs: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- 💡 Suggest features or improvements: [GitHub Issues](https://github.com/ohmzi/Immaculaterr/issues)
+- 🔒 Report security issues: see [`doc/security.md`](doc/security.md), or use GitHub Issues if needed
+
+---
+
+## 📄 License
+
 Immaculaterr is distributed under custom terms — see [`LICENSE`](LICENSE).
 
-Source code: the public repository does not grant permission to use, copy, modify, redistribute, sublicense, or sell the source code without separate written permission from the copyright holder.
+**Source code:** the public repository does not grant permission to use, copy, modify, redistribute, sublicense, or sell the source code without separate written permission from the copyright holder.
 
-Official Docker images and release artifacts: you may download and run the unmodified official artifacts published by the project owner for personal, noncommercial self-hosting only. Redistribution, resale, derivative images, repackaging, and commercial use are not allowed without separate written permission.
+**Official Docker images and release artifacts:** you may download and run the unmodified official artifacts published by the project owner for personal, noncommercial self-hosting only. Redistribution, resale, derivative images, repackaging, and commercial use are not allowed without separate written permission.
+
+<div align="center">
+  <br/>
+  <sub>Built for people who would rather watch something than manage a library.</sub>
+</div>
