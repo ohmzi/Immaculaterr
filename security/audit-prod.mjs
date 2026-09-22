@@ -10,10 +10,12 @@
 // re-argued. Past that date the gate fails until someone re-reads it.
 
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const FAIL_SEVERITIES = new Set(['high', 'critical']);
+export const FAIL_SEVERITIES = new Set(['high', 'critical']);
 
-const ALLOWLIST = [];
+export const ALLOWLIST = [];
 
 const runAudit = () => {
   const result = spawnSync(
@@ -47,69 +49,100 @@ const idFromUrl = (url) => {
   return match ? match[1] : null;
 };
 
-const audit = runAudit();
-const vulnerabilities = Object.values(audit.vulnerabilities ?? {});
-const today = new Date().toISOString().slice(0, 10);
+// Sorts an `npm audit --json` payload into what blocks the build, which
+// allowlist entries earned their keep, and which no longer do. Kept free of
+// I/O so the severity rules can be exercised against a fixture.
+export const evaluateAudit = (audit, options = {}) => {
+  const {
+    allowlist = ALLOWLIST,
+    today = new Date().toISOString().slice(0, 10),
+  } = options;
 
-const allowedIds = new Map(ALLOWLIST.map((entry) => [entry.id, entry]));
-const seenIds = new Set();
-const blocking = [];
+  const vulnerabilities = Object.values(audit.vulnerabilities ?? {});
+  const allowedIds = new Map(allowlist.map((entry) => [entry.id, entry]));
+  const seenIds = new Set();
+  const blocking = [];
 
-for (const vuln of vulnerabilities) {
-  if (!FAIL_SEVERITIES.has(vuln.severity)) continue;
-  const advisories = advisoriesFor(vuln);
-  // A package with no direct advisory is only listed because something it
-  // depends on is — the dependency itself reports the advisory, so judging it
-  // here would double-count.
-  if (advisories.length === 0) continue;
+  for (const vuln of vulnerabilities) {
+    // `vuln.severity` is npm's rollup for the whole package — the max across
+    // everything it reports — so it only works as a cheap pre-filter. It can
+    // never hide a high advisory, but a package that has one drags its lower
+    // advisories in behind it, which is why each one is re-checked below.
+    if (!FAIL_SEVERITIES.has(vuln.severity)) continue;
+    const advisories = advisoriesFor(vuln);
+    // A package with no direct advisory is only listed because something it
+    // depends on is — the dependency itself reports the advisory, so judging it
+    // here would double-count.
+    if (advisories.length === 0) continue;
 
-  for (const advisory of advisories) {
-    const id = idFromUrl(advisory.url);
-    if (id && allowedIds.has(id)) {
-      seenIds.add(id);
-      continue;
+    for (const advisory of advisories) {
+      // Judge the advisory on its own severity, falling back to the package
+      // rollup only when the record does not carry one.
+      const severity = advisory.severity ?? vuln.severity;
+      if (!FAIL_SEVERITIES.has(severity)) continue;
+
+      const id = idFromUrl(advisory.url);
+      // The id is marked seen after the severity check, not before: an entry
+      // that only ever covers a sub-threshold advisory is holding nothing back,
+      // so it should surface as stale rather than look load-bearing.
+      if (id && allowedIds.has(id)) {
+        seenIds.add(id);
+        continue;
+      }
+      blocking.push({
+        id: id ?? String(advisory.source ?? 'unknown'),
+        package: advisory.name ?? vuln.name,
+        severity,
+        title: advisory.title ?? '(no title)',
+        url: advisory.url ?? '',
+      });
     }
-    blocking.push({
-      id: id ?? String(advisory.source ?? 'unknown'),
-      package: advisory.name ?? vuln.name,
-      severity: advisory.severity ?? vuln.severity,
-      title: advisory.title ?? '(no title)',
-      url: advisory.url ?? '',
-    });
   }
-}
 
-const expired = ALLOWLIST.filter((entry) => entry.reviewBy < today);
-const stale = ALLOWLIST.filter((entry) => !seenIds.has(entry.id));
+  return {
+    blocking,
+    allowed: [...seenIds].map((id) => allowedIds.get(id)),
+    stale: allowlist.filter((entry) => !seenIds.has(entry.id)),
+    expired: allowlist.filter((entry) => entry.reviewBy < today),
+  };
+};
 
-for (const entry of stale) {
-  console.log(
-    `note: allowlisted ${entry.id} (${entry.package}) no longer appears in the audit — remove it from security/audit-prod.mjs`,
-  );
-}
-for (const entry of seenIds) {
-  const allowed = allowedIds.get(entry);
-  console.log(`allowed: ${allowed.id} (${allowed.package}) — review by ${allowed.reviewBy}`);
-}
+const main = () => {
+  const { blocking, allowed, stale, expired } = evaluateAudit(runAudit());
 
-if (expired.length > 0) {
-  console.error('');
-  for (const entry of expired) {
-    console.error(
-      `allowlist entry ${entry.id} (${entry.package}) passed its review date ${entry.reviewBy} — re-argue it or remove it`,
+  for (const entry of stale) {
+    console.log(
+      `note: allowlisted ${entry.id} (${entry.package}) no longer blocks the audit — it is fixed, gone, or below high — remove it from security/audit-prod.mjs`,
     );
   }
-  process.exit(1);
-}
-
-if (blocking.length > 0) {
-  console.error('');
-  console.error(`${blocking.length} unallowlisted high/critical advisory(ies) in production dependencies:`);
-  for (const item of blocking) {
-    console.error(`  ${item.severity} ${item.package}: ${item.title}`);
-    if (item.url) console.error(`    ${item.url}`);
+  for (const entry of allowed) {
+    console.log(`allowed: ${entry.id} (${entry.package}) — review by ${entry.reviewBy}`);
   }
-  process.exit(1);
-}
 
-console.log('production dependency audit clean (high and critical)');
+  if (expired.length > 0) {
+    console.error('');
+    for (const entry of expired) {
+      console.error(
+        `allowlist entry ${entry.id} (${entry.package}) passed its review date ${entry.reviewBy} — re-argue it or remove it`,
+      );
+    }
+    process.exit(1);
+  }
+
+  if (blocking.length > 0) {
+    console.error('');
+    console.error(`${blocking.length} unallowlisted high/critical advisory(ies) in production dependencies:`);
+    for (const item of blocking) {
+      console.error(`  ${item.severity} ${item.package}: ${item.title}`);
+      if (item.url) console.error(`    ${item.url}`);
+    }
+    process.exit(1);
+  }
+
+  console.log('production dependency audit clean (high and critical)');
+};
+
+// Only gate the build when run as the entry point; importing this module (the
+// contract test does) must not shell out to npm.
+const entryPath = process.argv[1] ? realpathSync(process.argv[1]) : '';
+if (entryPath === realpathSync(fileURLToPath(import.meta.url))) main();
