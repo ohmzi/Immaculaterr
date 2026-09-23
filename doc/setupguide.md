@@ -42,6 +42,99 @@ Then open:
 
 The `.env` file above sets the app container timezone to `America/New_York`. Change it if you prefer a different IANA timezone.
 
+Without Compose: `docker run`
+---
+
+Prefer plain `docker run`? Pick one of the two options below.
+
+### HTTPS, with the Caddy sidecar
+
+The sidecar serves Immaculaterr over HTTPS on `:5464`. It needs `caddy-entrypoint.sh` on the host first:
+
+```bash
+mkdir -p "$HOME/immaculaterr"
+curl -fsSL -o "$HOME/immaculaterr/caddy-entrypoint.sh" https://raw.githubusercontent.com/ohmzi/Immaculaterr/master/docker/immaculaterr/caddy-entrypoint.sh
+```
+
+Then start both containers (restart your browser afterwards):
+
+```bash
+IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
+
+docker pull "$IMM_IMAGE"
+docker pull caddy:2.8.4-alpine
+docker rm -f ImmaculaterrHttps 2>/dev/null || true
+docker rm -f Immaculaterr 2>/dev/null || true
+
+docker volume create immaculaterr-caddy-data >/dev/null 2>&1 || true
+docker volume create immaculaterr-caddy-config >/dev/null 2>&1 || true
+
+docker run -d \
+  --name ImmaculaterrHttps \
+  --network host \
+  -e IMM_ENABLE_HTTP=false \
+  -e IMM_ENABLE_HTTPS=true \
+  -e IMM_HTTPS_PORT=5464 \
+  -e IMM_INCLUDE_LOCALHOST=true \
+  -e IMM_ENABLE_LAN_IP=true \
+  -e APP_INTERNAL_PORT=5454 \
+  -v "$HOME/immaculaterr/caddy-entrypoint.sh:/etc/caddy/caddy-entrypoint.sh:ro" \
+  -v immaculaterr-caddy-data:/data \
+  -v immaculaterr-caddy-config:/config \
+  --restart unless-stopped \
+  caddy:2.8.4-alpine \
+  /bin/sh /etc/caddy/caddy-entrypoint.sh
+
+docker run -d \
+  --name Immaculaterr \
+  -p 5454:5454 \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e TZ=America/New_York \
+  -e TRUST_PROXY=1 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  "$IMM_IMAGE"
+```
+
+For local HTTPS, run [`install-local-ca.sh`](../docker/immaculaterr/install-local-ca.sh) on the Docker host so browsers trust the certificate (recommended). Otherwise, accept your browser's warning when prompted; you may need to re-accept it in later browser sessions.
+
+### HTTP only
+
+```bash
+IMM_IMAGE="ghcr.io/ohmzi/immaculaterr:latest"
+
+docker pull "$IMM_IMAGE"
+docker rm -f ImmaculaterrHttps 2>/dev/null || true
+docker rm -f Immaculaterr 2>/dev/null || true
+
+docker run -d \
+  --name Immaculaterr \
+  -p 5454:5454 \
+  -e HOST=0.0.0.0 \
+  -e PORT=5454 \
+  -e TZ=America/New_York \
+  -e TRUST_PROXY=1 \
+  -e APP_DATA_DIR=/data \
+  -e DATABASE_URL=file:/data/tcp.sqlite \
+  -v immaculaterr-data:/data \
+  --restart unless-stopped \
+  "$IMM_IMAGE"
+```
+
+These examples set the container timezone to `America/New_York`. Change `TZ` to your own IANA timezone.
+
+### Ports
+
+| Port | Purpose | URLs |
+| --- | --- | --- |
+| `5454/tcp` | Immaculaterr HTTP | `http://localhost:5454/` · `http://<server-ip>:5454/` |
+| `5464/tcp` | HTTPS sidecar (optional) | `https://localhost:5464/` · `https://<server-ip>:5464/` |
+
+The HTTPS port exists only if you started the sidecar.
+
 Optional: host under an app base path
 ---
 
