@@ -58,7 +58,7 @@ Immaculaterr ships with a **Caddy** reverse proxy option that handles HTTPS auto
 
 - **Local deployments** get automatic local HTTPS via Caddy's built-in certificate authority.
 - **Public deployments** get free, auto-renewing certificates from Let's Encrypt via ACME.
-- **HSTS headers** are sent in production over HTTPS, telling browsers to always use encrypted connections.
+- **HSTS headers** are sent in production over HTTPS, telling browsers to always use encrypted connections. On `localhost`, IP addresses and LAN-only names (such as `nas`, `nas.local` or `nas.lan`) Immaculaterr sends `max-age=0` instead, which also clears any earlier pin: browsers apply HSTS to every port of a host name, and those names are shared with your other self-hosted apps.
 - The CSP (Content Security Policy) adds `upgrade-insecure-requests` when serving over HTTPS.
 
 ---

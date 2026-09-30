@@ -2,6 +2,10 @@
 
 This file tracks notable changes by version.
 
+## Unreleased
+
+- Security: HSTS is no longer set on `localhost`, IP addresses or LAN-only host names. Browsers pin HSTS to a whole host name on every port, so the old header forced HTTPS onto every other app on `localhost` and blocked certificate exceptions for them (Firefox: "You can't add an exception"). Immaculaterr now sends `max-age=0` on those hosts, which clears the old pin the next time you open Immaculaterr over HTTPS. Public domain names keep HSTS.
+
 ## 1.7.11-beta-1
 
 - What's new since 1.7.10:
