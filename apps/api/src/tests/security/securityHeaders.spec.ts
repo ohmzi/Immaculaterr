@@ -47,11 +47,35 @@ describe('security/security-headers middleware', () => {
 
   it('sets HSTS only for secure prod requests', () => {
     process.env.NODE_ENV = 'production';
+    const hostname = 'immaculaterr.example.com';
 
-    const insecure = runMiddleware({ secure: false });
+    const insecure = runMiddleware({ secure: false, hostname });
     expect(insecure['Strict-Transport-Security']).toBeUndefined();
 
-    const secure = runMiddleware({ secure: true });
-    expect(secure['Strict-Transport-Security']).toContain('max-age=31536000');
+    const secure = runMiddleware({ secure: true, hostname });
+    expect(secure['Strict-Transport-Security']).toBe(
+      'max-age=31536000; includeSubDomains',
+    );
   });
+
+  it.each([
+    'localhost',
+    'app.localhost',
+    '127.0.0.1',
+    '192.168.40.11',
+    '[::1]',
+    'ohmz-homelab',
+    'nas.local',
+    'media.lan',
+    'box.home.arpa',
+    'plex.internal',
+    'LOCALHOST.',
+  ])(
+    'clears any HSTS pin instead of setting one on the shared local host %s',
+    (hostname) => {
+      process.env.NODE_ENV = 'production';
+      const headers = runMiddleware({ secure: true, hostname });
+      expect(headers['Strict-Transport-Security']).toBe('max-age=0');
+    },
+  );
 });
