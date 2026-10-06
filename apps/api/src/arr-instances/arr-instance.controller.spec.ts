@@ -1,4 +1,6 @@
+import { ValidationPipe } from '@nestjs/common';
 import { ArrInstanceController } from './arr-instance.controller';
+import { UpdateArrInstanceDto } from './dto/arr-instance.dto';
 
 type ResolvedInstance = {
   id: string;
@@ -209,5 +211,68 @@ describe('ArrInstanceController localhost fallback', () => {
     expect(response.rootFolders).toEqual([{ path: '/data/movies' }]);
     expect(response.qualityProfiles).toEqual([{ name: 'Any' }]);
     expect(response.tags).toEqual([{ label: 'No tag' }]);
+  });
+});
+
+describe('ArrInstanceController partial update patch', () => {
+  const validationPipe = new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  });
+
+  async function transformUpdateBody(
+    body: Record<string, unknown>,
+  ): Promise<UpdateArrInstanceDto> {
+    return (await validationPipe.transform(body, {
+      type: 'body',
+      metatype: UpdateArrInstanceDto,
+    })) as UpdateArrInstanceDto;
+  }
+
+  function makePartialUpdateController() {
+    const deps = makeController();
+    deps.arrInstances.getOwnedDbInstance.mockResolvedValue({ type: 'radarr' });
+    deps.arrInstances.update.mockResolvedValue({ id: 'arr-1' });
+    return deps;
+  }
+
+  const req = { user: { id: 'user-1' } };
+
+  it('applies a defaults-only patch without requiring enabled or an api key', async () => {
+    const deps = makePartialUpdateController();
+
+    const body = await transformUpdateBody({
+      rootFolderPath: '/data/movies',
+      qualityProfileId: 3,
+      tagId: null,
+    });
+    await deps.controller.update(req as never, 'arr-radarr-1', body);
+
+    expect(deps.arrInstances.update).toHaveBeenCalledWith(
+      'user-1',
+      'arr-radarr-1',
+      {
+        rootFolderPath: '/data/movies',
+        qualityProfileId: 3,
+        tagId: null,
+      },
+    );
+    expect(
+      deps.settingsService.resolveServiceSecretInput,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('forwards enabled when the client provides it', async () => {
+    const deps = makePartialUpdateController();
+
+    const body = await transformUpdateBody({ enabled: false });
+    await deps.controller.update(req as never, 'arr-radarr-1', body);
+
+    expect(deps.arrInstances.update).toHaveBeenCalledWith(
+      'user-1',
+      'arr-radarr-1',
+      { enabled: false },
+    );
   });
 });
