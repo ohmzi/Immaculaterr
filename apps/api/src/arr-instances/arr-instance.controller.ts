@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { hasProvidedValue } from '../lib/request-body';
 import { RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
@@ -345,21 +346,23 @@ export class ArrInstanceController {
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if ('name' in body) patch.name = asString(body['name']);
+    if (hasProvidedValue(body, 'name')) patch.name = asString(body['name']);
   }
 
   private applyBaseUrlPatch(
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if ('baseUrl' in body) patch.baseUrl = asString(body['baseUrl']);
+    if (hasProvidedValue(body, 'baseUrl')) {
+      patch.baseUrl = asString(body['baseUrl']);
+    }
   }
 
   private applyEnabledPatch(
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if (!('enabled' in body)) return;
+    if (!hasProvidedValue(body, 'enabled')) return;
     const enabled = asOptionalBool(body['enabled']);
     if (enabled === undefined) {
       throw new BadRequestException('enabled must be a boolean');
@@ -371,7 +374,7 @@ export class ArrInstanceController {
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if ('rootFolderPath' in body) {
+    if (hasProvidedValue(body, 'rootFolderPath')) {
       patch.rootFolderPath = asNullableString(body['rootFolderPath']);
     }
   }
@@ -380,7 +383,7 @@ export class ArrInstanceController {
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if ('qualityProfileId' in body) {
+    if (hasProvidedValue(body, 'qualityProfileId')) {
       patch.qualityProfileId = asNullablePositiveInt(body['qualityProfileId']);
     }
   }
@@ -389,7 +392,7 @@ export class ArrInstanceController {
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if ('tagId' in body) {
+    if (hasProvidedValue(body, 'tagId')) {
       patch.tagId = asNullablePositiveInt(body['tagId']);
     }
   }
@@ -398,17 +401,17 @@ export class ArrInstanceController {
     patch: ArrInstanceUpdatePatch,
     body: Record<string, unknown>,
   ): void {
-    if (!('sortOrder' in body)) return;
+    if (!hasProvidedValue(body, 'sortOrder')) return;
     const sortOrder = asNullablePositiveInt(body['sortOrder']);
     patch.sortOrder = sortOrder === null ? 0 : sortOrder;
   }
 
   private hasApiKeyPatch(body: Record<string, unknown>): boolean {
     return (
-      'apiKey' in body ||
-      'apiKeyEnvelope' in body ||
-      'secretEnvelope' in body ||
-      'secretRef' in body
+      hasProvidedValue(body, 'apiKey') ||
+      hasProvidedValue(body, 'apiKeyEnvelope') ||
+      hasProvidedValue(body, 'secretEnvelope') ||
+      hasProvidedValue(body, 'secretRef')
     );
   }
 

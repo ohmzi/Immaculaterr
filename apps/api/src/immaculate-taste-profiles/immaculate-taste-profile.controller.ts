@@ -10,6 +10,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { hasProvidedValue } from '../lib/request-body';
 import {
   ImmaculateTasteProfileService,
   type ImmaculateTasteProfileView,
@@ -135,76 +136,64 @@ export class ImmaculateTasteProfileController {
   ): Promise<{ ok: true; profile: ImmaculateTasteProfileView }> {
     const bodyObject = body as unknown as Record<string, unknown>;
     const profile = await this.profiles.update(req.user.id, id, {
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'name')
+      ...(hasProvidedValue(bodyObject, 'name')
         ? { name: asString(bodyObject['name']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'enabled')
+      ...(hasProvidedValue(bodyObject, 'enabled')
         ? { enabled: asOptionalBool(bodyObject['enabled']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'sortOrder')
+      ...(hasProvidedValue(bodyObject, 'sortOrder')
         ? { sortOrder: asOptionalSortOrder(bodyObject['sortOrder']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'scopeAllUsers')
+      ...(hasProvidedValue(bodyObject, 'scopeAllUsers')
         ? { scopeAllUsers: asOptionalBool(bodyObject['scopeAllUsers']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'scopePlexUserId')
+      ...(hasProvidedValue(bodyObject, 'scopePlexUserId')
         ? { scopePlexUserId: asNullableString(bodyObject['scopePlexUserId']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(
-        bodyObject,
-        'resetScopeToDefaultNaming',
-      )
+      ...(hasProvidedValue(bodyObject, 'resetScopeToDefaultNaming')
         ? {
             resetScopeToDefaultNaming: asOptionalBool(
               bodyObject['resetScopeToDefaultNaming'],
             ),
           }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'mediaType')
+      ...(hasProvidedValue(bodyObject, 'mediaType')
         ? { mediaType: asMediaType(bodyObject['mediaType']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'matchMode')
+      ...(hasProvidedValue(bodyObject, 'matchMode')
         ? { matchMode: asMatchMode(bodyObject['matchMode']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'genres')
+      ...(hasProvidedValue(bodyObject, 'genres')
         ? { genres: asStringList(bodyObject['genres']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'audioLanguages')
+      ...(hasProvidedValue(bodyObject, 'audioLanguages')
         ? { audioLanguages: asStringList(bodyObject['audioLanguages']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'excludedGenres')
+      ...(hasProvidedValue(bodyObject, 'excludedGenres')
         ? { excludedGenres: asStringList(bodyObject['excludedGenres']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(
-        bodyObject,
-        'excludedAudioLanguages',
-      )
+      ...(hasProvidedValue(bodyObject, 'excludedAudioLanguages')
         ? {
             excludedAudioLanguages: asStringList(
               bodyObject['excludedAudioLanguages'],
             ),
           }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'radarrInstanceId')
+      ...(hasProvidedValue(bodyObject, 'radarrInstanceId')
         ? { radarrInstanceId: asNullableString(bodyObject['radarrInstanceId']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(bodyObject, 'sonarrInstanceId')
+      ...(hasProvidedValue(bodyObject, 'sonarrInstanceId')
         ? { sonarrInstanceId: asNullableString(bodyObject['sonarrInstanceId']) }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(
-        bodyObject,
-        'movieCollectionBaseName',
-      )
+      ...(hasProvidedValue(bodyObject, 'movieCollectionBaseName')
         ? {
             movieCollectionBaseName: asNullableString(
               bodyObject['movieCollectionBaseName'],
             ),
           }
         : {}),
-      ...(Object.prototype.hasOwnProperty.call(
-        bodyObject,
-        'showCollectionBaseName',
-      )
+      ...(hasProvidedValue(bodyObject, 'showCollectionBaseName')
         ? {
             showCollectionBaseName: asNullableString(
               bodyObject['showCollectionBaseName'],

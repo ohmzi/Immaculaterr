@@ -37,6 +37,46 @@ export function splitVersionHistoryLabel(
 
 export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
   {
+    version: '1.7.11-beta-2',
+    popupHighlights: [
+      'Partial updates fixed: saving one field on a profile or a Radarr/Sonarr instance no longer fails or blanks the fields you did not send.',
+      'Local HTTPS: Immaculaterr no longer pins HSTS on localhost, IP addresses or LAN names, so your other local apps are not forced onto HTTPS.',
+      'Security: undici and multer were bumped to clear known advisories.',
+      'Docs: the README was reorganized for easier scanning.',
+    ],
+    sections: [
+      {
+        title: 'Partial updates fixed',
+        bullets: [
+          'Saving one field no longer wipes the others. The profile editor and the Radarr/Sonarr instance editor checked whether you had sent a field in a way that was always true, so a request changing one setting was treated as if you had sent every setting.',
+          'Immaculate Taste profiles: a partial save blanked the name and rejected scoped (per-user) updates with "name, enabled, and sortOrder can only be updated for all users".',
+          'Radarr/Sonarr instances: a partial save failed with "enabled must be a boolean" and blanked the name and base URL — for example when saving the root folder, quality profile or tag for a second instance.',
+          'A field now counts as provided only when the client actually sends a value, and an explicit null still clears a nullable field.',
+        ],
+      },
+      {
+        title: 'Local HTTPS',
+        bullets: [
+          'Immaculaterr no longer sends HSTS on localhost, IP addresses, single-label names, or LAN suffixes such as .local, .lan, .home and .internal.',
+          'Browsers pin HSTS to a whole host name on every port, so the old header forced HTTPS onto every other app on localhost and blocked certificate exceptions for them in Firefox.',
+          'Those hosts now receive max-age=0, which clears the old pin the next time you open Immaculaterr over HTTPS. Public domain names keep the full HSTS policy.',
+        ],
+      },
+      {
+        title: 'Security',
+        bullets: [
+          'Bumped undici to 6.29.0 and pinned multer 2.4.0 and proxy-addr 2.0.8 to clear known advisories.',
+        ],
+      },
+      {
+        title: 'Documentation',
+        bullets: [
+          'The README was reorganized for easier scanning: a table of contents, a one-command quick start, a tech stack overview, an integrations table showing what is required versus optional, and a project structure tree.',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.7.10',
     popupHighlights: [
       'Cutting Room: a new page that finds and prunes the media nobody will ever watch, with dry runs and one-click restore.',
