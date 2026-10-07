@@ -65,7 +65,7 @@ export const VERSION_HISTORY_ENTRIES: VersionHistoryEntry[] = [
       {
         title: 'Security',
         bullets: [
-          'Bumped undici to 6.29.0 and the multer override to 2.4.0 to clear known advisories.',
+          'Bumped undici to 6.29.0 and pinned multer 2.4.0 and proxy-addr 2.0.8 to clear known advisories.',
         ],
       },
       {

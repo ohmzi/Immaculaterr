@@ -47,6 +47,7 @@
     "flatted": "3.4.2",
     "diff": "4.0.4",
     "multer": "2.4.0",
+    "proxy-addr": "2.0.8",
     "terser-webpack-plugin": "5.3.17",
     "shell-quote": "1.10.0",
     "deepmerge-ts": "^8.0.2",
