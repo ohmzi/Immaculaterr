@@ -8,31 +8,30 @@ const validationPipe = new ValidationPipe({
   transform: true,
 });
 
-async function transformUpdateBody(
+const transformUpdateBody = async (
   body: Record<string, unknown>,
-): Promise<UpdateProfileDto> {
-  return (await validationPipe.transform(body, {
+): Promise<UpdateProfileDto> =>
+  (await validationPipe.transform(body, {
     type: 'body',
     metatype: UpdateProfileDto,
   })) as UpdateProfileDto;
-}
 
-function makeController() {
+const makeController = () => {
   const profiles = {
     update: jest.fn().mockResolvedValue({ id: 'profile-1' }),
   };
   const controller = new ImmaculateTasteProfileController(profiles as never);
   return { controller, profiles };
-}
+};
 
 const req = { user: { id: 'user-1' } };
 
-function readUpdatePatch(update: jest.Mock): Record<string, unknown> {
+const readUpdatePatch = (update: jest.Mock): Record<string, unknown> => {
   const calls = update.mock.calls as Array<
     [string, string, Record<string, unknown>]
   >;
   return calls[0][2];
-}
+};
 
 describe('ImmaculateTasteProfileController update patch', () => {
   it('forwards only the client-provided fields for a scoped user update', async () => {

@@ -74,7 +74,7 @@ const LOCAL_NETWORK_SUFFIXES = [
 
 // HSTS pins a host name on every port. localhost, IP addresses and LAN names are
 // shared with the owner's other self-hosted apps, so a pin would force HTTPS on all of them.
-function isSharedLocalHost(hostname: string | undefined): boolean {
+const isSharedLocalHost = (hostname: string | undefined): boolean => {
   const host = (hostname ?? '')
     .trim()
     .toLowerCase()
@@ -84,7 +84,7 @@ function isSharedLocalHost(hostname: string | undefined): boolean {
     return true;
   }
   return LOCAL_NETWORK_SUFFIXES.some((suffix) => host.endsWith(suffix));
-}
+};
 
 export function securityHeadersMiddleware(
   req: Request,
