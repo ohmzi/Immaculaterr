@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { hasProvidedValue } from '../lib/request-body';
 import { RadarrService } from '../radarr/radarr.service';
 import { SettingsService } from '../settings/settings.service';
 import { SonarrService } from '../sonarr/sonarr.service';
@@ -66,13 +67,6 @@ const asOptionalBool = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value;
   return undefined;
 };
-
-// DTO instances carry every declared field as an own property (set to
-// `undefined` when the client omits it), so presence is defined by value.
-const hasProvidedValue = (
-  body: Record<string, unknown>,
-  key: string,
-): boolean => body[key] !== undefined;
 
 const asArrType = (value: string): ArrInstanceType => {
   const lowered = value.trim().toLowerCase();

@@ -10,6 +10,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth.types';
+import { hasProvidedValue } from '../lib/request-body';
 import {
   ImmaculateTasteProfileService,
   type ImmaculateTasteProfileView,
@@ -81,12 +82,6 @@ function asMatchMode(value: unknown): MatchMode | undefined {
   const lowered = asString(value).toLowerCase();
   if (lowered === 'all' || lowered === 'any') return lowered;
   throw new BadRequestException('matchMode must be "all" or "any"');
-}
-
-// DTO instances carry every declared field as an own property (set to
-// `undefined` when the client omits it), so presence is defined by value.
-function hasProvidedValue(body: Record<string, unknown>, key: string): boolean {
-  return body[key] !== undefined;
 }
 
 @Controller('immaculate-taste-profiles')

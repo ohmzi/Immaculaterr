@@ -66,6 +66,10 @@ const LOCAL_NETWORK_SUFFIXES = [
   '.home.arpa',
   '.internal',
   '.localdomain',
+  '.intranet',
+  '.corp',
+  '.priv',
+  '.fritz.box',
 ];
 
 // HSTS pins a host name on every port. localhost, IP addresses and LAN names are
@@ -76,12 +80,7 @@ function isSharedLocalHost(hostname: string | undefined): boolean {
     .toLowerCase()
     .replace(/^\[|\]$/g, '')
     .replace(/\.$/, '');
-  if (
-    !host ||
-    host === 'localhost' ||
-    isIP(host) !== 0 ||
-    !host.includes('.')
-  ) {
+  if (!host || isIP(host) !== 0 || !host.includes('.')) {
     return true;
   }
   return LOCAL_NETWORK_SUFFIXES.some((suffix) => host.endsWith(suffix));
