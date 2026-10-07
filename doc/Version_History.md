@@ -2,6 +2,14 @@
 
 This file tracks notable changes by version.
 
+## 1.7.11-beta-2
+
+- What's new since 1.7.10:
+- Partial updates no longer clobber untouched fields. The Immaculate Taste profile editor and the Radarr/Sonarr instance editor decided which fields the client had sent with a check that is always true on a validation DTO, so a request changing one field was treated as if it had sent every field: a partial profile save blanked the name and rejected scoped updates with "name, enabled, and sortOrder can only be updated for all users", and a partial instance save failed with "enabled must be a boolean" while blanking the name and base URL. A field now counts as provided only when the client sent a value, and an explicit `null` still clears a nullable field.
+- Local HTTPS: HSTS is no longer set on `localhost`, IP addresses or LAN-only host names. Browsers pin HSTS to a whole host name on every port, so the old header forced HTTPS onto every other app on `localhost` and blocked certificate exceptions for them (Firefox: "You can't add an exception"). Immaculaterr now sends `max-age=0` on those hosts, which clears the old pin the next time you open Immaculaterr over HTTPS. Public domain names keep HSTS.
+- Security: bumped `undici` to 6.29.0 and pinned `multer` 2.4.0 and `proxy-addr` 2.0.8 to clear known advisories. This also turns the production dependency audit gate green again.
+- Documentation: the project README was reorganized for easier scanning — a table of contents, a one-command quick start, a tech stack overview, an integrations table showing what is required versus optional, and a project structure tree. No application behavior changed.
+
 ## 1.7.11-beta-1
 
 - What's new since 1.7.10:

@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import type { NextFunction, Request, Response } from 'express';
 
 function buildCsp(req: Request): string {
@@ -54,6 +55,37 @@ function shouldSetHsts(req: Request): boolean {
   return process.env.NODE_ENV === 'production' && req.secure;
 }
 
+const HSTS_PIN = 'max-age=31536000; includeSubDomains';
+// Tells the browser to forget an HSTS pin it stored for this host earlier.
+const HSTS_CLEAR = 'max-age=0';
+const LOCAL_NETWORK_SUFFIXES = [
+  '.localhost',
+  '.local',
+  '.lan',
+  '.home',
+  '.home.arpa',
+  '.internal',
+  '.localdomain',
+  '.intranet',
+  '.corp',
+  '.priv',
+  '.fritz.box',
+];
+
+// HSTS pins a host name on every port. localhost, IP addresses and LAN names are
+// shared with the owner's other self-hosted apps, so a pin would force HTTPS on all of them.
+const isSharedLocalHost = (hostname: string | undefined): boolean => {
+  const host = (hostname ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
+  if (!host || isIP(host) !== 0 || !host.includes('.')) {
+    return true;
+  }
+  return LOCAL_NETWORK_SUFFIXES.some((suffix) => host.endsWith(suffix));
+};
+
 export function securityHeadersMiddleware(
   req: Request,
   res: Response,
@@ -71,7 +103,7 @@ export function securityHeadersMiddleware(
   if (shouldSetHsts(req)) {
     res.setHeader(
       'Strict-Transport-Security',
-      'max-age=31536000; includeSubDomains',
+      isSharedLocalHost(req.hostname) ? HSTS_CLEAR : HSTS_PIN,
     );
   }
 
