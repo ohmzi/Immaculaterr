@@ -41,6 +41,10 @@ fetches what's missing and clears out what nobody will ever watch.
 
 <div align="center">
   <img src="doc/assets/screenshots/showcase.gif" alt="Immaculaterr desktop UI" width="900" />
+  <br/><br/>
+  <img src="doc/assets/screenshots/mobile.webp" alt="Immaculaterr on a phone: the Overview with library growth over a year, the Observatory swipe deck, and the Command Center recommendation controls" width="900" />
+  <br/>
+  <sub>On a phone: Overview, Observatory and Command Center, with demo data.</sub>
 </div>
 
 <details>
