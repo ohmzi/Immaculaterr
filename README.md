@@ -47,6 +47,25 @@ fetches what's missing and clears out what nobody will ever watch.
   <sub>On a phone: Overview, Observatory and Command Center, with demo data.</sub>
 </div>
 
+<table>
+  <tr>
+    <td width="50%"><img src="doc/assets/screenshots/task-manager.webp" alt="The Task Manager: automation jobs such as Confirm Monitored, Confirm Unmonitored and Repair Monitored, each with an auto-run toggle and a Run Now button" /></td>
+    <td width="50%"><img src="doc/assets/screenshots/observatory.webp" alt="The Observatory swipe deck: a recommended film with its rating, match strength and the date it was sent to Radarr" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Task Manager — schedule jobs or run them now</sub></td>
+    <td align="center"><sub>Observatory — swipe to keep or remove</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="doc/assets/screenshots/command-center.webp" alt="The Command Center: a slider for how many recommendations to generate and a split between released and upcoming titles" /></td>
+    <td width="50%"><img src="doc/assets/screenshots/cutting-room.webp" alt="The Cutting Room prune wizard: the signals that count toward media nobody will watch" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Command Center — how many recommendations, and the released/upcoming mix</sub></td>
+    <td align="center"><sub>Cutting Room — prune what nobody will watch</sub></td>
+  </tr>
+</table>
+
 <details>
 <summary><b>Mobile, and what it looks like in Plex</b></summary>
 <br/>
